@@ -1,0 +1,78 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth-user";
+
+export async function GET() {
+  try {
+    const user = await getAuthUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Usuário não autenticado." },
+        { status: 401 }
+      );
+    }
+
+    if (!user.regionId) {
+      return NextResponse.json({
+        region: null,
+        items: [],
+      });
+    }
+
+    const [region, items] = await Promise.all([
+      prisma.region.findUnique({
+        where: { id: user.regionId },
+        select: {
+          id: true,
+          name: true,
+        },
+      }),
+
+      prisma.receipt.findMany({
+        where: {
+          regionId: user.regionId,
+        },
+        select: {
+          id: true,
+          amountCents: true,
+          paymentMethod: true,
+          receivedAt: true,
+          order: {
+            select: {
+              id: true,
+              number: true,
+            },
+          },
+          accountsReceivable: {
+            select: {
+              id: true,
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          receivedAt: "desc",
+        },
+        take: 300,
+      }),
+    ]);
+
+    return NextResponse.json({
+      region,
+      items,
+    });
+  } catch (error) {
+    console.error("REP REGION CASH ERROR:", error);
+
+    return NextResponse.json(
+      { error: "Erro ao carregar caixa da região." },
+      { status: 500 }
+    );
+  }
+}

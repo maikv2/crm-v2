@@ -19,14 +19,18 @@ export async function POST(request: Request) {
     const toLocationId = normalizeText(body.toLocationId);
     const note = normalizeText(body.note) || null;
 
-    const itemsRaw = Array.isArray(body.items) ? body.items : [];
+    const rawItems: unknown[] = Array.isArray(body.items) ? body.items : [];
 
-    const items: TransferItemInput[] = itemsRaw
-      .map((item) => ({
-        productId: normalizeText(item?.productId),
-        quantity: Number(item?.quantity ?? 0),
-      }))
-      .filter((item) => item.productId && item.quantity > 0);
+    const items: TransferItemInput[] = rawItems
+      .map((rawItem: unknown) => {
+        const item = (rawItem ?? {}) as Record<string, unknown>;
+
+        return {
+          productId: normalizeText(item.productId),
+          quantity: Number(item.quantity ?? 0),
+        };
+      })
+      .filter((item: TransferItemInput) => item.productId && item.quantity > 0);
 
     if (!fromLocationId || !toLocationId || items.length === 0) {
       return NextResponse.json(
@@ -81,7 +85,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const uniqueProductIds = Array.from(new Set(items.map((item) => item.productId)));
+    const uniqueProductIds = Array.from(
+      new Set(items.map((item: TransferItemInput) => item.productId))
+    );
 
     const products = await prisma.product.findMany({
       where: {
@@ -122,7 +128,13 @@ export async function POST(request: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const createdMovements = [];
+      const createdMovements: Array<{
+        productId: string;
+        productName: string;
+        quantity: number;
+        outMovementId: string;
+        inMovementId: string;
+      }> = [];
 
       for (const item of items) {
         const product = productMap.get(item.productId)!;
@@ -235,11 +247,11 @@ export async function POST(request: Request) {
       success: true,
       items: result,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
       {
         error: "Erro ao transferir estoque.",
-        details: String(error?.message ?? error),
+        details: error instanceof Error ? error.message : "Erro interno",
       },
       { status: 500 }
     );

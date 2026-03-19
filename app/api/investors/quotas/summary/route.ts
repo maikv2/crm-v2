@@ -55,7 +55,10 @@ export async function GET(request: NextRequest) {
             prisma.share.findMany({
               where: {
                 regionId: region.id,
-                isActive: true,
+                OR: [
+                  { isActive: true },
+                  { investorId: { not: null } },
+                ],
               },
               orderBy: {
                 quotaNumber: "asc",
@@ -82,11 +85,13 @@ export async function GET(request: NextRequest) {
           const activeQuotaCount = activeShares.length;
 
           const investorShares = activeShares.filter(
-            (share) => share.ownerType === "INVESTOR" && share.investorId
+            (share) =>
+              share.investorId &&
+              (share.ownerType === "INVESTOR" || share.investorId !== null)
           );
 
           const companyShares = activeShares.filter(
-            (share) => share.ownerType === "COMPANY"
+            (share) => !share.investorId && share.ownerType === "COMPANY"
           );
 
           const investorQuotaCount = investorShares.length;
@@ -133,7 +138,8 @@ export async function GET(request: NextRequest) {
             if (current) {
               current.quotaCount += 1;
               current.quotaNumbers.push(share.quotaNumber);
-              current.estimatedInvestedCents += share.amountCents ?? region.quotaValueCents;
+              current.estimatedInvestedCents +=
+                share.amountCents ?? region.quotaValueCents;
             } else {
               investorsMap.set(share.investorId, {
                 investorId: share.investorId,
@@ -142,7 +148,8 @@ export async function GET(request: NextRequest) {
                 phone: share.investor.phone ?? null,
                 quotaCount: 1,
                 quotaNumbers: [share.quotaNumber],
-                estimatedInvestedCents: share.amountCents ?? region.quotaValueCents,
+                estimatedInvestedCents:
+                  share.amountCents ?? region.quotaValueCents,
               });
             }
           }

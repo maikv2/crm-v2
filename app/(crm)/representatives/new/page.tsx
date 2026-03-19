@@ -34,6 +34,10 @@ export default function NewRepresentativePage() {
 
   const inputBg = colors.isDark ? "#0f172a" : "#ffffff";
   const subtleCard = colors.isDark ? "#0e1728" : "#f8fafc";
+  const warningBg = colors.isDark ? "rgba(245, 158, 11, 0.12)" : "#fff7ed";
+  const warningBorder = colors.isDark ? "rgba(245, 158, 11, 0.28)" : "#fdba74";
+  const successBg = colors.isDark ? "rgba(34, 197, 94, 0.10)" : "#f0fdf4";
+  const successBorder = colors.isDark ? "rgba(34, 197, 94, 0.24)" : "#86efac";
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -48,6 +52,17 @@ export default function NewRepresentativePage() {
   const [loadingDependencies, setLoadingDependencies] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const selectedRegion = useMemo(
+    () => regions.find((region) => region.id === regionId) ?? null,
+    [regions, regionId]
+  );
+
+  const selectedStockLocation = useMemo(
+    () => stockLocations.find((stock) => stock.id === stockLocationId) ?? null,
+    [stockLocations, stockLocationId]
+  );
+
+  const regionHasAutomaticStock = Boolean(selectedRegion?.stockLocationId);
   const hasRegion = Boolean(regionId);
   const hasStockLocation = Boolean(stockLocationId);
 
@@ -87,24 +102,26 @@ export default function NewRepresentativePage() {
   }, []);
 
   useEffect(() => {
-    if (!regionId) {
-      setStockLocationId("");
-      return;
-    }
-
-    const selectedRegion = regions.find((region) => region.id === regionId);
-
     if (!selectedRegion) {
       setStockLocationId("");
       return;
     }
 
-    setStockLocationId(selectedRegion.stockLocationId ?? "");
-  }, [regionId, regions]);
+    if (selectedRegion.stockLocationId) {
+      setStockLocationId(selectedRegion.stockLocationId);
+      return;
+    }
+
+    setStockLocationId("");
+  }, [selectedRegion]);
 
   const summaryText = useMemo(() => {
     if (!hasRegion && !hasStockLocation) {
       return "Representante ainda sem vínculos operacionais definidos.";
+    }
+
+    if (hasRegion && hasStockLocation && regionHasAutomaticStock) {
+      return "Representante pronto com região e estoque vinculados automaticamente a partir da região.";
     }
 
     if (hasRegion && hasStockLocation) {
@@ -112,11 +129,11 @@ export default function NewRepresentativePage() {
     }
 
     if (hasRegion) {
-      return "Representante vinculado à região, mas sem local de estoque definido.";
+      return "A região foi vinculada, mas essa região ainda não possui local de estoque configurado.";
     }
 
     return "Representante sem região vinculada, mas com local de estoque definido.";
-  }, [hasRegion, hasStockLocation]);
+  }, [hasRegion, hasStockLocation, regionHasAutomaticStock]);
 
   async function createRepresentative(e: React.FormEvent) {
     e.preventDefault();
@@ -136,6 +153,16 @@ export default function NewRepresentativePage() {
       return;
     }
 
+    if (!regionId) {
+      alert("Selecione uma região.");
+      return;
+    }
+
+    if (!stockLocationId) {
+      alert("A região selecionada não possui local de estoque vinculado.");
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -149,8 +176,8 @@ export default function NewRepresentativePage() {
           email: email.trim().toLowerCase(),
           phone: phone.trim() || null,
           password: password.trim(),
-          regionId: regionId || null,
-          stockLocationId: stockLocationId || null,
+          regionId,
+          stockLocationId,
         }),
       });
 
@@ -368,7 +395,7 @@ export default function NewRepresentativePage() {
                 style={selectStyle}
                 value={stockLocationId}
                 onChange={(e) => setStockLocationId(e.target.value)}
-                disabled={loadingDependencies}
+                disabled={loadingDependencies || !!selectedRegion?.stockLocationId}
               >
                 <option value="">Selecione um local de estoque</option>
                 {stockLocations.map((stock) => (
@@ -379,6 +406,42 @@ export default function NewRepresentativePage() {
               </select>
             </div>
           </div>
+
+          {selectedRegion?.stockLocationId ? (
+            <div
+              style={{
+                marginTop: 14,
+                border: `1px solid ${successBorder}`,
+                background: successBg,
+                color: colors.text,
+                borderRadius: 12,
+                padding: 12,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              Estoque definido automaticamente pela região:{" "}
+              {selectedRegion.stockLocationName ||
+                selectedStockLocation?.name ||
+                "Local de estoque vinculado"}
+            </div>
+          ) : selectedRegion ? (
+            <div
+              style={{
+                marginTop: 14,
+                border: `1px solid ${warningBorder}`,
+                background: warningBg,
+                color: colors.text,
+                borderRadius: 12,
+                padding: 12,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              A região selecionada não possui local de estoque vinculado. Vincule um estoque na
+              região antes de criar o representante.
+            </div>
+          ) : null}
         </div>
 
         <div style={cardStyle}>
@@ -413,7 +476,7 @@ export default function NewRepresentativePage() {
                 Região vinculada
               </div>
               <div style={{ fontSize: 18, fontWeight: 900 }}>
-                {regions.find((item) => item.id === regionId)?.name || "Não definida"}
+                {selectedRegion?.name || "Não definida"}
               </div>
             </div>
 
@@ -422,8 +485,8 @@ export default function NewRepresentativePage() {
                 Estoque vinculado
               </div>
               <div style={{ fontSize: 18, fontWeight: 900 }}>
-                {stockLocations.find((item) => item.id === stockLocationId)?.name ||
-                  regions.find((item) => item.id === regionId)?.stockLocationName ||
+                {selectedRegion?.stockLocationName ||
+                  selectedStockLocation?.name ||
                   "Não definido"}
               </div>
             </div>
@@ -480,7 +543,7 @@ export default function NewRepresentativePage() {
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !regionId || !stockLocationId}
             style={{
               height: 40,
               padding: "0 14px",
@@ -489,8 +552,8 @@ export default function NewRepresentativePage() {
               color: "white",
               border: "none",
               fontWeight: 700,
-              cursor: "pointer",
-              opacity: saving ? 0.7 : 1,
+              cursor: saving || !regionId || !stockLocationId ? "not-allowed" : "pointer",
+              opacity: saving || !regionId || !stockLocationId ? 0.7 : 1,
             }}
           >
             {saving ? "Criando..." : "Criar Representante"}

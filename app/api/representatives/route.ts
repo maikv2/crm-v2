@@ -31,6 +31,14 @@ export async function GET() {
             id: true,
             name: true,
             active: true,
+            stockLocationId: true,
+            stockLocation: {
+              select: {
+                id: true,
+                name: true,
+                active: true,
+              },
+            },
           },
         },
         stockLocation: {
@@ -54,7 +62,10 @@ export async function GET() {
       regionId: rep.regionId,
       stockLocationId: rep.stockLocationId,
       regionName: rep.region?.name ?? null,
-      stockLocationName: rep.stockLocation?.name ?? null,
+      stockLocationName:
+        rep.stockLocation?.name ??
+        rep.region?.stockLocation?.name ??
+        null,
     }));
 
     return NextResponse.json({ items });
@@ -76,9 +87,7 @@ export async function POST(request: Request) {
     const email = normalizeText(body?.email)?.toLowerCase() ?? null;
     const password = normalizeText(body?.password);
     const phone = normalizeText(body?.phone);
-
-    let regionId = normalizeText(body?.regionId);
-    let stockLocationId = normalizeText(body?.stockLocationId);
+    const regionId = normalizeText(body?.regionId);
 
     if (!name) {
       return NextResponse.json(
@@ -101,6 +110,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!regionId) {
+      return NextResponse.json(
+        { error: "Selecione uma região para o representante." },
+        { status: 400 }
+      );
+    }
+
     const existingUser = await prisma.user.findUnique({
       where: { email },
       select: { id: true },
@@ -113,68 +129,52 @@ export async function POST(request: Request) {
       );
     }
 
-    let region:
-      | {
-          id: string;
-          name: string;
-          active: boolean;
-          stockLocationId: string | null;
-        }
-      | null = null;
-
-    if (regionId) {
-      region = await prisma.region.findUnique({
-        where: { id: regionId },
-        select: {
-          id: true,
-          name: true,
-          active: true,
-          stockLocationId: true,
+    const region = await prisma.region.findUnique({
+      where: { id: regionId },
+      select: {
+        id: true,
+        name: true,
+        active: true,
+        stockLocationId: true,
+        stockLocation: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+          },
         },
-      });
+      },
+    });
 
-      if (!region) {
-        return NextResponse.json(
-          { error: "Região selecionada não encontrada." },
-          { status: 400 }
-        );
-      }
+    if (!region) {
+      return NextResponse.json(
+        { error: "Região selecionada não encontrada." },
+        { status: 400 }
+      );
     }
 
-    let stockLocation:
-      | {
-          id: string;
-          name: string;
-          active: boolean;
-        }
-      | null = null;
-
-    if (stockLocationId) {
-      stockLocation = await prisma.stockLocation.findUnique({
-        where: { id: stockLocationId },
-        select: {
-          id: true,
-          name: true,
-          active: true,
-        },
-      });
-
-      if (!stockLocation) {
-        return NextResponse.json(
-          { error: "Local de estoque selecionado não encontrado." },
-          { status: 400 }
-        );
-      }
+    if (!region.active) {
+      return NextResponse.json(
+        { error: "A região selecionada está inativa." },
+        { status: 400 }
+      );
     }
 
-    if (region && !stockLocationId) {
-      stockLocationId = region.stockLocationId ?? null;
-    }
-
-    if (region && stockLocationId && region.stockLocationId !== stockLocationId) {
+    if (!region.stockLocationId) {
       return NextResponse.json(
         {
-          error: "O local de estoque selecionado não corresponde ao estoque da região.",
+          error:
+            "A região selecionada não possui local de estoque vinculado. Vincule um estoque à região antes de criar o representante.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!region.stockLocation || !region.stockLocation.active) {
+      return NextResponse.json(
+        {
+          error:
+            "O local de estoque vinculado à região não foi encontrado ou está inativo.",
         },
         { status: 400 }
       );
@@ -190,8 +190,8 @@ export async function POST(request: Request) {
         phone,
         role: UserRole.REPRESENTATIVE,
         active: true,
-        regionId,
-        stockLocationId,
+        regionId: region.id,
+        stockLocationId: region.stockLocationId,
       },
       select: {
         id: true,
@@ -207,6 +207,13 @@ export async function POST(request: Request) {
             id: true,
             name: true,
             active: true,
+            stockLocation: {
+              select: {
+                id: true,
+                name: true,
+                active: true,
+              },
+            },
           },
         },
         stockLocation: {
@@ -231,7 +238,10 @@ export async function POST(request: Request) {
         regionId: created.regionId,
         stockLocationId: created.stockLocationId,
         regionName: created.region?.name ?? null,
-        stockLocationName: created.stockLocation?.name ?? null,
+        stockLocationName:
+          created.stockLocation?.name ??
+          created.region?.stockLocation?.name ??
+          null,
       },
     });
   } catch (error) {

@@ -39,39 +39,58 @@ export async function GET(request: NextRequest) {
     const items = await Promise.all(
       regions.map(async (region) => {
         try {
-          const [monthlyResult, shareCount, investorShareCount, preview] =
-            await Promise.all([
-              prisma.regionMonthlyResult.findFirst({
-                where: {
-                  regionId: region.id,
-                  month,
-                  year,
-                },
-                select: {
-  grossRevenueCents: true,
-  ebitdaCents: true,
-  reserveCents: true,
-},
-              }),
-              prisma.share.count({
-                where: {
-                  regionId: region.id,
-                },
-              }),
-              prisma.share.count({
-                where: {
-                  regionId: region.id,
-                  investorId: {
-                    not: null,
+          const [monthlyResult, activeShares, preview] = await Promise.all([
+            prisma.regionMonthlyResult.findFirst({
+              where: {
+                regionId: region.id,
+                month,
+                year,
+              },
+              select: {
+                grossRevenueCents: true,
+                ebitdaCents: true,
+                reserveCents: true,
+              },
+            }),
+            prisma.share.findMany({
+              where: {
+                regionId: region.id,
+                isActive: true,
+              },
+              orderBy: {
+                quotaNumber: "asc",
+              },
+              select: {
+                id: true,
+                quotaNumber: true,
+                amountCents: true,
+                ownerType: true,
+                investorId: true,
+                investor: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phone: true,
                   },
                 },
-              }),
-              calculateInvestorDistributionPreview(region.id, month, year),
-            ]);
+              },
+            }),
+            calculateInvestorDistributionPreview(region.id, month, year),
+          ]);
 
-          const activeQuotaCount = shareCount;
-          const investorQuotaCount = investorShareCount;
-          const companyQuotaCount = Math.max(0, activeQuotaCount - investorQuotaCount);
+          const activeQuotaCount = activeShares.length;
+
+          const investorShares = activeShares.filter(
+            (share) => share.ownerType === "INVESTOR" && share.investorId
+          );
+
+          const companyShares = activeShares.filter(
+            (share) => share.ownerType === "COMPANY"
+          );
+
+          const investorQuotaCount = investorShares.length;
+          const companyQuotaCount = companyShares.length;
           const availableQuotaCount = Math.max(
             0,
             region.maxQuotaCount - activeQuotaCount
@@ -79,7 +98,7 @@ export async function GET(request: NextRequest) {
 
           const grossRevenueCents = monthlyResult?.grossRevenueCents ?? 0;
           const operatingProfitCents =
-  (monthlyResult?.ebitdaCents ?? 0) + (monthlyResult?.reserveCents ?? 0);
+            (monthlyResult?.ebitdaCents ?? 0) + (monthlyResult?.reserveCents ?? 0);
           const ebitdaCents = monthlyResult?.ebitdaCents ?? preview.ebitdaCents ?? 0;
           const reserveCents = monthlyResult?.reserveCents ?? 0;
 
@@ -91,6 +110,45 @@ export async function GET(request: NextRequest) {
           const companyPoolCents = Math.max(
             0,
             ebitdaCents + reserveCents - investorPoolCents
+          );
+
+          const investorsMap = new Map<
+            string,
+            {
+              investorId: string;
+              investorName: string;
+              email: string | null;
+              phone: string | null;
+              quotaCount: number;
+              quotaNumbers: number[];
+              estimatedInvestedCents: number;
+            }
+          >();
+
+          for (const share of investorShares) {
+            if (!share.investorId || !share.investor) continue;
+
+            const current = investorsMap.get(share.investorId);
+
+            if (current) {
+              current.quotaCount += 1;
+              current.quotaNumbers.push(share.quotaNumber);
+              current.estimatedInvestedCents += share.amountCents ?? region.quotaValueCents;
+            } else {
+              investorsMap.set(share.investorId, {
+                investorId: share.investorId,
+                investorName: share.investor.name,
+                email: share.investor.email ?? null,
+                phone: share.investor.phone ?? null,
+                quotaCount: 1,
+                quotaNumbers: [share.quotaNumber],
+                estimatedInvestedCents: share.amountCents ?? region.quotaValueCents,
+              });
+            }
+          }
+
+          const investors = Array.from(investorsMap.values()).sort((a, b) =>
+            a.investorName.localeCompare(b.investorName, "pt-BR")
           );
 
           return {
@@ -111,6 +169,7 @@ export async function GET(request: NextRequest) {
             companyPoolCents,
             valuePerQuotaCents: preview.valuePerQuotaCents ?? 0,
             hasMonthlyResult: !!monthlyResult,
+            investors,
           };
         } catch (error) {
           console.error(
@@ -136,6 +195,7 @@ export async function GET(request: NextRequest) {
             companyPoolCents: 0,
             valuePerQuotaCents: 0,
             hasMonthlyResult: false,
+            investors: [],
           };
         }
       })

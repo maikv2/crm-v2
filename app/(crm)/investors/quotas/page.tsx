@@ -12,6 +12,16 @@ function moneyFromCents(value: number) {
   });
 }
 
+type RegionInvestorItem = {
+  investorId: string;
+  investorName: string;
+  email: string | null;
+  phone: string | null;
+  quotaCount: number;
+  quotaNumbers: number[];
+  estimatedInvestedCents: number;
+};
+
 type QuotaSummaryItem = {
   regionId: string;
   regionName: string;
@@ -30,6 +40,7 @@ type QuotaSummaryItem = {
   companyPoolCents: number;
   valuePerQuotaCents: number;
   hasMonthlyResult: boolean;
+  investors: RegionInvestorItem[];
 };
 
 type QuotaSummaryResponse = {
@@ -357,6 +368,99 @@ function RegionCard({
 
       <div
         style={{
+          background: theme.isDark ? "#111827" : "#ffffff",
+          border: `1px solid ${border}`,
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 14,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 900,
+            color: theme.text,
+            marginBottom: 10,
+          }}
+        >
+          Investidores vinculados
+        </div>
+
+        {item.investors.length === 0 ? (
+          <div
+            style={{
+              fontSize: 13,
+              color: muted,
+              fontWeight: 700,
+            }}
+          >
+            Nenhum investidor vinculado a cotas ativas nesta região.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {item.investors.map((investor) => (
+              <div
+                key={investor.investorId}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${border}`,
+                  background: theme.isDark ? "#0b1324" : "#f8fafc",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: theme.text,
+                    }}
+                  >
+                    {investor.investorName}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: muted,
+                    }}
+                  >
+                    {investor.email || "Sem e-mail"}
+                    {investor.phone ? ` • ${investor.phone}` : ""}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: muted,
+                    }}
+                  >
+                    {investor.quotaCount} cota(s) • #{investor.quotaNumbers.join(", #")}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color: "#22c55e",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {moneyFromCents(investor.estimatedInvestedCents)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
           display: "flex",
           justifyContent: "flex-end",
         }}
@@ -504,7 +608,7 @@ export default function InvestorQuotasPage() {
               color: muted,
             }}
           >
-            Análise por região com origem dos valores, fundo trimestral e previsão de repasse.
+            Análise por região com cotistas, cotas ativas, fundo trimestral e previsão de repasse.
           </div>
         </div>
 

@@ -246,7 +246,6 @@ export default function NewClientPage() {
   const [lastFetchedCnpj, setLastFetchedCnpj] = useState("");
 
   const isRepresentative = loggedUser?.role === "REPRESENTATIVE";
-  const isAdmin = loggedUser?.role === "ADMIN";
 
   useEffect(() => {
     let active = true;
@@ -356,6 +355,10 @@ export default function NewClientPage() {
 
     return true;
   }, [form, isRepresentative]);
+
+  const representativeRegion = regions.find(
+    (region) => region.id === form.regionId
+  );
 
   function updateField<K extends keyof ClientForm>(field: K, value: ClientForm[K]) {
     setForm((prev) => ({
@@ -745,34 +748,54 @@ export default function NewClientPage() {
 
             <div style={fieldStyle}>
               <label style={{ ...labelStyle, color: theme.subtext }}>{regionLabel}</label>
-              <select
-                style={{
-                  ...inputStyle,
-                  background: inputBg,
-                  color: theme.text,
-                  border: `1px solid ${theme.border}`,
-                  opacity: userLoading || (isRepresentative && form.regionId) ? 0.75 : 1,
-                }}
-                value={form.regionId}
-                onChange={(e) => updateField("regionId", e.target.value)}
-                disabled={userLoading || isRepresentative}
-              >
-                <option value="">
-                  {regionsLoading || userLoading
-                    ? "Carregando regiões..."
-                    : "Selecione"}
-                </option>
-                {regions.map((region) => (
-                  <option key={region.id} value={region.id}>
-                    {region.name}
-                  </option>
-                ))}
-              </select>
+
               {isRepresentative ? (
-                <div style={infoBlueStyle}>
-                  A região fica travada conforme o representante logado.
-                </div>
-              ) : null}
+                <>
+                  <select
+                    style={{
+                      ...inputStyle,
+                      background: inputBg,
+                      color: theme.text,
+                      border: `1px solid ${theme.border}`,
+                      opacity: 0.9,
+                    }}
+                    value={form.regionId}
+                    disabled
+                  >
+                    <option value={form.regionId}>
+                      {representativeRegion?.name ||
+                        (userLoading || regionsLoading
+                          ? "Carregando região..."
+                          : "Região do representante")}
+                    </option>
+                  </select>
+
+                  <div style={infoBlueStyle}>
+                    A região está travada conforme o representante logado.
+                  </div>
+                </>
+              ) : (
+                <select
+                  style={{
+                    ...inputStyle,
+                    background: inputBg,
+                    color: theme.text,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                  value={form.regionId}
+                  onChange={(e) => updateField("regionId", e.target.value)}
+                  disabled={userLoading || regionsLoading}
+                >
+                  <option value="">
+                    {regionsLoading || userLoading ? "Carregando regiões..." : "Selecione"}
+                  </option>
+                  {regions.map((region) => (
+                    <option key={region.id} value={region.id}>
+                      {region.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div style={fieldStyle}>

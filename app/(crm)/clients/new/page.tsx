@@ -10,6 +10,14 @@ type Region = {
   name: string;
 };
 
+type LoggedUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "REPRESENTATIVE" | "INVESTOR" | string;
+  regionId?: string | null;
+};
+
 type OtherContact = {
   person: string;
   email: string;
@@ -187,6 +195,8 @@ export default function NewClientPage() {
 
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(true);
+  const [loggedUser, setLoggedUser] = useState<LoggedUser | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
 
   const [form, setForm] = useState<ClientForm>({
     personType: "JURIDICA",
@@ -235,6 +245,56 @@ export default function NewClientPage() {
   const [cnpjSuccess, setCnpjSuccess] = useState<string | null>(null);
   const [lastFetchedCnpj, setLastFetchedCnpj] = useState("");
 
+  const isRepresentative = loggedUser?.role === "REPRESENTATIVE";
+  const isAdmin = loggedUser?.role === "ADMIN";
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadUser() {
+      try {
+        setUserLoading(true);
+
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+        });
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok || !data?.user) {
+          throw new Error("Não foi possível identificar o usuário logado.");
+        }
+
+        if (active) {
+          const user = data.user as LoggedUser;
+          setLoggedUser(user);
+
+          if (user.role === "REPRESENTATIVE" && user.regionId) {
+            setForm((prev) => ({
+              ...prev,
+              regionId: user.regionId ?? "",
+            }));
+          }
+        }
+      } catch (error: any) {
+        if (active) {
+          setLoggedUser(null);
+          setPageError(error?.message || "Não foi possível identificar o usuário logado.");
+        }
+      } finally {
+        if (active) {
+          setUserLoading(false);
+        }
+      }
+    }
+
+    loadUser();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -251,10 +311,23 @@ export default function NewClientPage() {
         }
 
         const data = await response.json();
-        const list = Array.isArray(data) ? data : data?.regions ?? [];
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data?.regions)
+              ? data.regions
+              : [];
 
         if (active) {
           setRegions(list);
+
+          if (loggedUser?.role === "REPRESENTATIVE" && loggedUser.regionId) {
+            setForm((prev) => ({
+              ...prev,
+              regionId: loggedUser.regionId ?? "",
+            }));
+          }
         }
       } catch {
         if (active) {
@@ -272,13 +345,17 @@ export default function NewClientPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [loggedUser?.role, loggedUser?.regionId]);
 
   const canSubmit = useMemo(() => {
     const mainName =
       form.personType === "JURIDICA" ? form.legalName.trim() : form.tradeName.trim();
-    return !!mainName;
-  }, [form]);
+
+    if (!mainName) return false;
+    if (isRepresentative && !form.regionId) return false;
+
+    return true;
+  }, [form, isRepresentative]);
 
   function updateField<K extends keyof ClientForm>(field: K, value: ClientForm[K]) {
     setForm((prev) => ({
@@ -366,8 +443,8 @@ export default function NewClientPage() {
         whatsapp: prev.whatsapp
           ? prev.whatsapp
           : data.telefone
-          ? formatPhoneBR(data.telefone)
-          : "",
+            ? formatPhoneBR(data.telefone)
+            : "",
         cep: prev.cep ? prev.cep : data.cep ? formatCEP(data.cep) : "",
         street: prev.street || data.logradouro || "",
         number: prev.number || data.numero || "",
@@ -475,6 +552,10 @@ export default function NewClientPage() {
       setSaving(false);
     }
   }
+
+  const regionLabel = isRepresentative
+    ? "Região do representante"
+    : "Região";
 
   return (
     <div
@@ -663,19 +744,23 @@ export default function NewClientPage() {
             </div>
 
             <div style={fieldStyle}>
-              <label style={{ ...labelStyle, color: theme.subtext }}>Região</label>
+              <label style={{ ...labelStyle, color: theme.subtext }}>{regionLabel}</label>
               <select
                 style={{
                   ...inputStyle,
                   background: inputBg,
                   color: theme.text,
                   border: `1px solid ${theme.border}`,
+                  opacity: userLoading || (isRepresentative && form.regionId) ? 0.75 : 1,
                 }}
                 value={form.regionId}
                 onChange={(e) => updateField("regionId", e.target.value)}
+                disabled={userLoading || isRepresentative}
               >
                 <option value="">
-                  {regionsLoading ? "Carregando regiões..." : "Selecione"}
+                  {regionsLoading || userLoading
+                    ? "Carregando regiões..."
+                    : "Selecione"}
                 </option>
                 {regions.map((region) => (
                   <option key={region.id} value={region.id}>
@@ -683,6 +768,11 @@ export default function NewClientPage() {
                   </option>
                 ))}
               </select>
+              {isRepresentative ? (
+                <div style={infoBlueStyle}>
+                  A região fica travada conforme o representante logado.
+                </div>
+              ) : null}
             </div>
 
             <div style={fieldStyle}>

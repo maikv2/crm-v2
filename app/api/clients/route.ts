@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { buildAddress, geocodeAddress } from "@/lib/geocoding";
+import { cookies } from "next/headers";
 
 function onlyDigits(value?: string | null) {
   return String(value ?? "").replace(/\D/g, "");
@@ -121,6 +122,40 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get("crm_session")?.value?.trim();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Usuário não autenticado." },
+        { status: 401 }
+      );
+    }
+
+    const loggedUser = await prisma.user.findUnique({
+      where: { id: session },
+      select: {
+        id: true,
+        role: true,
+        active: true,
+        regionId: true,
+      },
+    });
+
+    if (!loggedUser || !loggedUser.active) {
+      return NextResponse.json(
+        { error: "Usuário não autenticado." },
+        { status: 401 }
+      );
+    }
+
+    if (loggedUser.role !== "ADMIN" && loggedUser.role !== "REPRESENTATIVE") {
+      return NextResponse.json(
+        { error: "Usuário sem permissão para cadastrar clientes." },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
 
     const personType =
@@ -163,7 +198,7 @@ export async function POST(request: Request) {
     const state = normalizeText(body.state)?.toUpperCase() ?? null;
     const complement = normalizeText(body.complement);
 
-    const regionId = normalizeText(body.regionId);
+    const requestedRegionId = normalizeText(body.regionId);
     const notes = normalizeText(body.notes);
 
     const name =
@@ -219,7 +254,20 @@ export async function POST(request: Request) {
       }
     }
 
-    if (regionId) {
+    let regionId: string | null = requestedRegionId;
+
+    if (loggedUser.role === "REPRESENTATIVE") {
+      if (!loggedUser.regionId) {
+        return NextResponse.json(
+          { error: "O representante logado não possui região vinculada." },
+          { status: 400 }
+        );
+      }
+
+      regionId = loggedUser.regionId;
+    }
+
+    if (loggedUser.role === "ADMIN" && regionId) {
       const regionExists = await prisma.region.findUnique({
         where: { id: regionId },
         select: { id: true },
@@ -228,6 +276,20 @@ export async function POST(request: Request) {
       if (!regionExists) {
         return NextResponse.json(
           { error: "Região inválida" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (loggedUser.role === "REPRESENTATIVE") {
+      const regionExists = await prisma.region.findUnique({
+        where: { id: regionId! },
+        select: { id: true },
+      });
+
+      if (!regionExists) {
+        return NextResponse.json(
+          { error: "Região do representante é inválida." },
           { status: 400 }
         );
       }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { UserRole } from "@prisma/client";
 
 function normalizeText(value?: string | null) {
   const text = String(value ?? "").trim();
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     const representatives = await prisma.user.findMany({
       where: {
-        role: "REPRESENTATIVE",
+        role: UserRole.REPRESENTATIVE,
         active: true,
         regionId,
       },
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
     console.error("GET /api/representatives/by-region error:", error);
 
     return NextResponse.json(
-      { error: "Não foi possível carregar os representantes" },
+      { error: "Não foi possível carregar os representantes." },
       { status: 500 }
     );
   }

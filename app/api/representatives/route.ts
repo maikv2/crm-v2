@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { UserRole } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
+
+function normalizeText(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text || text === "undefined" || text === "null") {
+    return null;
+  }
+  return text;
+}
 
 export async function GET() {
   try {
@@ -52,6 +60,7 @@ export async function GET() {
     return NextResponse.json({ items });
   } catch (error) {
     console.error("GET REPRESENTATIVES ERROR:", error);
+
     return NextResponse.json(
       { error: "Erro ao carregar representantes." },
       { status: 500 }
@@ -63,26 +72,13 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    const name = String(body?.name ?? "").trim();
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const password = String(body?.password ?? "").trim();
-    const phone =
-      body?.phone === null || body?.phone === undefined
-        ? ""
-        : String(body.phone).trim();
+    const name = normalizeText(body?.name);
+    const email = normalizeText(body?.email)?.toLowerCase() ?? null;
+    const password = normalizeText(body?.password);
+    const phone = normalizeText(body?.phone);
 
-    const regionIdRaw =
-      body?.regionId === null || body?.regionId === undefined
-        ? ""
-        : String(body.regionId).trim();
-
-    const stockLocationIdRaw =
-      body?.stockLocationId === null || body?.stockLocationId === undefined
-        ? ""
-        : String(body.stockLocationId).trim();
-
-    let regionId = regionIdRaw || null;
-    let stockLocationId = stockLocationIdRaw || null;
+    let regionId = normalizeText(body?.regionId);
+    let stockLocationId = normalizeText(body?.stockLocationId);
 
     if (!name) {
       return NextResponse.json(
@@ -191,7 +187,7 @@ export async function POST(request: Request) {
         name,
         email,
         passwordHash,
-        phone: phone || null,
+        phone,
         role: UserRole.REPRESENTATIVE,
         active: true,
         regionId,
@@ -206,15 +202,51 @@ export async function POST(request: Request) {
         createdAt: true,
         regionId: true,
         stockLocationId: true,
+        region: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+          },
+        },
+        stockLocation: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+          },
+        },
       },
     });
 
     return NextResponse.json({
       ok: true,
-      item: created,
+      item: {
+        id: created.id,
+        name: created.name,
+        email: created.email,
+        phone: created.phone,
+        active: created.active,
+        createdAt: created.createdAt,
+        regionId: created.regionId,
+        stockLocationId: created.stockLocationId,
+        regionName: created.region?.name ?? null,
+        stockLocationName: created.stockLocation?.name ?? null,
+      },
     });
   } catch (error) {
     console.error("POST REPRESENTATIVES ERROR:", error);
+
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return NextResponse.json(
+        { error: "Já existe um usuário com esse e-mail." },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Erro ao criar representante." },
       { status: 500 }

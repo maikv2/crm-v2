@@ -3,10 +3,10 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   request: Request,
-  context: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = await context.params;
+    const { id } = context.params;
 
     if (!id) {
       return NextResponse.json(
@@ -83,7 +83,7 @@ export async function GET(
     const investorQuotaCount = region.shares.filter(
       (share) => share.ownerType === "INVESTOR"
     ).length;
-    const availableQuotaCount = totalQuotaCount - activeQuotaCount;
+    const availableQuotaCount = Math.max(0, totalQuotaCount - activeQuotaCount);
 
     return NextResponse.json({
       region: region.name,
@@ -107,10 +107,10 @@ export async function GET(
 
 export async function DELETE(
   request: Request,
-  context: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id: regionId } = await context.params;
+    const { id: regionId } = context.params;
 
     if (!regionId) {
       return NextResponse.json(

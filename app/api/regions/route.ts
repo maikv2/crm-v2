@@ -3,45 +3,46 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const regions = await prisma.region.findMany({
-      orderBy: {
-        name: "asc",
-      },
-      select: {
-        id: true,
-        name: true,
-        active: true,
-        targetClients: true,
-        monthlySalesTargetCents: true,
-        maxQuotaCount: true,
-        quotaValueCents: true,
-        investmentTargetCents: true,
-        stockLocationId: true,
-        stockLocation: {
-          select: {
-            id: true,
-            name: true,
-            active: true,
+    const [regions, shares] = await Promise.all([
+      prisma.region.findMany({
+        orderBy: {
+          name: "asc",
+        },
+        select: {
+          id: true,
+          name: true,
+          active: true,
+          targetClients: true,
+          monthlySalesTargetCents: true,
+          maxQuotaCount: true,
+          quotaValueCents: true,
+          investmentTargetCents: true,
+          stockLocationId: true,
+          stockLocation: {
+            select: {
+              id: true,
+              name: true,
+              active: true,
+            },
           },
         },
-      },
-    });
-
-    const shares = await prisma.share.findMany({
-      where: {
-        isActive: true,
-      },
-      select: {
-        id: true,
-        regionId: true,
-        ownerType: true,
-        quotaNumber: true,
-        investorId: true,
-      },
-      orderBy: {
-        quotaNumber: "asc",
-      },
-    });
+      }),
+      prisma.share.findMany({
+        where: {
+          isActive: true,
+        },
+        select: {
+          id: true,
+          regionId: true,
+          ownerType: true,
+          quotaNumber: true,
+          investorId: true,
+        },
+        orderBy: {
+          quotaNumber: "asc",
+        },
+      }),
+    ]);
 
     const sharesByRegion = new Map<string, typeof shares>();
 

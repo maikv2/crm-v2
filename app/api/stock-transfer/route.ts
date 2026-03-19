@@ -127,57 +127,57 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const createdMovements: Array<{
-        productId: string;
-        productName: string;
-        quantity: number;
-        outMovementId: string;
-        inMovementId: string;
-      }> = [];
+    const currentBalances = await prisma.stockBalance.findMany({
+      where: {
+        productId: { in: uniqueProductIds },
+        stockLocationId: { in: [fromLocationId, toLocationId] },
+      },
+      select: {
+        productId: true,
+        stockLocationId: true,
+        quantity: true,
+      },
+    });
 
-      for (const item of items) {
-        const product = productMap.get(item.productId)!;
+    const balanceMap = new Map<string, number>();
 
-        const fromBalance = await tx.stockBalance.findUnique({
-          where: {
-            productId_stockLocationId: {
-              productId: item.productId,
-              stockLocationId: fromLocationId,
-            },
+    for (const balance of currentBalances) {
+      balanceMap.set(
+        `${balance.productId}:${balance.stockLocationId}`,
+        balance.quantity ?? 0
+      );
+    }
+
+    for (const item of items) {
+      const product = productMap.get(item.productId)!;
+      const currentFromQty =
+        balanceMap.get(`${item.productId}:${fromLocationId}`) ?? 0;
+
+      if (currentFromQty < item.quantity) {
+        return NextResponse.json(
+          {
+            error: `Estoque insuficiente para ${product.name} em ${fromLocation.name}. Saldo atual: ${currentFromQty}.`,
           },
-          select: {
-            id: true,
-            quantity: true,
-          },
-        });
+          { status: 400 }
+        );
+      }
+    }
 
-        const toBalance = await tx.stockBalance.findUnique({
-          where: {
-            productId_stockLocationId: {
-              productId: item.productId,
-              stockLocationId: toLocationId,
-            },
-          },
-          select: {
-            id: true,
-            quantity: true,
-          },
-        });
+    const operations = [];
 
-        const currentFromQty = fromBalance?.quantity ?? 0;
-        const currentToQty = toBalance?.quantity ?? 0;
+    for (const item of items) {
+      const product = productMap.get(item.productId)!;
 
-        if (currentFromQty < item.quantity) {
-          throw new Error(
-            `Estoque insuficiente para ${product.name} em ${fromLocation.name}. Saldo atual: ${currentFromQty}.`
-          );
-        }
+      const currentFromQty =
+        balanceMap.get(`${item.productId}:${fromLocationId}`) ?? 0;
+      const currentToQty =
+        balanceMap.get(`${item.productId}:${toLocationId}`) ?? 0;
 
-        const nextFromQty = currentFromQty - item.quantity;
-        const nextToQty = currentToQty + item.quantity;
+      const nextFromQty = currentFromQty - item.quantity;
+      const nextToQty = currentToQty + item.quantity;
 
-        const outMovement = await tx.stockMovement.create({
+      operations.push(
+        prisma.stockMovement.create({
           data: {
             productId: item.productId,
             stockLocationId: fromLocationId,
@@ -185,9 +185,11 @@ export async function POST(request: Request) {
             quantity: item.quantity,
             note,
           },
-        });
+        })
+      );
 
-        const inMovement = await tx.stockMovement.create({
+      operations.push(
+        prisma.stockMovement.create({
           data: {
             productId: item.productId,
             stockLocationId: toLocationId,
@@ -195,9 +197,11 @@ export async function POST(request: Request) {
             quantity: item.quantity,
             note,
           },
-        });
+        })
+      );
 
-        await tx.stockBalance.upsert({
+      operations.push(
+        prisma.stockBalance.upsert({
           where: {
             productId_stockLocationId: {
               productId: item.productId,
@@ -212,9 +216,11 @@ export async function POST(request: Request) {
           update: {
             quantity: nextFromQty,
           },
-        });
+        })
+      );
 
-        await tx.stockBalance.upsert({
+      operations.push(
+        prisma.stockBalance.upsert({
           where: {
             productId_stockLocationId: {
               productId: item.productId,
@@ -229,23 +235,19 @@ export async function POST(request: Request) {
           update: {
             quantity: nextToQty,
           },
-        });
+        })
+      );
+    }
 
-        createdMovements.push({
-          productId: item.productId,
-          productName: product.name,
-          quantity: item.quantity,
-          outMovementId: outMovement.id,
-          inMovementId: inMovement.id,
-        });
-      }
-
-      return createdMovements;
-    });
+    await prisma.$transaction(operations);
 
     return NextResponse.json({
       success: true,
-      items: result,
+      items: items.map((item) => ({
+        productId: item.productId,
+        productName: productMap.get(item.productId)?.name ?? "Produto",
+        quantity: item.quantity,
+      })),
     });
   } catch (error: unknown) {
     return NextResponse.json(

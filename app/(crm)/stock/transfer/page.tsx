@@ -373,10 +373,10 @@ export default function StockTransferPage() {
 
       if (!res.ok) {
         alert(
-          `Erro ao transferir estoque: ${
-            data?.error || data?.details || text || "Erro desconhecido."
-          }`
-        );
+  `Erro ao transferir estoque: ${
+    data?.details || data?.error || text || "Erro desconhecido."
+  }`
+);
         return;
       }
 

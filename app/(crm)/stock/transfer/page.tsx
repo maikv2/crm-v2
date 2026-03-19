@@ -1,11 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "../../../providers/theme-provider";
 import { getThemeColors } from "../../../../lib/theme";
 
 type ThemeShape = ReturnType<typeof getThemeColors>;
+
+type ProductItem = {
+  id: string;
+  sku?: string | null;
+  name: string;
+  category?: string | null;
+  imageUrl?: string | null;
+  active?: boolean;
+};
+
+type LocationItem = {
+  id: string;
+  name: string;
+};
+
+type StockProductRow = {
+  id: string;
+  name: string;
+  stock?: Record<string, number>;
+  total?: number;
+};
+
+type StockResponse = {
+  locations?: LocationItem[];
+  products?: StockProductRow[];
+};
+
+type TransferItem = {
+  productId: string;
+  quantity: number;
+};
+
+function readJsonSafe(text: string) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 function ActionButton({
   label,
@@ -27,8 +66,8 @@ function ActionButton({
       ? "#1d4ed8"
       : theme.primary
     : hover
-    ? theme.primary
-    : theme.cardBg;
+      ? theme.primary
+      : theme.cardBg;
 
   const color = hover || primary ? "#ffffff" : theme.text;
 
@@ -40,8 +79,8 @@ function ActionButton({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        height: 34,
-        padding: "0 12px",
+        height: 38,
+        padding: "0 14px",
         borderRadius: 10,
         border: primary ? `1px solid ${theme.primary}` : `1px solid ${theme.border}`,
         background,
@@ -78,7 +117,6 @@ function Card({
         boxShadow: theme.isDark
           ? "0 10px 30px rgba(2,6,23,0.35)"
           : "0 8px 24px rgba(15,23,42,0.06)",
-        maxWidth: 760,
       }}
     >
       <div
@@ -103,40 +141,154 @@ export default function StockTransferPage() {
   const theme = getThemeColors(mode);
 
   const inputBg = theme.isDark ? "#0f172a" : "#ffffff";
+  const subtleCard = theme.isDark ? "#0e1728" : "#f8fafc";
 
-  const [products, setProducts] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [locations, setLocations] = useState<LocationItem[]>([]);
+  const [stockProducts, setStockProducts] = useState<StockProductRow[]>([]);
 
-  const [productId, setProductId] = useState("");
   const [fromLocationId, setFromLocationId] = useState("");
   const [toLocationId, setToLocationId] = useState("");
-  const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState("");
+  const [search, setSearch] = useState("");
+
+  const [items, setItems] = useState<TransferItem[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [productsRes, stockRes] = await Promise.all([
-        fetch("/api/products"),
-        fetch("/api/stock"),
-      ]);
+      try {
+        const [productsRes, stockRes] = await Promise.all([
+          fetch("/api/products", { cache: "no-store" }),
+          fetch("/api/stock", { cache: "no-store" }),
+        ]);
 
-      const productsData = await productsRes.json();
-      const stockData = await stockRes.json();
+        const productsText = await productsRes.text();
+        const stockText = await stockRes.text();
 
-      setProducts(Array.isArray(productsData) ? productsData : []);
-      setLocations(stockData.locations ?? []);
-      setLoading(false);
+        const productsData = readJsonSafe(productsText);
+        const stockData = (readJsonSafe(stockText) ?? {}) as StockResponse;
+
+        if (!productsRes.ok) {
+          throw new Error(productsData?.error || "Erro ao carregar produtos.");
+        }
+
+        if (!stockRes.ok) {
+          throw new Error((stockData as any)?.error || "Erro ao carregar estoque.");
+        }
+
+        setProducts(Array.isArray(productsData) ? productsData : []);
+        setLocations(Array.isArray(stockData.locations) ? stockData.locations : []);
+        setStockProducts(Array.isArray(stockData.products) ? stockData.products : []);
+      } catch (error: any) {
+        alert(error?.message || "Erro ao carregar dados da transferência.");
+      } finally {
+        setLoading(false);
+      }
     }
 
     load();
   }, []);
 
+  const selectedFromLocation = useMemo(
+    () => locations.find((location) => location.id === fromLocationId) ?? null,
+    [locations, fromLocationId]
+  );
+
+  const selectedToLocation = useMemo(
+    () => locations.find((location) => location.id === toLocationId) ?? null,
+    [locations, toLocationId]
+  );
+
+  const stockByProductId = useMemo(() => {
+    const map = new Map<string, StockProductRow>();
+    for (const item of stockProducts) {
+      map.set(item.id, item);
+    }
+    return map;
+  }, [stockProducts]);
+
+  const itemsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of items) {
+      map.set(item.productId, item.quantity);
+    }
+    return map;
+  }, [items]);
+
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return products.filter((product) => {
+      if (product.active === false) return false;
+
+      if (!q) return true;
+
+      const haystack = [
+        product.name ?? "",
+        product.sku ?? "",
+        product.category ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [products, search]);
+
+  function getAvailableStock(productId: string) {
+    if (!fromLocationId) return 0;
+    return stockByProductId.get(productId)?.stock?.[fromLocationId] ?? 0;
+  }
+
+  function addProduct(productId: string) {
+    const available = getAvailableStock(productId);
+
+    if (available <= 0) {
+      alert("Esse produto não possui saldo disponível na origem selecionada.");
+      return;
+    }
+
+    setItems((current) => {
+      const existing = current.find((item) => item.productId === productId);
+
+      if (existing) {
+        return current.map((item) =>
+          item.productId === productId
+            ? {
+                ...item,
+                quantity: Math.min(item.quantity + 1, available),
+              }
+            : item
+        );
+      }
+
+      return [...current, { productId, quantity: 1 }];
+    });
+  }
+
+  function updateQuantity(productId: string, quantity: number) {
+    const available = getAvailableStock(productId);
+    const safeQuantity = Math.max(1, Math.min(Number(quantity) || 1, available));
+
+    setItems((current) =>
+      current.map((item) =>
+        item.productId === productId
+          ? { ...item, quantity: safeQuantity }
+          : item
+      )
+    );
+  }
+
+  function removeItem(productId: string) {
+    setItems((current) => current.filter((item) => item.productId !== productId));
+  }
+
   async function save() {
-    if (!productId || !fromLocationId || !toLocationId || quantity <= 0) {
-      alert("Preencha produto, origem, destino e quantidade.");
+    if (!fromLocationId || !toLocationId) {
+      alert("Selecione a origem e o destino.");
       return;
     }
 
@@ -145,30 +297,63 @@ export default function StockTransferPage() {
       return;
     }
 
-    setSaving(true);
-
-    const res = await fetch("/api/stock-transfer", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        productId,
-        fromLocationId,
-        toLocationId,
-        quantity,
-        note,
-      }),
-    });
-
-    if (!res.ok) {
-      const txt = await res.text();
-      alert(`Erro ao transferir estoque: ${txt}`);
-      setSaving(false);
+    if (!items.length) {
+      alert("Adicione pelo menos um produto à transferência.");
       return;
     }
 
-    router.push("/stock");
+    for (const item of items) {
+      const available = getAvailableStock(item.productId);
+
+      if (item.quantity <= 0) {
+        alert("Existe item com quantidade inválida.");
+        return;
+      }
+
+      if (item.quantity > available) {
+        const productName =
+          products.find((product) => product.id === item.productId)?.name || "Produto";
+        alert(
+          `Saldo insuficiente para ${productName}. Disponível na origem: ${available}.`
+        );
+        return;
+      }
+    }
+
+    setSaving(true);
+
+    try {
+      const res = await fetch("/api/stock-transfer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fromLocationId,
+          toLocationId,
+          note,
+          items,
+        }),
+      });
+
+      const text = await res.text();
+      const data = readJsonSafe(text);
+
+      if (!res.ok) {
+        alert(
+          `Erro ao transferir estoque: ${
+            data?.error || data?.details || text || "Erro desconhecido."
+          }`
+        );
+        return;
+      }
+
+      router.push("/stock");
+    } catch (error: any) {
+      alert(error?.message || "Erro ao transferir estoque.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) {
@@ -234,7 +419,7 @@ export default function StockTransferPage() {
               color: theme.subtext,
             }}
           >
-            Transfira produtos entre os locais de estoque cadastrados.
+            Transfira vários produtos da origem para o destino em uma única operação.
           </div>
         </div>
 
@@ -246,7 +431,7 @@ export default function StockTransferPage() {
             disabled={saving}
           />
           <ActionButton
-            label={saving ? "Transferindo..." : "Transferir estoque"}
+            label={saving ? "Transferindo..." : "Salvar transferência"}
             theme={theme}
             onClick={save}
             disabled={saving}
@@ -255,69 +440,61 @@ export default function StockTransferPage() {
         </div>
       </div>
 
-      <Card title="Dados da transferência" theme={theme}>
-        <div style={{ display: "grid", gap: 14 }}>
-          <div>
-            <label style={label(theme)}>Produto</label>
-            <select
-              value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              style={input(theme, inputBg)}
-            >
-              <option value="">Selecione o produto</option>
-              {products.map((p: any) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+      <div
+        style={{
+          display: "grid",
+          gap: 18,
+          maxWidth: 1200,
+        }}
+      >
+        <Card title="Origem e destino" theme={theme}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 14,
+            }}
+          >
+            <div>
+              <label style={label(theme)}>Origem</label>
+              <select
+                value={fromLocationId}
+                onChange={(e) => {
+                  setFromLocationId(e.target.value);
+                  setItems([]);
+                }}
+                style={input(theme, inputBg)}
+              >
+                <option value="">Selecione a origem</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={label(theme)}>Destino</label>
+              <select
+                value={toLocationId}
+                onChange={(e) => setToLocationId(e.target.value)}
+                style={input(theme, inputBg)}
+              >
+                <option value="">Selecione o destino</option>
+                {locations
+                  .filter((location) => location.id !== fromLocationId)
+                  .map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label style={label(theme)}>Origem</label>
-            <select
-              value={fromLocationId}
-              onChange={(e) => setFromLocationId(e.target.value)}
-              style={input(theme, inputBg)}
-            >
-              <option value="">Selecione a origem</option>
-              {locations.map((l: any) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label style={label(theme)}>Destino</label>
-            <select
-              value={toLocationId}
-              onChange={(e) => setToLocationId(e.target.value)}
-              style={input(theme, inputBg)}
-            >
-              <option value="">Selecione o destino</option>
-              {locations.map((l: any) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label style={label(theme)}>Quantidade</label>
-            <input
-              type="number"
-              min="1"
-              value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
-              style={input(theme, inputBg)}
-            />
-          </div>
-
-          <div>
-            <label style={label(theme)}>Observação</label>
+          <div style={{ marginTop: 14 }}>
+            <label style={label(theme)}>Observação geral</label>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -325,8 +502,243 @@ export default function StockTransferPage() {
               placeholder="Descreva a transferência"
             />
           </div>
-        </div>
-      </Card>
+        </Card>
+
+        <Card title="Catálogo de produtos" theme={theme}>
+          <div style={{ marginBottom: 14 }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nome, SKU ou categoria"
+              style={input(theme, inputBg)}
+            />
+          </div>
+
+          {!fromLocationId ? (
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${theme.border}`,
+                background: subtleCard,
+                color: theme.subtext,
+                fontWeight: 700,
+              }}
+            >
+              Selecione a origem para ver e adicionar os produtos disponíveis.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 12,
+              }}
+            >
+              {filteredProducts.map((product) => {
+                const available = getAvailableStock(product.id);
+                const addedQty = itemsMap.get(product.id) ?? 0;
+
+                return (
+                  <div
+                    key={product.id}
+                    style={{
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 14,
+                      padding: 14,
+                      background: subtleCard,
+                      display: "grid",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: 140,
+                        borderRadius: 12,
+                        border: `1px solid ${theme.border}`,
+                        background: theme.cardBg,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {product.imageUrl ? (
+                        <img
+                          src={product.imageUrl}
+                          alt={product.name}
+                          style={{
+                            maxWidth: "100%",
+                            maxHeight: "100%",
+                            objectFit: "contain",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: theme.subtext,
+                            fontWeight: 700,
+                          }}
+                        >
+                          Sem imagem
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 800,
+                          color: theme.text,
+                        }}
+                      >
+                        {product.name}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: theme.subtext,
+                        }}
+                      >
+                        {product.sku || "-"} {product.category ? `• ${product.category}` : ""}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: available > 0 ? "#16a34a" : "#ef4444",
+                      }}
+                    >
+                      Saldo na origem: {available}
+                    </div>
+
+                    {addedQty > 0 ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: theme.primary,
+                        }}
+                      >
+                        Adicionado: {addedQty}
+                      </div>
+                    ) : null}
+
+                    <ActionButton
+                      label={available > 0 ? "Adicionar" : "Sem saldo"}
+                      theme={theme}
+                      onClick={() => addProduct(product.id)}
+                      disabled={available <= 0}
+                      primary={available > 0}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        <Card title="Itens da transferência" theme={theme}>
+          {!items.length ? (
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${theme.border}`,
+                background: subtleCard,
+                color: theme.subtext,
+                fontWeight: 700,
+              }}
+            >
+              Nenhum produto adicionado ainda.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {items.map((item) => {
+                const product = products.find((p) => p.id === item.productId);
+                const available = getAvailableStock(item.productId);
+
+                return (
+                  <div
+                    key={item.productId}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 120px 120px",
+                      gap: 12,
+                      alignItems: "center",
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 14,
+                      padding: 14,
+                      background: subtleCard,
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 800,
+                          color: theme.text,
+                        }}
+                      >
+                        {product?.name || "Produto"}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: theme.subtext,
+                        }}
+                      >
+                        Saldo disponível na origem: {available}
+                      </div>
+                    </div>
+
+                    <input
+                      type="number"
+                      min="1"
+                      max={Math.max(1, available)}
+                      value={item.quantity}
+                      onChange={(e) =>
+                        updateQuantity(item.productId, Number(e.target.value))
+                      }
+                      style={input(theme, inputBg)}
+                    />
+
+                    <ActionButton
+                      label="Remover"
+                      theme={theme}
+                      onClick={() => removeItem(item.productId)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: 16,
+              padding: 14,
+              borderRadius: 12,
+              border: `1px solid ${theme.border}`,
+              background: subtleCard,
+              color: theme.text,
+              fontWeight: 700,
+            }}
+          >
+            Origem: {selectedFromLocation?.name || "-"}<br />
+            Destino: {selectedToLocation?.name || "-"}<br />
+            Total de itens: {items.length}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

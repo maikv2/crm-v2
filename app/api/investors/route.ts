@@ -10,7 +10,10 @@ export async function GET() {
       include: {
         shares: {
           where: {
-            isActive: true,
+            OR: [
+              { isActive: true },
+              { investorId: { not: null } },
+            ],
           },
           include: {
             region: {
@@ -21,19 +24,19 @@ export async function GET() {
               },
             },
           },
-          orderBy: [
-            { regionId: "asc" },
-            { quotaNumber: "asc" },
-          ],
+          orderBy: [{ regionId: "asc" }, { quotaNumber: "asc" }],
         },
       },
     });
 
     const items = investors.map((investor) => {
-      const activeShares = investor.shares ?? [];
-      const activeQuotaCount = activeShares.length;
+      const investorShares = (investor.shares ?? []).filter(
+        (share) => share.investorId === investor.id
+      );
 
-      const estimatedInvestedCents = activeShares.reduce((sum, share) => {
+      const activeQuotaCount = investorShares.length;
+
+      const estimatedInvestedCents = investorShares.reduce((sum, share) => {
         return sum + (share.amountCents || share.region?.quotaValueCents || 0);
       }, 0);
 
@@ -43,8 +46,8 @@ export async function GET() {
           : 0;
 
       const lastInvestmentAt =
-        activeShares.length > 0
-          ? activeShares
+        investorShares.length > 0
+          ? investorShares
               .map((share) => new Date(share.investedAt).getTime())
               .sort((a, b) => b - a)[0]
           : null;
@@ -60,7 +63,7 @@ export async function GET() {
         }
       >();
 
-      for (const share of activeShares) {
+      for (const share of investorShares) {
         if (!share.region) continue;
 
         const shareAmount =

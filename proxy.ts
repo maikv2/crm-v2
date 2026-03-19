@@ -1,8 +1,7 @@
-// middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const crmSession = req.cookies.get("crm_session")?.value;
   const portalSession = req.cookies.get("portal_session")?.value;
   const { pathname } = req.nextUrl;

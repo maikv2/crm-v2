@@ -2,17 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolved =
-      "then" in params ? await params : params;
-
-    const id = resolved?.id;
+    const { id } = await context.params;
 
     if (!id) {
-      return NextResponse.json({ error: "ID não recebido" }, { status: 400 });
+      return NextResponse.json(
+        { error: "ID não recebido" },
+        { status: 400 }
+      );
     }
 
     const items = await prisma.exhibitorMaintenance.findMany({

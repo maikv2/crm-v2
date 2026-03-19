@@ -3,11 +3,13 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  context: RouteContext<"/api/regions/[id]/quota-map">
 ) {
   try {
+    const { id } = await context.params;
+
     const region = await prisma.region.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         shares: {
           where: { isActive: true },

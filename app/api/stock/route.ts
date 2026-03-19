@@ -54,9 +54,18 @@ export async function GET() {
         }),
       ]);
 
+    const regionStockLocationIds = new Set(
+      regions
+        .map((region) => region.stockLocationId)
+        .filter((value): value is string => Boolean(value))
+    );
+
     const matrixLocation =
-      locations.find((l) => l.name.trim().toLowerCase() === "matriz") ||
-      locations.find((l) => l.name.trim().toLowerCase().includes("matriz")) ||
+      locations.find((location) => !regionStockLocationIds.has(location.id)) ||
+      locations.find((location) => location.name.trim().toLowerCase() === "matriz") ||
+      locations.find((location) =>
+        location.name.trim().toLowerCase().includes("matriz")
+      ) ||
       null;
 
     const balancesByProductLocation: Record<string, Record<string, number>> = {};
@@ -143,14 +152,15 @@ export async function GET() {
         id: product.id,
         name: product.name,
         stock,
-        total:
-          Object.values(stock).reduce((sum, value) => sum + (value ?? 0), 0),
+        total: Object.values(stock).reduce((sum, value) => sum + (value ?? 0), 0),
       };
     });
 
     return NextResponse.json({
       locations,
       regions,
+      matrixLocationId: matrixLocation?.id ?? null,
+      matrixLocationName: matrixLocation?.name ?? null,
       columns,
       exhibitorsStock: exhibitorBalanceByProduct,
       products: result,

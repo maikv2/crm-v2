@@ -7,6 +7,29 @@ import { getThemeColors } from "../../../../lib/theme";
 
 type ThemeShape = ReturnType<typeof getThemeColors>;
 
+type ProductItem = {
+  id: string;
+  name: string;
+};
+
+type LocationItem = {
+  id: string;
+  name: string;
+};
+
+type RegionItem = {
+  id: string;
+  name: string;
+  stockLocationId?: string | null;
+};
+
+type StockResponse = {
+  locations?: LocationItem[];
+  regions?: RegionItem[];
+  matrixLocationId?: string | null;
+  matrixLocationName?: string | null;
+};
+
 async function readJsonSafe(res: Response) {
   const text = await res.text();
   if (!text) return null;
@@ -18,7 +41,37 @@ async function readJsonSafe(res: Response) {
   }
 }
 
-function findMatrixLocation(locations: any[]) {
+function findMatrixLocation(stockData: StockResponse) {
+  const locations = Array.isArray(stockData?.locations) ? stockData.locations : [];
+  const regions = Array.isArray(stockData?.regions) ? stockData.regions : [];
+
+  if (stockData?.matrixLocationId) {
+    const byId = locations.find((loc) => loc.id === stockData.matrixLocationId);
+    if (byId) return byId;
+  }
+
+  if (stockData?.matrixLocationName) {
+    const normalizedName = String(stockData.matrixLocationName).trim().toLowerCase();
+    const byName = locations.find(
+      (loc) => String(loc?.name ?? "").trim().toLowerCase() === normalizedName
+    );
+    if (byName) return byName;
+  }
+
+  const regionStockLocationIds = new Set(
+    regions
+      .map((region) => region.stockLocationId)
+      .filter((value): value is string => Boolean(value))
+  );
+
+  const nonRegionalLocation = locations.find(
+    (loc) => !regionStockLocationIds.has(loc.id)
+  );
+
+  if (nonRegionalLocation) {
+    return nonRegionalLocation;
+  }
+
   const normalized = locations.map((loc) => ({
     ...loc,
     _name: String(loc?.name ?? "").trim().toLowerCase(),
@@ -51,8 +104,8 @@ function ActionButton({
       ? "#1d4ed8"
       : theme.primary
     : hover
-    ? theme.primary
-    : theme.cardBg;
+      ? theme.primary
+      : theme.cardBg;
 
   const color = hover || primary ? "#ffffff" : theme.text;
 
@@ -128,8 +181,8 @@ export default function NewStockMovementPage() {
 
   const inputBg = theme.isDark ? "#0f172a" : "#ffffff";
 
-  const [products, setProducts] = useState<any[]>([]);
-  const [matrixLocation, setMatrixLocation] = useState<any | null>(null);
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [matrixLocation, setMatrixLocation] = useState<LocationItem | null>(null);
 
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -153,33 +206,48 @@ export default function NewStockMovementPage() {
         ]);
 
         const productsData = await readJsonSafe(productsRes);
-        const stockData = await readJsonSafe(stockRes);
+        const stockDataUnknown = await readJsonSafe(stockRes);
 
         if (!productsRes.ok) {
+          const productsError = productsData as
+            | { error?: string; raw?: string }
+            | null;
           throw new Error(
-            productsData?.error || productsData?.raw || "Erro ao carregar produtos."
+            productsError?.error ||
+              productsError?.raw ||
+              "Erro ao carregar produtos."
           );
         }
 
         if (!stockRes.ok) {
+          const stockError = stockDataUnknown as
+            | { error?: string; details?: string; raw?: string }
+            | null;
           throw new Error(
-            stockData?.error || stockData?.raw || "Erro ao carregar estoque."
+            stockError?.error ||
+              stockError?.details ||
+              stockError?.raw ||
+              "Erro ao carregar estoque."
           );
         }
 
-        const locations = Array.isArray(stockData?.locations)
-          ? stockData.locations
-          : [];
+        const stockData = (stockDataUnknown ?? {}) as StockResponse;
 
-        const matrix = findMatrixLocation(locations);
+        const matrix = findMatrixLocation(stockData);
 
         if (!matrix) {
           throw new Error(
-            "Não encontrei o local de estoque da Matriz. Cadastre ou renomeie o local como 'Matriz'."
+            "Não foi possível identificar o local de estoque central da Matriz."
           );
         }
 
-        setProducts(Array.isArray(productsData) ? productsData : []);
+        const productItems = Array.isArray((productsData as any)?.items)
+          ? (productsData as any).items
+          : Array.isArray(productsData)
+            ? productsData
+            : [];
+
+        setProducts(productItems);
         setMatrixLocation(matrix);
       } catch (e: any) {
         alert(e?.message || "Erro ao carregar dados da tela.");
@@ -198,7 +266,7 @@ export default function NewStockMovementPage() {
     }
 
     if (!matrixLocation?.id) {
-      alert("Não foi possível identificar o estoque da Matriz.");
+      alert("Não foi possível identificar o estoque central da Matriz.");
       return;
     }
 
@@ -222,9 +290,16 @@ export default function NewStockMovementPage() {
       const data = await readJsonSafe(res);
 
       if (!res.ok) {
+        const errorData = data as
+          | { error?: string; details?: string; raw?: string }
+          | null;
+
         alert(
           `Erro ao salvar movimentação: ${
-            data?.error || data?.details || data?.raw || "Erro desconhecido."
+            errorData?.error ||
+            errorData?.details ||
+            errorData?.raw ||
+            "Erro desconhecido."
           }`
         );
         return;
@@ -344,7 +419,7 @@ export default function NewStockMovementPage() {
               style={input(theme, inputBg)}
             >
               <option value="">Selecione o produto</option>
-              {products.map((p: any) => (
+              {products.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>

@@ -21,6 +21,12 @@ type LocationItem = {
   name: string;
 };
 
+type RegionItem = {
+  id: string;
+  name: string;
+  stockLocationId?: string | null;
+};
+
 type StockProductRow = {
   id: string;
   name: string;
@@ -30,6 +36,9 @@ type StockProductRow = {
 
 type StockResponse = {
   locations?: LocationItem[];
+  regions?: RegionItem[];
+  matrixLocationId?: string | null;
+  matrixLocationName?: string | null;
   products?: StockProductRow[];
 };
 
@@ -145,6 +154,8 @@ export default function StockTransferPage() {
 
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [locations, setLocations] = useState<LocationItem[]>([]);
+  const [regions, setRegions] = useState<RegionItem[]>([]);
+  const [matrixLocationId, setMatrixLocationId] = useState<string | null>(null);
   const [stockProducts, setStockProducts] = useState<StockProductRow[]>([]);
 
   const [fromLocationId, setFromLocationId] = useState("");
@@ -172,15 +183,23 @@ export default function StockTransferPage() {
         const stockData = (readJsonSafe(stockText) ?? {}) as StockResponse;
 
         if (!productsRes.ok) {
-          throw new Error(productsData?.error || "Erro ao carregar produtos.");
+          throw new Error(
+            (productsData as { error?: string } | null)?.error ||
+              "Erro ao carregar produtos."
+          );
         }
 
         if (!stockRes.ok) {
-          throw new Error((stockData as any)?.error || "Erro ao carregar estoque.");
+          throw new Error(
+            (stockData as { error?: string } | null)?.error ||
+              "Erro ao carregar estoque."
+          );
         }
 
         setProducts(Array.isArray(productsData) ? productsData : []);
         setLocations(Array.isArray(stockData.locations) ? stockData.locations : []);
+        setRegions(Array.isArray(stockData.regions) ? stockData.regions : []);
+        setMatrixLocationId(stockData.matrixLocationId ?? null);
         setStockProducts(Array.isArray(stockData.products) ? stockData.products : []);
       } catch (error: any) {
         alert(error?.message || "Erro ao carregar dados da transferência.");
@@ -218,6 +237,22 @@ export default function StockTransferPage() {
     return map;
   }, [items]);
 
+  const locationStockKeyMap = useMemo(() => {
+    const map = new Map<string, string>();
+
+    if (matrixLocationId) {
+      map.set(matrixLocationId, `matrix:${matrixLocationId}`);
+    }
+
+    for (const region of regions) {
+      if (region.stockLocationId) {
+        map.set(region.stockLocationId, `region:${region.id}`);
+      }
+    }
+
+    return map;
+  }, [matrixLocationId, regions]);
+
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
 
@@ -226,11 +261,7 @@ export default function StockTransferPage() {
 
       if (!q) return true;
 
-      const haystack = [
-        product.name ?? "",
-        product.sku ?? "",
-        product.category ?? "",
-      ]
+      const haystack = [product.name ?? "", product.sku ?? "", product.category ?? ""]
         .join(" ")
         .toLowerCase();
 
@@ -240,7 +271,11 @@ export default function StockTransferPage() {
 
   function getAvailableStock(productId: string) {
     if (!fromLocationId) return 0;
-    return stockByProductId.get(productId)?.stock?.[fromLocationId] ?? 0;
+
+    const stockKey = locationStockKeyMap.get(fromLocationId);
+    if (!stockKey) return 0;
+
+    return stockByProductId.get(productId)?.stock?.[stockKey] ?? 0;
   }
 
   function addProduct(productId: string) {
@@ -257,10 +292,7 @@ export default function StockTransferPage() {
       if (existing) {
         return current.map((item) =>
           item.productId === productId
-            ? {
-                ...item,
-                quantity: Math.min(item.quantity + 1, available),
-              }
+            ? { ...item, quantity: Math.min(item.quantity + 1, available) }
             : item
         );
       }
@@ -275,9 +307,7 @@ export default function StockTransferPage() {
 
     setItems((current) =>
       current.map((item) =>
-        item.productId === productId
-          ? { ...item, quantity: safeQuantity }
-          : item
+        item.productId === productId ? { ...item, quantity: safeQuantity } : item
       )
     );
   }
@@ -337,7 +367,9 @@ export default function StockTransferPage() {
       });
 
       const text = await res.text();
-      const data = readJsonSafe(text);
+      const data = readJsonSafe(text) as
+        | { error?: string; details?: string }
+        | null;
 
       if (!res.ok) {
         alert(
@@ -733,8 +765,10 @@ export default function StockTransferPage() {
               fontWeight: 700,
             }}
           >
-            Origem: {selectedFromLocation?.name || "-"}<br />
-            Destino: {selectedToLocation?.name || "-"}<br />
+            Origem: {selectedFromLocation?.name || "-"}
+            <br />
+            Destino: {selectedToLocation?.name || "-"}
+            <br />
             Total de itens: {items.length}
           </div>
         </Card>

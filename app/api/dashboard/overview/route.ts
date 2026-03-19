@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   FinanceEntryType,
-  FinanceScope,
   FinanceStatus,
   ReceivableStatus,
   TransferStatus,
@@ -35,8 +34,8 @@ function monthLabel(date: Date) {
     .toLowerCase();
 }
 
-function centsToNumber(value: number) {
-  return value / 100;
+function centsToNumber(value: number | null | undefined) {
+  return Number(value ?? 0) / 100;
 }
 
 export async function GET() {
@@ -67,16 +66,11 @@ export async function GET() {
       totalExhibitors,
       totalOrdersToday,
       totalOrdersMonth,
-
       regions,
-
       ordersLast12Months,
       ordersToday,
-
       receivables,
       financeExpensesMonth,
-      financeIncomeMonth,
-
       receiptsAll,
       transfersAll,
     ] = await Promise.all([
@@ -229,26 +223,6 @@ export async function GET() {
         },
       }),
 
-      prisma.financeTransaction.findMany({
-        where: {
-          type: FinanceEntryType.INCOME,
-          status: {
-            not: FinanceStatus.CANCELLED,
-          },
-          dueDate: {
-            not: null,
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-        select: {
-          id: true,
-          amountCents: true,
-          dueDate: true,
-          status: true,
-        },
-      }),
-
       prisma.receipt.findMany({
         select: {
           id: true,
@@ -292,13 +266,17 @@ export async function GET() {
     );
 
     const monthRevenueCents = ordersMonth.reduce(
-      (sum, order) => sum + (order.totalCents ?? 0),
+      (sum, order) => sum + Number(order.totalCents ?? 0),
       0
     );
 
     const receivableOverdueCents = receivables.reduce((sum, item) => {
       if (!item.dueDate) return sum;
-      const open = Math.max(item.amountCents - item.receivedCents, 0);
+
+      const open = Math.max(
+        Number(item.amountCents ?? 0) - Number(item.receivedCents ?? 0),
+        0
+      );
 
       if (
         open > 0 &&
@@ -313,7 +291,11 @@ export async function GET() {
 
     const receivableDueTodayCents = receivables.reduce((sum, item) => {
       if (!item.dueDate) return sum;
-      const open = Math.max(item.amountCents - item.receivedCents, 0);
+
+      const open = Math.max(
+        Number(item.amountCents ?? 0) - Number(item.receivedCents ?? 0),
+        0
+      );
 
       if (
         open > 0 &&
@@ -329,7 +311,11 @@ export async function GET() {
 
     const receivableRestOfMonthCents = receivables.reduce((sum, item) => {
       if (!item.dueDate) return sum;
-      const open = Math.max(item.amountCents - item.receivedCents, 0);
+
+      const open = Math.max(
+        Number(item.amountCents ?? 0) - Number(item.receivedCents ?? 0),
+        0
+      );
 
       if (
         open > 0 &&
@@ -348,7 +334,7 @@ export async function GET() {
       if (item.status === FinanceStatus.PAID) return sum;
 
       if (item.dueDate < todayStart) {
-        return sum + item.amountCents;
+        return sum + Number(item.amountCents ?? 0);
       }
 
       return sum;
@@ -359,7 +345,7 @@ export async function GET() {
       if (item.status === FinanceStatus.PAID) return sum;
 
       if (item.dueDate >= todayStart && item.dueDate <= todayEnd) {
-        return sum + item.amountCents;
+        return sum + Number(item.amountCents ?? 0);
       }
 
       return sum;
@@ -370,7 +356,7 @@ export async function GET() {
       if (item.status === FinanceStatus.PAID) return sum;
 
       if (item.dueDate > todayEnd && item.dueDate <= monthEnd) {
-        return sum + item.amountCents;
+        return sum + Number(item.amountCents ?? 0);
       }
 
       return sum;
@@ -385,14 +371,14 @@ export async function GET() {
       );
 
       const regionOrdersToday = ordersToday.filter(
-  (order) =>
-    order.regionId === region.id ||
-    order.client?.regionId === region.id ||
-    order.client?.region?.id === region.id
-);
+        (order) =>
+          order.regionId === region.id ||
+          order.client?.regionId === region.id ||
+          order.client?.region?.id === region.id
+      );
 
       const regionRevenueCents = regionOrdersMonth.reduce(
-        (sum, order) => sum + (order.totalCents ?? 0),
+        (sum, order) => sum + Number(order.totalCents ?? 0),
         0
       );
 
@@ -424,7 +410,7 @@ export async function GET() {
         .filter(
           (order) => order.createdAt >= month.start && order.createdAt <= month.end
         )
-        .reduce((sum, order) => sum + (order.totalCents ?? 0), 0);
+        .reduce((sum, order) => sum + Number(order.totalCents ?? 0), 0);
 
       return {
         label: month.label,
@@ -438,7 +424,7 @@ export async function GET() {
     }));
 
     const totalRegionRevenue = salesByRegionBase.reduce(
-      (sum, item) => sum + item.value,
+      (sum, item) => sum + Number(item.value ?? 0),
       0
     );
 
@@ -446,14 +432,11 @@ export async function GET() {
       label: item.label,
       value:
         totalRegionRevenue > 0
-          ? Math.round((item.value / totalRegionRevenue) * 100)
+          ? Math.round((Number(item.value ?? 0) / totalRegionRevenue) * 100)
           : 0,
     }));
 
-    const topClientsMap = new Map<
-      string,
-      { name: string; valueCents: number }
-    >();
+    const topClientsMap = new Map<string, { name: string; valueCents: number }>();
 
     for (const order of ordersMonth) {
       if (!order.client?.id || !order.client?.name) continue;
@@ -461,11 +444,11 @@ export async function GET() {
       const current = topClientsMap.get(order.client.id);
 
       if (current) {
-        current.valueCents += order.totalCents ?? 0;
+        current.valueCents += Number(order.totalCents ?? 0);
       } else {
         topClientsMap.set(order.client.id, {
           name: order.client.name,
-          valueCents: order.totalCents ?? 0,
+          valueCents: Number(order.totalCents ?? 0),
         });
       }
     }
@@ -487,11 +470,11 @@ export async function GET() {
         const current = topProductsMap.get(item.product.id);
 
         if (current) {
-          current.qty += item.qty;
+          current.qty += Number(item.qty ?? 0);
         } else {
           topProductsMap.set(item.product.id, {
             name: item.product.name,
-            qty: item.qty,
+            qty: Number(item.qty ?? 0),
           });
         }
       }
@@ -503,15 +486,15 @@ export async function GET() {
 
     const totalReceiptsRegionCents = receiptsAll
       .filter((r) => r.location === "REGION")
-      .reduce((sum, r) => sum + r.amountCents, 0);
+      .reduce((sum, r) => sum + Number(r.amountCents ?? 0), 0);
 
     const totalTransferredCents = transfersAll
       .filter((t) => t.status === TransferStatus.TRANSFERRED)
-      .reduce((sum, t) => sum + t.amountCents, 0);
+      .reduce((sum, t) => sum + Number(t.amountCents ?? 0), 0);
 
     const totalPendingTransferCents = transfersAll
       .filter((t) => t.status === TransferStatus.PENDING)
-      .reduce((sum, t) => sum + t.amountCents, 0);
+      .reduce((sum, t) => sum + Number(t.amountCents ?? 0), 0);
 
     const regionalCashMap = new Map<string, number>();
 
@@ -521,10 +504,10 @@ export async function GET() {
 
       const transferred = receipt.transfers.reduce((sum, t) => {
         if (t.status === TransferStatus.CANCELED) return sum;
-        return sum + t.amountCents;
+        return sum + Number(t.amountCents ?? 0);
       }, 0);
 
-      const open = Math.max(receipt.amountCents - transferred, 0);
+      const open = Math.max(Number(receipt.amountCents ?? 0) - transferred, 0);
 
       regionalCashMap.set(
         receipt.region.name,
@@ -559,7 +542,7 @@ export async function GET() {
       })),
     ];
 
-    const response = {
+    return NextResponse.json({
       summary: {
         totalClients,
         totalExhibitors,
@@ -567,19 +550,16 @@ export async function GET() {
         totalOrdersMonth,
         monthRevenue: centsToNumber(monthRevenueCents),
       },
-
       receivable: {
         overdue: centsToNumber(receivableOverdueCents),
         dueToday: centsToNumber(receivableDueTodayCents),
         restOfMonth: centsToNumber(receivableRestOfMonthCents),
       },
-
       payable: {
         overdue: centsToNumber(payableOverdueCents),
         dueToday: centsToNumber(payableDueTodayCents),
         restOfMonth: centsToNumber(payableRestOfMonthCents),
       },
-
       regions: regionsSummary.map((region) => ({
         id: region.id,
         name: region.name,
@@ -590,20 +570,20 @@ export async function GET() {
         revenue: centsToNumber(region.revenueCents),
         summary: region.summary,
       })),
-
       monthlyRevenue,
       salesByRegion,
       financialAccounts,
       topClients,
       topProducts,
-    };
-
-    return NextResponse.json(response);
+    });
   } catch (error) {
-    console.error("GET /api/dashboard/overview error", error);
+    console.error("GET /api/dashboard/overview error:", error);
 
     return NextResponse.json(
-      { error: "Erro ao carregar visão geral da dashboard." },
+      {
+        error: "Erro ao carregar visão geral da dashboard.",
+        details: error instanceof Error ? error.message : "Erro interno",
+      },
       { status: 500 }
     );
   }

@@ -81,8 +81,8 @@ export async function POST(request: Request) {
         ? ""
         : String(body.stockLocationId).trim();
 
-    const regionId = regionIdRaw || null;
-    const stockLocationId = stockLocationIdRaw || null;
+    let regionId = regionIdRaw || null;
+    let stockLocationId = stockLocationIdRaw || null;
 
     if (!name) {
       return NextResponse.json(
@@ -117,10 +117,24 @@ export async function POST(request: Request) {
       );
     }
 
+    let region:
+      | {
+          id: string;
+          name: string;
+          active: boolean;
+          stockLocationId: string | null;
+        }
+      | null = null;
+
     if (regionId) {
-      const region = await prisma.region.findUnique({
+      region = await prisma.region.findUnique({
         where: { id: regionId },
-        select: { id: true },
+        select: {
+          id: true,
+          name: true,
+          active: true,
+          stockLocationId: true,
+        },
       });
 
       if (!region) {
@@ -131,10 +145,22 @@ export async function POST(request: Request) {
       }
     }
 
+    let stockLocation:
+      | {
+          id: string;
+          name: string;
+          active: boolean;
+        }
+      | null = null;
+
     if (stockLocationId) {
-      const stockLocation = await prisma.stockLocation.findUnique({
+      stockLocation = await prisma.stockLocation.findUnique({
         where: { id: stockLocationId },
-        select: { id: true },
+        select: {
+          id: true,
+          name: true,
+          active: true,
+        },
       });
 
       if (!stockLocation) {
@@ -143,6 +169,19 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+    }
+
+    if (region && !stockLocationId) {
+      stockLocationId = region.stockLocationId ?? null;
+    }
+
+    if (region && stockLocationId && region.stockLocationId !== stockLocationId) {
+      return NextResponse.json(
+        {
+          error: "O local de estoque selecionado não corresponde ao estoque da região.",
+        },
+        { status: 400 }
+      );
     }
 
     const passwordHash = await bcrypt.hash(password, 10);

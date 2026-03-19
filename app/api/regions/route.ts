@@ -16,6 +16,14 @@ export async function GET() {
         maxQuotaCount: true,
         quotaValueCents: true,
         investmentTargetCents: true,
+        stockLocationId: true,
+        stockLocation: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+          },
+        },
       },
     });
 
@@ -60,10 +68,7 @@ export async function GET() {
       const quotaValueCents = region.quotaValueCents ?? 0;
       const investmentTargetCents = region.investmentTargetCents ?? 0;
 
-      const availableQuotaCount = Math.max(
-        0,
-        maxQuotaCount - activeQuotaCount
-      );
+      const availableQuotaCount = Math.max(0, maxQuotaCount - activeQuotaCount);
 
       const occupationPercent =
         maxQuotaCount > 0
@@ -84,6 +89,9 @@ export async function GET() {
         investorQuotaCount,
         availableQuotaCount,
         occupationPercent,
+        stockLocationId: region.stockLocationId ?? null,
+        stockLocationName: region.stockLocation?.name ?? null,
+        stockLocationActive: region.stockLocation?.active ?? null,
       };
     });
 

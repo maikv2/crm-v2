@@ -9,6 +9,8 @@ type RegionItem = {
   id: string;
   name: string;
   active: boolean;
+  stockLocationId?: string | null;
+  stockLocationName?: string | null;
 };
 
 type StockLocationItem = {
@@ -83,6 +85,22 @@ export default function NewRepresentativePage() {
 
     loadDependencies();
   }, []);
+
+  useEffect(() => {
+    if (!regionId) {
+      setStockLocationId("");
+      return;
+    }
+
+    const selectedRegion = regions.find((region) => region.id === regionId);
+
+    if (!selectedRegion) {
+      setStockLocationId("");
+      return;
+    }
+
+    setStockLocationId(selectedRegion.stockLocationId ?? "");
+  }, [regionId, regions]);
 
   const summaryText = useMemo(() => {
     if (!hasRegion && !hasStockLocation) {
@@ -405,6 +423,7 @@ export default function NewRepresentativePage() {
               </div>
               <div style={{ fontSize: 18, fontWeight: 900 }}>
                 {stockLocations.find((item) => item.id === stockLocationId)?.name ||
+                  regions.find((item) => item.id === regionId)?.stockLocationName ||
                   "Não definido"}
               </div>
             </div>

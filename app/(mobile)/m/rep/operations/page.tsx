@@ -14,6 +14,7 @@ import {
 import { useRouter } from "next/navigation";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import { MobileCard, MobileSectionTitle } from "@/app/components/mobile/mobile-shell";
+import { repOperationLinks } from "@/app/components/mobile/mobile-rep-shared";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -56,7 +57,7 @@ export default function MobileRepOperationsPage() {
         }
 
         if (res.status === 403) {
-          router.push("/rep");
+          router.push("/m/rep");
           return;
         }
 
@@ -89,37 +90,37 @@ export default function MobileRepOperationsPage() {
   const operationLinks = data
     ? [
         {
-          href: "/m/rep/orders",
+          href: repOperationLinks.orders,
           label: "Pedidos da região",
           helper: `${data.summary.pendingPortalRequests} solicitações pendentes`,
           icon: ShoppingCart,
         },
         {
-          href: "/m/rep/clients",
+          href: repOperationLinks.clients,
           label: "Clientes da região",
           helper: `${data.summary.clientsCount} clientes`,
           icon: Users,
         },
         {
-          href: "/m/rep/visit",
+          href: repOperationLinks.visit,
           label: "Registrar visita",
           helper: `${data.summary.visitsTodayCount} visitas hoje`,
           icon: ClipboardPlus,
         },
         {
-          href: "/rep/exhibitors",
+          href: repOperationLinks.exhibitors,
           label: "Expositores",
           helper: `${data.summary.exhibitorsCount} expositores`,
           icon: Package,
         },
         {
-          href: "/rep/prospects",
+          href: repOperationLinks.prospects,
           label: "Prospectos",
           helper: `${data.summary.pendingProspectsCount} prospectos pendentes`,
           icon: BriefcaseBusiness,
         },
         {
-          href: "/rep/exhibitors",
+          href: repOperationLinks.maintenance,
           label: "Manutenções e operação",
           helper: "Acompanhar expositores e movimentação",
           icon: Wrench,
@@ -146,7 +147,11 @@ export default function MobileRepOperationsPage() {
               const Icon = item.icon;
 
               return (
-                <Link key={item.label} href={item.href}>
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  style={{ textDecoration: "none" }}
+                >
                   <div
                     style={{
                       minHeight: 62,

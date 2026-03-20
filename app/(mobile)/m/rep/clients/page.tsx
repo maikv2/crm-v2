@@ -96,7 +96,9 @@ export default function MobileRepClientsPage() {
       } catch (err) {
         console.error(err);
         if (active) {
-          setError(err instanceof Error ? err.message : "Erro ao carregar clientes.");
+          setError(
+            err instanceof Error ? err.message : "Erro ao carregar clientes."
+          );
         }
       } finally {
         if (active) setLoading(false);
@@ -225,7 +227,7 @@ export default function MobileRepClientsPage() {
                     gap: 8,
                   }}
                 >
-                  <Link href="/rep/clients">
+                  <Link href="/m/rep/clients" style={{ textDecoration: "none" }}>
                     <div
                       style={{
                         minHeight: 42,
@@ -246,7 +248,13 @@ export default function MobileRepClientsPage() {
                     </div>
                   </Link>
 
-                  <a href={client.phone ? `tel:${client.phone}` : "#"}>
+                  <a
+                    href={client.phone ? `tel:${client.phone}` : "#"}
+                    style={{
+                      pointerEvents: client.phone ? "auto" : "none",
+                      textDecoration: "none",
+                    }}
+                  >
                     <div
                       style={{
                         minHeight: 42,
@@ -272,6 +280,10 @@ export default function MobileRepClientsPage() {
                     href={whatsapp ? `https://wa.me/${whatsapp}` : "#"}
                     target="_blank"
                     rel="noreferrer"
+                    style={{
+                      pointerEvents: whatsapp ? "auto" : "none",
+                      textDecoration: "none",
+                    }}
                   >
                     <div
                       style={{
@@ -290,7 +302,7 @@ export default function MobileRepClientsPage() {
                       }}
                     >
                       <MessageCircle size={14} />
-                      Whats
+                      WhatsApp
                     </div>
                   </a>
                 </div>

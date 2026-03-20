@@ -233,9 +233,7 @@ export default function ClientPage({
   async function handleInactivateClient() {
     if (!id || deleting) return;
 
-    const confirmed = window.confirm(
-      "Deseja inativar este cliente?"
-    );
+    const confirmed = window.confirm("Deseja inativar este cliente?");
 
     if (!confirmed) return;
 
@@ -396,6 +394,17 @@ export default function ClientPage({
                 isRepresentative
                   ? `/clients/${client.id}/edit?from=rep-client`
                   : `/clients/${client.id}/edit`
+              )
+            }
+          />
+          <ActionButton
+            label="Ajustar posição no mapa"
+            theme={theme}
+            onClick={() =>
+              router.push(
+                isRepresentative
+                  ? `/rep/clients/${client.id}/map`
+                  : `/clients/${client.id}/map`
               )
             }
           />

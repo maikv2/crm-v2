@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
+
+  const redirect = useMemo(() => {
+    const value = searchParams.get("redirect")?.trim();
+
+    if (!value) return null;
+    if (!value.startsWith("/")) return null;
+
+    return value;
+  }, [searchParams]);
 
   const pageBg = theme.isDark ? "#081225" : theme.pageBg;
   const cardBg = theme.isDark ? "#0f172a" : theme.cardBg;
@@ -43,6 +53,11 @@ export default function LoginPage() {
 
       if (!res.ok) {
         throw new Error(json?.error || "Erro ao realizar login.");
+      }
+
+      if (redirect) {
+        router.push(redirect);
+        return;
       }
 
       if (json.role === "ADMIN") {
@@ -116,6 +131,19 @@ export default function LoginPage() {
           >
             Entre com seu e-mail e senha
           </div>
+
+          {redirect === "/m" ? (
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 12,
+                color: theme.primary,
+                fontWeight: 700,
+              }}
+            >
+              Você está entrando pela versão mobile.
+            </div>
+          ) : null}
         </div>
 
         {error && (

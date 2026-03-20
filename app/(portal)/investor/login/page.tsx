@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
 export default function InvestorLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
+
+  const mobile = useMemo(() => searchParams.get("m") === "1", [searchParams]);
 
   const pageBg = theme.isDark ? "#081225" : theme.pageBg;
   const cardBg = theme.isDark ? "#0f172a" : theme.cardBg;
@@ -43,7 +46,7 @@ export default function InvestorLoginPage() {
         throw new Error(json?.error || "Erro ao entrar.");
       }
 
-      router.push("/investor");
+      router.push(mobile ? "/m/investor" : "/investor");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao entrar.");
@@ -86,6 +89,23 @@ export default function InvestorLoginPage() {
         >
           Entre com seu e-mail e senha.
         </div>
+
+        {mobile ? (
+          <div
+            style={{
+              marginBottom: 16,
+              borderRadius: 12,
+              padding: 10,
+              border: `1px solid ${border}`,
+              background: theme.isDark ? "#111827" : "#eff6ff",
+              color: theme.primary,
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            Versão mobile ativa
+          </div>
+        ) : null}
 
         {error ? (
           <div

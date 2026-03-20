@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 function ActionButton({
   label,
@@ -132,6 +132,9 @@ function InfoCard({
 
 export default function PortalLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const mobile = useMemo(() => searchParams.get("m") === "1", [searchParams]);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -162,7 +165,7 @@ export default function PortalLoginPage() {
         throw new Error(json?.error || "Erro ao realizar login.");
       }
 
-      router.push("/portal/dashboard");
+      router.push(mobile ? "/m/client" : "/portal/dashboard");
       router.refresh();
     } catch (err: any) {
       setError(err?.message || "Erro ao realizar login.");
@@ -219,36 +222,114 @@ export default function PortalLoginPage() {
                 marginTop: 6,
                 fontSize: 13,
                 color: "#64748b",
+                maxWidth: 720,
+                lineHeight: 1.5,
               }}
             >
-              Entre com seu usuário e senha para acompanhar pedidos, visitas e informações do seu atendimento.
+              Entre com seu usuário e senha para acompanhar pedidos, solicitar
+              visitas e registrar solicitações no portal do cliente.
             </div>
+
+            {mobile ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  background: "#dbeafe",
+                  color: "#1d4ed8",
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                Versão mobile ativa
+              </div>
+            ) : null}
           </div>
         </div>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(320px, 430px) minmax(320px, 1fr)",
+            gridTemplateColumns: "minmax(320px, 420px) minmax(320px, 1fr)",
             gap: 18,
-            alignItems: "stretch",
+            alignItems: "start",
           }}
         >
           <Block
             title="Login"
-            subtitle="Use o nome fantasia como usuário e o código do cliente como senha inicial."
+            subtitle="Use os dados fornecidos pelo seu representante ou pela administração."
           >
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} style={{ display: "grid", gap: 14 }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: "#111827",
+                    marginBottom: 6,
+                  }}
+                >
+                  Usuário
+                </div>
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Digite seu usuário"
+                  style={{
+                    width: "100%",
+                    height: 44,
+                    borderRadius: 12,
+                    border: "1px solid #dbe3ef",
+                    background: "#ffffff",
+                    color: "#111827",
+                    padding: "0 14px",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: "#111827",
+                    marginBottom: 6,
+                  }}
+                >
+                  Senha
+                </div>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Digite sua senha"
+                  style={{
+                    width: "100%",
+                    height: 44,
+                    borderRadius: 12,
+                    border: "1px solid #dbe3ef",
+                    background: "#ffffff",
+                    color: "#111827",
+                    padding: "0 14px",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
               {error ? (
                 <div
                   style={{
-                    background: "#fff1f2",
-                    border: "1px solid #ef4444",
-                    borderRadius: 14,
-                    padding: 14,
-                    marginBottom: 16,
-                    color: "#ef4444",
-                    fontSize: 14,
+                    borderRadius: 12,
+                    border: "1px solid #fecaca",
+                    background: "#fef2f2",
+                    color: "#b91c1c",
+                    padding: 12,
+                    fontSize: 13,
                     fontWeight: 700,
                   }}
                 >
@@ -256,196 +337,59 @@ export default function PortalLoginPage() {
                 </div>
               ) : null}
 
-              <div style={{ display: "grid", gap: 14 }}>
-                <div>
-                  <label style={label()}>Usuário</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                    style={input()}
-                    placeholder="Ex.: Mercado Juvenil"
-                  />
-                </div>
-
-                <div>
-                  <label style={label()}>Senha</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    style={input()}
-                    placeholder="Ex.: 0231"
-                  />
-                </div>
-
-                <div
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 14,
-                    padding: 14,
-                    background: "#f8fafc",
-                    color: "#64748b",
-                    fontSize: 13,
-                    lineHeight: 1.55,
-                  }}
-                >
-                  <div
-                    style={{
-                      marginBottom: 6,
-                      fontWeight: 800,
-                      color: "#111827",
-                    }}
-                  >
-                    Acesso inicial
-                  </div>
-
-                  <div>
-                    Usuário padrão: <b style={{ color: "#111827" }}>Nome fantasia</b>
-                  </div>
-
-                  <div>
-                    Senha inicial: <b style={{ color: "#111827" }}>Código do cliente</b>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 4 }}>
-                  <ActionButton
-                    type="submit"
-                    label={loading ? "Entrando..." : "Entrar"}
-                    disabled={loading}
-                  />
-                </div>
-
-                <a
-                  href="https://wa.me/"
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    textAlign: "center",
-                    color: "#64748b",
-                    fontSize: 13,
-                    marginTop: 2,
-                    textDecoration: "none",
-                    fontWeight: 700,
-                  }}
-                >
-                  Solicitar acesso pelo WhatsApp
-                </a>
-              </div>
+              <ActionButton
+                type="submit"
+                disabled={loading}
+                label={loading ? "Entrando..." : "Entrar no portal"}
+              />
             </form>
           </Block>
 
-          <Block
-            title="Portal do Cliente"
-            subtitle="Uma área exclusiva para o cliente acompanhar o relacionamento com a V2."
-          >
-            <div
-              style={{
-                display: "grid",
-                gap: 16,
-              }}
+          <div style={{ display: "grid", gap: 16 }}>
+            <Block
+              title="O que você consegue fazer aqui"
+              subtitle="Tudo foi pensado para facilitar o contato com a operação."
             >
               <div
                 style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 16,
-                  background: "#ffffff",
-                  padding: 20,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 30,
-                    lineHeight: 1.1,
-                    fontWeight: 900,
-                    color: "#111827",
-                    marginBottom: 12,
-                    maxWidth: 560,
-                  }}
-                >
-                  Acompanhe seu relacionamento com a V2 em um só lugar
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 15,
-                    lineHeight: 1.65,
-                    color: "#64748b",
-                    maxWidth: 700,
-                  }}
-                >
-                  Consulte pedidos, acompanhe visitas programadas, visualize informações do seu relacionamento com a empresa e tenha um canal mais direto com a equipe da V2.
-                </div>
-              </div>
-
-              <div
-                style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                  gap: 14,
+                  gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+                  gap: 12,
                 }}
               >
                 <InfoCard
                   title="Pedidos"
-                  text="Visualize seus pedidos e acompanhe o histórico de compras e atendimento."
+                  text="Consulte pedidos já realizados e acompanhe o andamento das solicitações."
                 />
                 <InfoCard
-                  title="Visitas"
-                  text="Confira visitas programadas e tenha mais visibilidade sobre o suporte recebido."
+                  title="Solicitações"
+                  text="Peça visitas, manutenções e novos pedidos diretamente pelo portal."
                 />
                 <InfoCard
-                  title="Portal"
-                  text="Acesse suas informações com praticidade pelo celular ou computador."
+                  title="Acompanhamento"
+                  text="Visualize informações importantes da sua conta em um único lugar."
                 />
               </div>
+            </Block>
 
+            <Block
+              title="Acesso seguro"
+              subtitle="Caso tenha problemas de acesso, confirme seu usuário e senha com a equipe responsável."
+            >
               <div
                 style={{
-                  marginTop: 4,
-                  paddingTop: 18,
-                  borderTop: "1px solid #e5e7eb",
-                  color: "#64748b",
                   fontSize: 13,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  flexWrap: "wrap",
+                  lineHeight: 1.6,
+                  color: "#64748b",
                 }}
               >
-                <span>V2 Distribuidora</span>
-                <span>Atendimento digital ao cliente</span>
+                Após o login, o sistema agora respeita a origem do acesso.
+                Entrando pela rota mobile, ele abre a área mobile do cliente.
               </div>
-            </div>
-          </Block>
+            </Block>
+          </div>
         </div>
       </div>
     </div>
   );
-}
-
-function label(): React.CSSProperties {
-  return {
-    display: "block",
-    marginBottom: 8,
-    fontWeight: 700,
-    color: "#111827",
-    fontSize: 14,
-  };
-}
-
-function input(): React.CSSProperties {
-  return {
-    width: "100%",
-    height: 42,
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    color: "#111827",
-    padding: "0 14px",
-    outline: "none",
-    fontSize: 14,
-  };
 }

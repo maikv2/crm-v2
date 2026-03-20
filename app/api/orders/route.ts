@@ -138,21 +138,6 @@ function getFinancialRules(paymentMethod: PaymentMethod) {
   }
 }
 
-function movementSignal(type: StockMovementType) {
-  switch (type) {
-    case StockMovementType.IN:
-    case StockMovementType.TRANSFER_IN:
-      return 1;
-    case StockMovementType.OUT:
-    case StockMovementType.TRANSFER_OUT:
-      return -1;
-    case StockMovementType.ADJUSTMENT:
-      return 1;
-    default:
-      return 0;
-  }
-}
-
 function isValidDate(value: unknown) {
   if (!value) return false;
   const d = new Date(String(value));
@@ -212,7 +197,7 @@ function buildInstallments(params: {
   return installments;
 }
 
-async function rebuildStockBalanceForProducts(
+async function ensureStockBalances(
   tx: Omit<
     typeof prisma,
     "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
@@ -220,33 +205,7 @@ async function rebuildStockBalanceForProducts(
   stockLocationId: string,
   productIds: string[]
 ) {
-  const movements = await tx.stockMovement.findMany({
-    where: {
-      stockLocationId,
-      productId: { in: productIds },
-    },
-    select: {
-      productId: true,
-      type: true,
-      quantity: true,
-    },
-  });
-
-  const totals = new Map<string, number>();
-
   for (const productId of productIds) {
-    totals.set(productId, 0);
-  }
-
-  for (const movement of movements) {
-    const current = totals.get(movement.productId) ?? 0;
-    const signal = movementSignal(movement.type);
-    totals.set(movement.productId, current + signal * movement.quantity);
-  }
-
-  for (const productId of productIds) {
-    const quantity = Math.max(0, totals.get(productId) ?? 0);
-
     await tx.stockBalance.upsert({
       where: {
         productId_stockLocationId: {
@@ -254,13 +213,11 @@ async function rebuildStockBalanceForProducts(
           stockLocationId,
         },
       },
-      update: {
-        quantity,
-      },
+      update: {},
       create: {
         productId,
         stockLocationId,
-        quantity,
+        quantity: 0,
       },
     });
   }
@@ -370,7 +327,8 @@ export async function POST(request: Request) {
 
       regionId = authUser.regionId;
       sellerId = authUser.id;
-      stockLocationId = authUser.stockLocationId || authUser.region?.stockLocationId || undefined;
+      stockLocationId =
+        authUser.stockLocationId || authUser.region?.stockLocationId || undefined;
 
       if (!stockLocationId) {
         return NextResponse.json(
@@ -437,386 +395,402 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const client = await tx.client.findUnique({
-        where: { id: clientId! },
-        select: { id: true, regionId: true, name: true },
-      });
-
-      if (!client) {
-        throw new Error("Cliente não encontrado.");
-      }
-
-      if (client.regionId !== regionId) {
-        throw new Error("O cliente não pertence à região informada.");
-      }
-
-      if (authUser?.role === "REPRESENTATIVE" && client.regionId !== authUser.regionId) {
-        throw new Error("O cliente não pertence à região do representante.");
-      }
-
-      if (sellerId) {
-        const seller = await tx.user.findUnique({
-          where: { id: sellerId },
-          select: { id: true, regionId: true, role: true },
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const client = await tx.client.findUnique({
+          where: { id: clientId! },
+          select: { id: true, regionId: true, name: true },
         });
 
-        if (!seller) {
-          throw new Error("Vendedor não encontrado.");
+        if (!client) {
+          throw new Error("Cliente não encontrado.");
         }
 
-        if (seller.regionId && seller.regionId !== regionId) {
-          throw new Error("O vendedor não pertence à região informada.");
+        if (client.regionId !== regionId) {
+          throw new Error("O cliente não pertence à região informada.");
         }
 
-        if (authUser?.role === "REPRESENTATIVE" && seller.id !== authUser.id) {
-          throw new Error("Representante não pode criar pedido em nome de outro usuário.");
+        if (
+          authUser?.role === "REPRESENTATIVE" &&
+          client.regionId !== authUser.regionId
+        ) {
+          throw new Error("O cliente não pertence à região do representante.");
         }
-      }
 
-      if (exhibitorId) {
-        const exhibitor = await tx.exhibitor.findUnique({
-          where: { id: exhibitorId },
-          select: { id: true, clientId: true, regionId: true },
+        if (sellerId) {
+          const seller = await tx.user.findUnique({
+            where: { id: sellerId },
+            select: { id: true, regionId: true, role: true },
+          });
+
+          if (!seller) {
+            throw new Error("Vendedor não encontrado.");
+          }
+
+          if (seller.regionId && seller.regionId !== regionId) {
+            throw new Error("O vendedor não pertence à região informada.");
+          }
+
+          if (authUser?.role === "REPRESENTATIVE" && seller.id !== authUser.id) {
+            throw new Error(
+              "Representante não pode criar pedido em nome de outro usuário."
+            );
+          }
+        }
+
+        if (exhibitorId) {
+          const exhibitor = await tx.exhibitor.findUnique({
+            where: { id: exhibitorId },
+            select: { id: true, clientId: true, regionId: true },
+          });
+
+          if (!exhibitor) {
+            throw new Error("Expositor não encontrado.");
+          }
+
+          if (exhibitor.clientId !== clientId) {
+            throw new Error("O expositor não pertence ao cliente informado.");
+          }
+
+          if (exhibitor.regionId !== regionId) {
+            throw new Error("O expositor não pertence à região informada.");
+          }
+        }
+
+        const stockLocation = await tx.stockLocation.findUnique({
+          where: { id: stockLocationId! },
+          select: { id: true, active: true, name: true },
         });
 
-        if (!exhibitor) {
-          throw new Error("Expositor não encontrado.");
+        if (!stockLocation) {
+          throw new Error("Local de estoque não encontrado.");
         }
 
-        if (exhibitor.clientId !== clientId) {
-          throw new Error("O expositor não pertence ao cliente informado.");
+        if (!stockLocation.active) {
+          throw new Error("O local de estoque informado está inativo.");
         }
 
-        if (exhibitor.regionId !== regionId) {
-          throw new Error("O expositor não pertence à região informada.");
-        }
-      }
+        if (authUser?.role === "REPRESENTATIVE") {
+          const allowedStockLocationId =
+            authUser.stockLocationId || authUser.region?.stockLocationId || null;
 
-      const stockLocation = await tx.stockLocation.findUnique({
-        where: { id: stockLocationId! },
-        select: { id: true, active: true, name: true },
-      });
-
-      if (!stockLocation) {
-        throw new Error("Local de estoque não encontrado.");
-      }
-
-      if (!stockLocation.active) {
-        throw new Error("O local de estoque informado está inativo.");
-      }
-
-      if (authUser?.role === "REPRESENTATIVE") {
-        const allowedStockLocationId =
-          authUser.stockLocationId || authUser.region?.stockLocationId || null;
-
-        if (allowedStockLocationId && stockLocation.id !== allowedStockLocationId) {
-          throw new Error("O representante não pode usar outro estoque.");
-        }
-      }
-
-      const allProductIds = [...new Set([...productIds, ...defectProductIds])];
-
-      const products = await tx.product.findMany({
-        where: { id: { in: allProductIds } },
-        select: {
-          id: true,
-          name: true,
-          priceCents: true,
-          commissionCents: true,
-          active: true,
-        },
-      });
-
-      if (products.length !== allProductIds.length) {
-        throw new Error("Um ou mais produtos não foram encontrados.");
-      }
-
-      const productMap = new Map(products.map((p) => [p.id, p]));
-
-      let subtotalCents = 0;
-      let commissionTotalCents = 0;
-
-      const normalizedItems = itemsInput.map((item) => {
-        const product = productMap.get(item.productId);
-
-        if (!product) {
-          throw new Error("Produto inválido encontrado.");
+          if (
+            allowedStockLocationId &&
+            stockLocation.id !== allowedStockLocationId
+          ) {
+            throw new Error("O representante não pode usar outro estoque.");
+          }
         }
 
-        if (!product.active) {
-          throw new Error(`O produto "${product.name}" está inativo.`);
+        const allProductIds = [...new Set([...productIds, ...defectProductIds])];
+
+        const products = await tx.product.findMany({
+          where: { id: { in: allProductIds } },
+          select: {
+            id: true,
+            name: true,
+            priceCents: true,
+            commissionCents: true,
+            active: true,
+          },
+        });
+
+        if (products.length !== allProductIds.length) {
+          throw new Error("Um ou mais produtos não foram encontrados.");
         }
 
-        const qty = Math.max(1, toInt(item.qty, 0));
-        const unitCents = isDefectExchange
+        const productMap = new Map(products.map((p) => [p.id, p]));
+
+        let subtotalCents = 0;
+        let commissionTotalCents = 0;
+
+        const normalizedItems = itemsInput.map((item) => {
+          const product = productMap.get(item.productId);
+
+          if (!product) {
+            throw new Error("Produto inválido encontrado.");
+          }
+
+          if (!product.active) {
+            throw new Error(`O produto "${product.name}" está inativo.`);
+          }
+
+          const qty = Math.max(1, toInt(item.qty, 0));
+          const unitCents = isDefectExchange
+            ? 0
+            : item.unitCents != null
+            ? Math.max(0, toInt(item.unitCents, 0))
+            : Math.max(0, product.priceCents);
+
+          subtotalCents += qty * unitCents;
+
+          if (!isDefectExchange) {
+            commissionTotalCents += qty * (product.commissionCents ?? 0);
+          }
+
+          return {
+            productId: product.id,
+            qty,
+            unitCents,
+            productName: product.name,
+          };
+        });
+
+        const normalizedDefectReturnItems = defectReturnItemsInput.map((item) => {
+          const product = productMap.get(item.productId);
+
+          if (!product) {
+            throw new Error(
+              "Produto inválido encontrado na devolução por defeito."
+            );
+          }
+
+          if (!product.active) {
+            throw new Error(
+              `O produto devolvido "${product.name}" está inativo.`
+            );
+          }
+
+          const quantity = Math.max(1, toInt(item.quantity, 0));
+
+          return {
+            productId: product.id,
+            quantity,
+            reason: item.reason?.trim() || null,
+            notes: item.notes?.trim() || null,
+            productName: product.name,
+          };
+        });
+
+        const totalCents = isDefectExchange
           ? 0
-          : item.unitCents != null
-          ? Math.max(0, toInt(item.unitCents, 0))
-          : Math.max(0, product.priceCents);
+          : Math.max(0, subtotalCents - discountCents);
 
-        subtotalCents += qty * unitCents;
+        await ensureStockBalances(tx as any, stockLocationId!, productIds);
 
-        if (!isDefectExchange) {
-          commissionTotalCents += qty * (product.commissionCents ?? 0);
-        }
-
-        return {
-          productId: product.id,
-          qty,
-          unitCents,
-          productName: product.name,
-        };
-      });
-
-      const normalizedDefectReturnItems = defectReturnItemsInput.map((item) => {
-        const product = productMap.get(item.productId);
-
-        if (!product) {
-          throw new Error("Produto inválido encontrado na devolução por defeito.");
-        }
-
-        if (!product.active) {
-          throw new Error(
-            `O produto devolvido "${product.name}" está inativo.`
-          );
-        }
-
-        const quantity = Math.max(1, toInt(item.quantity, 0));
-
-        return {
-          productId: product.id,
-          quantity,
-          reason: item.reason?.trim() || null,
-          notes: item.notes?.trim() || null,
-          productName: product.name,
-        };
-      });
-
-      const totalCents = isDefectExchange
-        ? 0
-        : Math.max(0, subtotalCents - discountCents);
-
-      await rebuildStockBalanceForProducts(tx as any, stockLocationId!, productIds);
-
-      const stockBalances = await tx.stockBalance.findMany({
-        where: {
-          stockLocationId: stockLocationId!,
-          productId: { in: productIds },
-        },
-        select: {
-          id: true,
-          productId: true,
-          quantity: true,
-        },
-      });
-
-      const stockBalanceMap = new Map(
-        stockBalances.map((balance) => [balance.productId, balance])
-      );
-
-      for (const item of normalizedItems) {
-        const balance = stockBalanceMap.get(item.productId);
-
-        if (!balance || balance.quantity < item.qty) {
-          throw new Error(
-            `Estoque insuficiente para o produto "${item.productName}". Saldo atual: ${
-              balance?.quantity ?? 0
-            }, solicitado: ${item.qty}.`
-          );
-        }
-      }
-
-      const rules = getFinancialRules(paymentMethod);
-
-      const order = await tx.order.create({
-        data: {
-          regionId: regionId!,
-          clientId: clientId!,
-          exhibitorId: exhibitorId ?? null,
-          sellerId: sellerId ?? null,
-          type,
-          financialMovement: !isDefectExchange,
-          paymentMethod: isDefectExchange ? PaymentMethod.CASH : paymentMethod,
-          paymentStatus: isDefectExchange
-            ? PaymentStatus.CANCELLED
-            : rules.paymentStatus,
-          paymentReceiver: isDefectExchange
-            ? PaymentReceiver.REGION
-            : rules.paymentReceiver,
-          commissionTotalCents: isDefectExchange ? 0 : commissionTotalCents,
-          status: isDefectExchange
-            ? "DEFECT_EXCHANGE"
-            : rules.paymentStatus === PaymentStatus.PAID
-            ? "PAID"
-            : "PENDING",
-          issuedAt: new Date(),
-          subtotalCents: isDefectExchange ? 0 : subtotalCents,
-          discountCents,
-          totalCents,
-          notes,
-          items: {
-            create: normalizedItems.map((item) => ({
-              productId: item.productId,
-              qty: item.qty,
-              unitCents: item.unitCents,
-            })),
-          },
-          ...(normalizedDefectReturnItems.length > 0
-            ? {
-                defectReturnItems: {
-                  create: normalizedDefectReturnItems.map((item) => ({
-                    productId: item.productId,
-                    quantity: item.quantity,
-                    reason: item.reason,
-                    notes: item.notes,
-                    status: DefectReturnStatus.PENDING_REGION,
-                    returnedAt: new Date(),
-                  })),
-                },
-              }
-            : {}),
-        },
-        include: {
-          items: true,
-          defectReturnItems: true,
-          client: true,
-          seller: true,
-        },
-      });
-
-      for (const item of normalizedItems) {
-        const balance = stockBalanceMap.get(item.productId)!;
-
-        await tx.stockMovement.create({
-          data: {
-            productId: item.productId,
+        const stockBalances = await tx.stockBalance.findMany({
+          where: {
             stockLocationId: stockLocationId!,
-            orderId: order.id,
-            exhibitorId: exhibitorId ?? null,
-            type: StockMovementType.OUT,
-            quantity: item.qty,
-            note: isDefectExchange
-              ? `Saída por troca por defeito PED-${String(order.number).padStart(
-                  4,
-                  "0"
-                )}`
-              : `Saída por pedido PED-${String(order.number).padStart(4, "0")}`,
+            productId: { in: productIds },
+          },
+          select: {
+            id: true,
+            productId: true,
+            quantity: true,
           },
         });
 
-        await tx.stockBalance.update({
-          where: { id: balance.id },
+        const stockBalanceMap = new Map(
+          stockBalances.map((balance) => [balance.productId, balance])
+        );
+
+        for (const item of normalizedItems) {
+          const balance = stockBalanceMap.get(item.productId);
+
+          if (!balance || balance.quantity < item.qty) {
+            throw new Error(
+              `Estoque insuficiente para o produto "${item.productName}". Saldo atual: ${
+                balance?.quantity ?? 0
+              }, solicitado: ${item.qty}.`
+            );
+          }
+        }
+
+        const rules = getFinancialRules(paymentMethod);
+
+        const order = await tx.order.create({
           data: {
-            quantity: {
-              decrement: item.qty,
-            },
-          },
-        });
-      }
-
-      if (isDefectExchange) {
-        return {
-          order,
-          accountsReceivable: null,
-          receipt: null,
-        };
-      }
-
-      const accountsReceivable = await tx.accountsReceivable.create({
-        data: {
-          orderId: order.id,
-          clientId: clientId!,
-          sellerId: sellerId ?? null,
-          regionId: regionId!,
-          paymentMethod,
-          status: rules.receivableStatus,
-          amountCents: totalCents,
-          receivedCents: rules.autoCreateReceipt ? totalCents : 0,
-          dueDate,
-          paidAt: rules.autoPaidAt ? new Date() : null,
-          installmentCount,
-          notes:
-            paymentMethod === PaymentMethod.PIX
-              ? "Recebimento automático por PIX."
-              : paymentMethod === PaymentMethod.CASH
-              ? "Recebimento registrado em dinheiro na região."
-              : paymentMethod === PaymentMethod.CARD_DEBIT
-              ? "Recebimento automático por cartão de débito."
-              : paymentMethod === PaymentMethod.BOLETO
-              ? "Conta a receber gerada por boleto."
-              : paymentMethod === PaymentMethod.CARD_CREDIT
-              ? "Conta a receber gerada por cartão de crédito."
-              : null,
-        },
-      });
-
-      const installments = buildInstallments({
-        totalCents,
-        installmentCount,
-        installmentDates,
-        firstDueDate: dueDate,
-        defaultStatus: rules.receivableStatus,
-      });
-
-      if (installments.length) {
-        await tx.accountsReceivableInstallment.createMany({
-          data: installments.map((item) => ({
-            accountsReceivableId: accountsReceivable.id,
-            installmentNumber: item.installmentNumber,
-            amountCents: item.amountCents,
-            dueDate: item.dueDate,
-            paidAt: item.paidAt,
-            receivedCents: item.receivedCents,
-            status: item.status,
-          })),
-        });
-      }
-
-      let receipt = null;
-
-      if (rules.autoCreateReceipt && rules.receiptLocation) {
-        receipt = await tx.receipt.create({
-          data: {
-            accountsReceivableId: accountsReceivable.id,
-            orderId: order.id,
             regionId: regionId!,
-            receivedById: sellerId ?? null,
-            amountCents: totalCents,
+            clientId: clientId!,
+            exhibitorId: exhibitorId ?? null,
+            sellerId: sellerId ?? null,
+            type,
+            financialMovement: !isDefectExchange,
+            paymentMethod: isDefectExchange ? PaymentMethod.CASH : paymentMethod,
+            paymentStatus: isDefectExchange
+              ? PaymentStatus.CANCELLED
+              : rules.paymentStatus,
+            paymentReceiver: isDefectExchange
+              ? PaymentReceiver.REGION
+              : rules.paymentReceiver,
+            commissionTotalCents: isDefectExchange ? 0 : commissionTotalCents,
+            status: isDefectExchange
+              ? "DEFECT_EXCHANGE"
+              : rules.paymentStatus === PaymentStatus.PAID
+              ? "PAID"
+              : "PENDING",
+            issuedAt: new Date(),
+            subtotalCents: isDefectExchange ? 0 : subtotalCents,
+            discountCents,
+            totalCents,
+            notes,
+            items: {
+              create: normalizedItems.map((item) => ({
+                productId: item.productId,
+                qty: item.qty,
+                unitCents: item.unitCents,
+              })),
+            },
+            ...(normalizedDefectReturnItems.length > 0
+              ? {
+                  defectReturnItems: {
+                    create: normalizedDefectReturnItems.map((item) => ({
+                      productId: item.productId,
+                      quantity: item.quantity,
+                      reason: item.reason,
+                      notes: item.notes,
+                      status: DefectReturnStatus.PENDING_REGION,
+                      returnedAt: new Date(),
+                    })),
+                  },
+                }
+              : {}),
+          },
+          include: {
+            items: true,
+            defectReturnItems: true,
+            client: true,
+            seller: true,
+          },
+        });
+
+        for (const item of normalizedItems) {
+          const balance = stockBalanceMap.get(item.productId)!;
+
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              stockLocationId: stockLocationId!,
+              orderId: order.id,
+              exhibitorId: exhibitorId ?? null,
+              type: StockMovementType.OUT,
+              quantity: item.qty,
+              note: isDefectExchange
+                ? `Saída por troca por defeito PED-${String(order.number).padStart(
+                    4,
+                    "0"
+                  )}`
+                : `Saída por pedido PED-${String(order.number).padStart(4, "0")}`,
+            },
+          });
+
+          await tx.stockBalance.update({
+            where: { id: balance.id },
+            data: {
+              quantity: {
+                decrement: item.qty,
+              },
+            },
+          });
+        }
+
+        if (isDefectExchange) {
+          return {
+            order,
+            accountsReceivable: null,
+            receipt: null,
+          };
+        }
+
+        const accountsReceivable = await tx.accountsReceivable.create({
+          data: {
+            orderId: order.id,
+            clientId: clientId!,
+            sellerId: sellerId ?? null,
+            regionId: regionId!,
             paymentMethod,
-            receivedAt: new Date(),
-            location: rules.receiptLocation,
+            status: rules.receivableStatus,
+            amountCents: totalCents,
+            receivedCents: rules.autoCreateReceipt ? totalCents : 0,
+            dueDate,
+            paidAt: rules.autoPaidAt ? new Date() : null,
+            installmentCount,
             notes:
               paymentMethod === PaymentMethod.PIX
-                ? "Recebimento automático via PIX instantâneo."
+                ? "Recebimento automático por PIX."
                 : paymentMethod === PaymentMethod.CASH
-                ? "Recebimento em dinheiro retido na região até repasse."
+                ? "Recebimento registrado em dinheiro na região."
                 : paymentMethod === PaymentMethod.CARD_DEBIT
                 ? "Recebimento automático por cartão de débito."
+                : paymentMethod === PaymentMethod.BOLETO
+                ? "Conta a receber gerada por boleto."
+                : paymentMethod === PaymentMethod.CARD_CREDIT
+                ? "Conta a receber gerada por cartão de crédito."
                 : null,
           },
         });
 
-        if (paymentMethod === PaymentMethod.CASH) {
-          await tx.cashTransfer.create({
-            data: {
-              receiptId: receipt.id,
-              regionId: regionId!,
-              transferredById: null,
-              amountCents: totalCents,
-              status: TransferStatus.PENDING,
-              notes: "Aguardando repasse da região para a matriz.",
-            },
+        const installments = buildInstallments({
+          totalCents,
+          installmentCount,
+          installmentDates,
+          firstDueDate: dueDate,
+          defaultStatus: rules.receivableStatus,
+        });
+
+        if (installments.length) {
+          await tx.accountsReceivableInstallment.createMany({
+            data: installments.map((item) => ({
+              accountsReceivableId: accountsReceivable.id,
+              installmentNumber: item.installmentNumber,
+              amountCents: item.amountCents,
+              dueDate: item.dueDate,
+              paidAt: item.paidAt,
+              receivedCents: item.receivedCents,
+              status: item.status,
+            })),
           });
         }
-      }
 
-      return {
-        order,
-        accountsReceivable,
-        receipt,
-      };
-    });
+        let receipt = null;
+
+        if (rules.autoCreateReceipt && rules.receiptLocation) {
+          receipt = await tx.receipt.create({
+            data: {
+              accountsReceivableId: accountsReceivable.id,
+              orderId: order.id,
+              regionId: regionId!,
+              receivedById: sellerId ?? null,
+              amountCents: totalCents,
+              paymentMethod,
+              receivedAt: new Date(),
+              location: rules.receiptLocation,
+              notes:
+                paymentMethod === PaymentMethod.PIX
+                  ? "Recebimento automático via PIX instantâneo."
+                  : paymentMethod === PaymentMethod.CASH
+                  ? "Recebimento em dinheiro retido na região até repasse."
+                  : paymentMethod === PaymentMethod.CARD_DEBIT
+                  ? "Recebimento automático por cartão de débito."
+                  : null,
+            },
+          });
+
+          if (paymentMethod === PaymentMethod.CASH) {
+            await tx.cashTransfer.create({
+              data: {
+                receiptId: receipt.id,
+                regionId: regionId!,
+                transferredById: null,
+                amountCents: totalCents,
+                status: TransferStatus.PENDING,
+                notes: "Aguardando repasse da região para a matriz.",
+              },
+            });
+          }
+        }
+
+        return {
+          order,
+          accountsReceivable,
+          receipt,
+        };
+      },
+      {
+        maxWait: 10000,
+        timeout: 20000,
+      }
+    );
 
     return NextResponse.json(
       {

@@ -654,6 +654,27 @@ model SystemSetting {
   updatedAt    DateTime @default(now()) @updatedAt
 }
 
+model CompanyProfile {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tradeName    String
+  legalName    String?
+  cnpj         String?  @unique
+  phone        String?
+  email        String?
+  street       String?
+  number       String?
+  district     String?
+  city         String?
+  state        String?
+  zipCode      String?
+  country      String?  @default("Brasil")
+  logoUrl      String?
+  primaryColor String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+}
+
 enum UserRole {
   ADMIN
   REPRESENTATIVE

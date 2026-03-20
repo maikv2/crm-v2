@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useTheme } from "../../providers/theme-provider";
 import { getThemeColors } from "../../../lib/theme";
 
@@ -45,15 +44,48 @@ type Region = {
 
 type ReceivableInstallment = {
   id: string;
+  installmentNumber: number;
   amountCents: number;
   dueDate: string;
+  paidAt?: string | null;
   status: string;
+  accountsReceivable?: {
+    id: string;
+    paymentMethod?: string | null;
+    installmentCount?: number | null;
+    region?: {
+      id: string;
+      name: string;
+    } | null;
+    order?: {
+      id: string;
+      number?: number | null;
+      client?: {
+        id: string;
+        name?: string | null;
+      } | null;
+    } | null;
+  } | null;
 };
 
-type RegionCashItem = {
+type CashTransferItem = {
   id: string;
   amountCents: number;
   status: string;
+  transferredAt?: string | null;
+  createdAt?: string | null;
+  notes?: string | null;
+  region?: {
+    id: string;
+    name: string;
+  } | null;
+  receipt?: {
+    id: string;
+    order?: {
+      id: string;
+      number?: number | null;
+    } | null;
+  } | null;
 };
 
 type ThemeShape = ReturnType<typeof getThemeColors>;
@@ -63,6 +95,13 @@ function formatDateBR(value?: string | null) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("pt-BR");
+}
+
+function formatDateTimeBR(value?: string | null) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("pt-BR");
 }
 
 function formatMoneyBRFromCents(cents?: number | null) {
@@ -78,6 +117,22 @@ function toLocalDateInputValue(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function toMonthInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function parseMonthInput(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  if (!year || !month) {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  }
+
+  return { year, month };
 }
 
 function categoryLabel(category: FinanceTransaction["category"]) {
@@ -102,14 +157,17 @@ function categoryLabel(category: FinanceTransaction["category"]) {
   return map[category] ?? category;
 }
 
-function statusLabel(status: FinanceTransaction["status"]) {
+function statusLabel(status: string) {
   if (status === "PAID") return "Pago";
-  if (status === "CANCELLED") return "Cancelado";
+  if (status === "CANCELLED" || status === "CANCELED") return "Cancelado";
+  if (status === "OVERDUE") return "Vencido";
+  if (status === "PARTIAL") return "Parcial";
+  if (status === "TRANSFERRED") return "Transferido";
   return "Pendente";
 }
 
-function statusColors(status: FinanceTransaction["status"]) {
-  if (status === "PAID") {
+function statusColors(status: string) {
+  if (status === "PAID" || status === "TRANSFERRED") {
     return {
       bg: "rgba(34,197,94,0.14)",
       color: "#16a34a",
@@ -117,7 +175,15 @@ function statusColors(status: FinanceTransaction["status"]) {
     };
   }
 
-  if (status === "CANCELLED") {
+  if (status === "CANCELLED" || status === "CANCELED") {
+    return {
+      bg: "rgba(239,68,68,0.14)",
+      color: "#dc2626",
+      border: "rgba(239,68,68,0.24)",
+    };
+  }
+
+  if (status === "OVERDUE") {
     return {
       bg: "rgba(239,68,68,0.14)",
       color: "#dc2626",
@@ -175,26 +241,49 @@ function normalizeRegionsPayload(data: unknown): Region[] {
   return [];
 }
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function monthMatches(dateValue: string | null | undefined, monthValue: string) {
+  if (!dateValue) return false;
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return false;
+  return toMonthInputValue(date) === monthValue;
 }
 
-function endOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
+function orderNumberLabel(value?: number | null) {
+  if (!value) return "-";
+  return `PED-${String(value).padStart(4, "0")}`;
+}
+
+function daysLate(dueDate: string) {
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return 0;
+
+  const today = new Date();
+  const startToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  const startDue = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+
+  const diff = startToday.getTime() - startDue.getTime();
+  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+}
+
+function startOfToday() {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate());
 }
 
 function DashboardCard({
   title,
   value,
+  subtitle,
   valueColor,
   theme,
 }: {
   title: string;
   value: string;
+  subtitle?: string;
   valueColor?: string;
   theme: ThemeShape;
 }) {
@@ -230,85 +319,19 @@ function DashboardCard({
       >
         {value}
       </div>
-    </div>
-  );
-}
 
-function SummaryPanel({
-  title,
-  income,
-  expense,
-  balance,
-  theme,
-}: {
-  title: string;
-  income: number;
-  expense: number;
-  balance: number;
-  theme: ThemeShape;
-}) {
-  const subtleCard = theme.isDark ? "#0e1728" : "#f8fafc";
-
-  return (
-    <div
-      style={{
-        background: theme.cardBg,
-        border: `1px solid ${theme.border}`,
-        borderRadius: 16,
-        padding: 18,
-        boxShadow: theme.isDark
-          ? "0 10px 30px rgba(2,6,23,0.35)"
-          : "0 8px 24px rgba(15,23,42,0.06)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 14,
-          fontWeight: 800,
-          color: theme.text,
-          marginBottom: 14,
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gap: 10,
-          background: subtleCard,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 12,
-          padding: 14,
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 12, color: theme.subtext }}>Entradas</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#16a34a" }}>
-            {formatMoneyBRFromCents(income)}
-          </div>
+      {subtitle ? (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: theme.subtext,
+            lineHeight: 1.45,
+          }}
+        >
+          {subtitle}
         </div>
-
-        <div>
-          <div style={{ fontSize: 12, color: theme.subtext }}>Saídas</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#dc2626" }}>
-            {formatMoneyBRFromCents(expense)}
-          </div>
-        </div>
-
-        <div>
-          <div style={{ fontSize: 12, color: theme.subtext }}>Saldo</div>
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 900,
-              color: balance >= 0 ? "#2563eb" : "#dc2626",
-            }}
-          >
-            {formatMoneyBRFromCents(balance)}
-          </div>
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -370,12 +393,14 @@ function ActionButton({
   onClick,
   disabled,
   primary = false,
+  type = "button",
 }: {
   label: string;
   theme: ThemeShape;
   onClick?: () => void;
   disabled?: boolean;
   primary?: boolean;
+  type?: "button" | "submit";
 }) {
   const [hover, setHover] = useState(false);
 
@@ -384,14 +409,14 @@ function ActionButton({
       ? "#1d4ed8"
       : theme.primary
     : hover
-      ? theme.primary
-      : theme.cardBg;
+    ? theme.primary
+    : theme.cardBg;
 
   const color = hover || primary ? "#ffffff" : theme.text;
 
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
       disabled={disabled}
       onMouseEnter={() => setHover(true)}
@@ -400,7 +425,9 @@ function ActionButton({
         height: 36,
         padding: "0 14px",
         borderRadius: 10,
-        border: primary ? `1px solid ${theme.primary}` : `1px solid ${theme.border}`,
+        border: primary
+          ? `1px solid ${theme.primary}`
+          : `1px solid ${theme.border}`,
         background,
         color,
         fontWeight: 700,
@@ -416,56 +443,31 @@ function ActionButton({
   );
 }
 
-function NavCard({
-  href,
-  title,
-  subtitle,
+function StatusBadge({
+  status,
   theme,
 }: {
-  href: string;
-  title: string;
-  subtitle: string;
+  status: string;
   theme: ThemeShape;
 }) {
-  const [hover, setHover] = useState(false);
+  const badge = statusColors(status);
 
   return (
-    <Link
-      href={href}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+    <span
       style={{
-        display: "block",
-        textDecoration: "none",
-        background: hover ? (theme.isDark ? "#172036" : "#eff6ff") : theme.cardBg,
-        border: `1px solid ${theme.border}`,
-        borderRadius: 16,
-        padding: 18,
-        boxShadow: theme.isDark
-          ? "0 10px 30px rgba(2,6,23,0.20)"
-          : "0 8px 24px rgba(15,23,42,0.05)",
-        transition: "all 0.15s ease",
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "6px 10px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 800,
+        background: badge.bg,
+        color: badge.color,
+        border: `1px solid ${badge.border}`,
       }}
     >
-      <div
-        style={{
-          fontWeight: 800,
-          color: theme.text,
-          marginBottom: 6,
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        style={{
-          fontSize: 13,
-          color: theme.subtext,
-        }}
-      >
-        {subtitle}
-      </div>
-    </Link>
+      {statusLabel(status)}
+    </span>
   );
 }
 
@@ -477,26 +479,22 @@ export default function FinancePage() {
   const subtleCard = theme.isDark ? "#0e1728" : "#f8fafc";
 
   const today = new Date();
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
   const [receivables, setReceivables] = useState<ReceivableInstallment[]>([]);
-  const [regionCash, setRegionCash] = useState<RegionCashItem[]>([]);
+  const [cashTransfers, setCashTransfers] = useState<CashTransferItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [startDate, setStartDate] = useState(toLocalDateInputValue(firstDayOfMonth));
-  const [endDate, setEndDate] = useState(toLocalDateInputValue(lastDayOfMonth));
-  const [search, setSearch] = useState("");
-  const [regionFilter, setRegionFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [scopeFilter, setScopeFilter] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(
+    toMonthInputValue(today)
+  );
 
   const [scope, setScope] = useState<"MATRIX" | "REGION">("REGION");
   const [type, setType] = useState<"INCOME" | "EXPENSE">("EXPENSE");
-  const [category, setCategory] = useState<FinanceTransaction["category"]>("LOGISTICS");
+  const [category, setCategory] =
+    useState<FinanceTransaction["category"]>("LOGISTICS");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [regionId, setRegionId] = useState("");
@@ -535,11 +533,11 @@ export default function FinancePage() {
     setReceivables(Array.isArray(data) ? data : []);
   }
 
-  async function loadRegionCash() {
-    const res = await fetch("/api/finance/region-cash", { cache: "no-store" });
-    if (!res.ok) throw new Error("Erro ao carregar caixa da região");
+  async function loadCashTransfers() {
+    const res = await fetch("/api/finance/transfers", { cache: "no-store" });
+    if (!res.ok) throw new Error("Erro ao carregar repasses");
     const data = await res.json();
-    setRegionCash(Array.isArray(data) ? data : []);
+    setCashTransfers(Array.isArray(data) ? data : []);
   }
 
   async function loadAll() {
@@ -550,14 +548,14 @@ export default function FinancePage() {
         loadTransactions(),
         loadRegions(),
         loadReceivables(),
-        loadRegionCash(),
+        loadCashTransfers(),
       ]);
     } catch (err: any) {
       console.error(err);
       setTransactions([]);
       setRegions([]);
       setReceivables([]);
-      setRegionCash([]);
+      setCashTransfers([]);
       setPageError(err?.message || "Erro ao carregar dados do financeiro.");
     } finally {
       setLoading(false);
@@ -574,158 +572,190 @@ export default function FinancePage() {
     }
   }, [scope]);
 
-  const activeTransactions = useMemo(() => {
-    return transactions.filter((item) => item.status !== "CANCELLED");
-  }, [transactions]);
-
-  const filteredTransactions = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
+  const monthlyExpenseTransactions = useMemo(() => {
     return transactions
+      .filter((item) => item.status !== "CANCELLED")
+      .filter((item) => item.type === "EXPENSE")
       .filter((item) => {
-        const itemDate = toLocalDateInputValue(new Date(item.createdAt));
-
-        const matchesDate =
-          (!startDate || itemDate >= startDate) &&
-          (!endDate || itemDate <= endDate);
-
-        const regionName = item.region?.name?.trim() || "Matriz";
-        const matchesRegion = !regionFilter || regionName === regionFilter;
-        const matchesType = !typeFilter || item.type === typeFilter;
-        const matchesScope = !scopeFilter || item.scope === scopeFilter;
-
-        const haystack = [
-          item.description,
-          item.region?.name,
-          categoryLabel(item.category),
-          item.status,
-          statusLabel(item.status),
-          item.scope === "MATRIX" ? "matriz" : "região",
-          item.type === "INCOME" ? "entrada" : "saída",
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        const matchesSearch =
-          !normalizedSearch || haystack.includes(normalizedSearch);
-
-        return matchesDate && matchesRegion && matchesType && matchesScope && matchesSearch;
+        const referenceDate = item.paidAt || item.createdAt;
+        return monthMatches(referenceDate, selectedMonth);
       })
       .sort((a, b) => {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        const dateA = new Date(a.paidAt || a.createdAt).getTime();
+        const dateB = new Date(b.paidAt || b.createdAt).getTime();
+        return dateB - dateA;
       });
-  }, [transactions, startDate, endDate, regionFilter, typeFilter, scopeFilter, search]);
+  }, [transactions, selectedMonth]);
 
-  const totals = useMemo(() => {
-    let income = 0;
-    let expense = 0;
+  const paidInstallmentsInMonth = useMemo(() => {
+    return receivables.filter((item) => {
+      if (item.status !== "PAID") return false;
+      return monthMatches(item.paidAt || item.dueDate, selectedMonth);
+    });
+  }, [receivables, selectedMonth]);
 
-    for (const item of filteredTransactions) {
-      if (item.status === "CANCELLED") continue;
-      if (item.type === "INCOME") income += item.amountCents ?? 0;
-      if (item.type === "EXPENSE") expense += item.amountCents ?? 0;
-    }
+  const paidBoletoInstallments = useMemo(() => {
+    return paidInstallmentsInMonth.filter(
+      (item) => item.accountsReceivable?.paymentMethod === "BOLETO"
+    );
+  }, [paidInstallmentsInMonth]);
 
-    return {
-      income,
-      expense,
-      balance: income - expense,
-    };
-  }, [filteredTransactions]);
+  const paidPixInstallments = useMemo(() => {
+    return paidInstallmentsInMonth.filter(
+      (item) => item.accountsReceivable?.paymentMethod === "PIX"
+    );
+  }, [paidInstallmentsInMonth]);
 
-  const availableRegions = useMemo(() => {
-    const names = new Set<string>();
+  const monthlyRevenueExpense = useMemo(() => {
+    const revenueCents = paidInstallmentsInMonth.reduce(
+      (acc, item) => acc + (item.amountCents ?? 0),
+      0
+    );
 
-    for (const item of transactions) {
-      const regionName = item.region?.name?.trim() || "Matriz";
-      names.add(regionName);
-    }
-
-    return Array.from(names).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [transactions]);
-
-  const financialPanels = useMemo(() => {
-    function calculateForRegion(regionName: string) {
-      const relevant = activeTransactions.filter((item) => {
-        const currentRegion = item.region?.name?.trim() || "Matriz";
-        return currentRegion === regionName;
-      });
-
-      const income = relevant
-        .filter((item) => item.type === "INCOME")
-        .reduce((acc, item) => acc + item.amountCents, 0);
-
-      const expense = relevant
-        .filter((item) => item.type === "EXPENSE")
-        .reduce((acc, item) => acc + item.amountCents, 0);
-
-      return {
-        income,
-        expense,
-        balance: income - expense,
-      };
-    }
-
-    const totalIncome = activeTransactions
-      .filter((item) => item.type === "INCOME")
-      .reduce((acc, item) => acc + item.amountCents, 0);
-
-    const totalExpense = activeTransactions
-      .filter((item) => item.type === "EXPENSE")
-      .reduce((acc, item) => acc + item.amountCents, 0);
-
-    const regionPanels = availableRegions.map((regionName) => ({
-      regionName,
-      ...calculateForRegion(regionName),
-    }));
-
-    return {
-      total: {
-        income: totalIncome,
-        expense: totalExpense,
-        balance: totalIncome - totalExpense,
-      },
-      regionPanels,
-    };
-  }, [activeTransactions, availableRegions]);
-
-  const executiveCards = useMemo(() => {
-    const todayStart = startOfDay(new Date());
-    const todayEnd = endOfDay(new Date());
-
-    const overdue = receivables
-      .filter((item) => {
-        if (item.status === "PAID") return false;
-        const due = new Date(item.dueDate);
-        return due < todayStart;
-      })
-      .reduce((acc, item) => acc + item.amountCents, 0);
-
-    const dueToday = receivables
-      .filter((item) => {
-        if (item.status === "PAID") return false;
-        const due = new Date(item.dueDate);
-        return due >= todayStart && due <= todayEnd;
-      })
-      .reduce((acc, item) => acc + item.amountCents, 0);
-
-    const pendingTransfers = regionCash
-      .filter((item) => item.status === "PENDING")
-      .reduce((acc, item) => acc + item.amountCents, 0);
-
-    const regionalCashTotal = regionCash.reduce(
-      (acc, item) => acc + item.amountCents,
+    const expenseCents = monthlyExpenseTransactions.reduce(
+      (acc, item) => acc + (item.amountCents ?? 0),
       0
     );
 
     return {
-      overdue,
-      dueToday,
-      pendingTransfers,
-      regionalCashTotal,
+      revenueCents,
+      expenseCents,
+      balanceCents: revenueCents - expenseCents,
     };
-  }, [receivables, regionCash]);
+  }, [paidInstallmentsInMonth, monthlyExpenseTransactions]);
+
+  const cashBoxSummary = useMemo(() => {
+    const pendingTransfers = cashTransfers.filter(
+      (item) => item.status === "PENDING"
+    );
+    const transferredTransfers = cashTransfers.filter(
+      (item) => item.status === "TRANSFERRED"
+    );
+
+    const matrixCashCents = transferredTransfers.reduce(
+      (acc, item) => acc + (item.amountCents ?? 0),
+      0
+    );
+
+    const regionsMap = new Map<
+      string,
+      {
+        regionId: string;
+        regionName: string;
+        pendingCents: number;
+        transferredCents: number;
+        totalCents: number;
+      }
+    >();
+
+    for (const region of regions) {
+      regionsMap.set(region.id, {
+        regionId: region.id,
+        regionName: region.name,
+        pendingCents: 0,
+        transferredCents: 0,
+        totalCents: 0,
+      });
+    }
+
+    for (const transfer of cashTransfers) {
+      const regionIdValue = transfer.region?.id;
+      const regionNameValue = transfer.region?.name || "Sem região";
+      const amount = transfer.amountCents ?? 0;
+
+      if (!regionIdValue) continue;
+
+      const current = regionsMap.get(regionIdValue) || {
+        regionId: regionIdValue,
+        regionName: regionNameValue,
+        pendingCents: 0,
+        transferredCents: 0,
+        totalCents: 0,
+      };
+
+      if (transfer.status === "PENDING") {
+        current.pendingCents += amount;
+      }
+
+      if (transfer.status === "TRANSFERRED") {
+        current.transferredCents += amount;
+      }
+
+      current.totalCents += amount;
+      regionsMap.set(regionIdValue, current);
+    }
+
+    const regionBoxes = Array.from(regionsMap.values()).sort((a, b) =>
+      a.regionName.localeCompare(b.regionName, "pt-BR")
+    );
+
+    const regionalPendingCents = regionBoxes.reduce(
+      (acc, item) => acc + item.pendingCents,
+      0
+    );
+
+    return {
+      matrixCashCents,
+      regionalPendingCents,
+      totalCashCents: matrixCashCents + regionalPendingCents,
+      regionBoxes,
+      pendingTransfers,
+    };
+  }, [cashTransfers, regions]);
+
+  const overdueBoletos = useMemo(() => {
+    const todayStart = startOfToday();
+
+    return receivables
+      .filter((item) => item.accountsReceivable?.paymentMethod === "BOLETO")
+      .filter((item) => item.status !== "PAID")
+      .filter((item) => {
+        const due = new Date(item.dueDate);
+        if (Number.isNaN(due.getTime())) return false;
+        return due < todayStart;
+      })
+      .sort((a, b) => {
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      });
+  }, [receivables]);
+
+  const pendingTransfers = useMemo(() => {
+    return cashTransfers
+      .filter((item) => item.status === "PENDING")
+      .sort((a, b) => {
+        const dateA = new Date(a.createdAt || "").getTime();
+        const dateB = new Date(b.createdAt || "").getTime();
+        return dateB - dateA;
+      });
+  }, [cashTransfers]);
+
+  const launchReport = useMemo(() => {
+    return [...transactions]
+      .filter((item) => item.status !== "CANCELLED")
+      .sort((a, b) => {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+  }, [transactions]);
+
+  const totalPaidBoletosCents = useMemo(() => {
+    return paidBoletoInstallments.reduce(
+      (acc, item) => acc + (item.amountCents ?? 0),
+      0
+    );
+  }, [paidBoletoInstallments]);
+
+  const totalPaidPixCents = useMemo(() => {
+    return paidPixInstallments.reduce(
+      (acc, item) => acc + (item.amountCents ?? 0),
+      0
+    );
+  }, [paidPixInstallments]);
+
+  const totalBoxesCents = useMemo(() => {
+    return (
+      cashBoxSummary.totalCashCents + totalPaidBoletosCents + totalPaidPixCents
+    );
+  }, [cashBoxSummary.totalCashCents, totalPaidBoletosCents, totalPaidPixCents]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -785,9 +815,7 @@ export default function FinancePage() {
       setRegionId("");
       setDueDate(toLocalDateInputValue(new Date()));
 
-      await loadTransactions();
-      await loadReceivables();
-      await loadRegionCash();
+      await loadAll();
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Erro ao salvar lançamento.");
@@ -855,7 +883,7 @@ export default function FinancePage() {
                 color: theme.text,
               }}
             >
-              Financeiro - Lançamentos
+              Financeiro
             </div>
 
             <div
@@ -865,7 +893,7 @@ export default function FinancePage() {
                 color: theme.subtext,
               }}
             >
-              Controle geral de entradas, saídas, vencimentos e repasses.
+              Painel de caixas, boletos, repasses, despesas e receitas do mês.
             </div>
           </div>
 
@@ -894,159 +922,6 @@ export default function FinancePage() {
           {pageError}
         </div>
       ) : null}
-
-      <div
-        style={{
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          marginBottom: 18,
-        }}
-      >
-        <DashboardCard
-          title="Vencidos"
-          value={formatMoneyBRFromCents(executiveCards.overdue)}
-          valueColor="#dc2626"
-          theme={theme}
-        />
-
-        <DashboardCard
-          title="Vence hoje"
-          value={formatMoneyBRFromCents(executiveCards.dueToday)}
-          valueColor="#ea580c"
-          theme={theme}
-        />
-
-        <DashboardCard
-          title="Repasses pendentes"
-          value={formatMoneyBRFromCents(executiveCards.pendingTransfers)}
-          valueColor="#ca8a04"
-          theme={theme}
-        />
-
-        <DashboardCard
-          title="Caixa regional total"
-          value={formatMoneyBRFromCents(executiveCards.regionalCashTotal)}
-          valueColor="#2563eb"
-          theme={theme}
-        />
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          marginBottom: 18,
-        }}
-      >
-        <SummaryPanel
-          title="Total geral"
-          income={financialPanels.total.income}
-          expense={financialPanels.total.expense}
-          balance={financialPanels.total.balance}
-          theme={theme}
-        />
-
-        {financialPanels.regionPanels.slice(0, 3).map((panel) => (
-          <SummaryPanel
-            key={panel.regionName}
-            title={panel.regionName}
-            income={panel.income}
-            expense={panel.expense}
-            balance={panel.balance}
-            theme={theme}
-          />
-        ))}
-      </div>
-
-      {financialPanels.regionPanels.length > 3 ? (
-        <div
-          style={{
-            display: "grid",
-            gap: 16,
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            marginBottom: 18,
-          }}
-        >
-          {financialPanels.regionPanels.slice(3).map((panel) => (
-            <SummaryPanel
-              key={panel.regionName}
-              title={panel.regionName}
-              income={panel.income}
-              expense={panel.expense}
-              balance={panel.balance}
-              theme={theme}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      <div
-        style={{
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-          marginBottom: 18,
-        }}
-      >
-        <NavCard
-          href="/finance/receivables"
-          title="Contas a Receber"
-          subtitle="Parcelas, vencidos e próximos vencimentos"
-          theme={theme}
-        />
-
-        <NavCard
-          href="/finance/region-cash"
-          title="Caixa da Região"
-          subtitle="Valores recebidos em dinheiro nas regiões"
-          theme={theme}
-        />
-
-        <NavCard
-          href="/finance/transfers"
-          title="Repasses para Matriz"
-          subtitle="Controle do dinheiro que saiu da região para a matriz"
-          theme={theme}
-        />
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          marginBottom: 18,
-        }}
-      >
-        <DashboardCard
-          title="Entradas no filtro"
-          value={formatMoneyBRFromCents(totals.income)}
-          valueColor="#16a34a"
-          theme={theme}
-        />
-
-        <DashboardCard
-          title="Saídas no filtro"
-          value={formatMoneyBRFromCents(totals.expense)}
-          valueColor="#dc2626"
-          theme={theme}
-        />
-
-        <DashboardCard
-          title="Saldo filtrado"
-          value={formatMoneyBRFromCents(totals.balance)}
-          valueColor={totals.balance >= 0 ? "#2563eb" : "#dc2626"}
-          theme={theme}
-        />
-
-        <DashboardCard
-          title="Qtd. lançamentos filtrados"
-          value={String(filteredTransactions.length)}
-          theme={theme}
-        />
-      </div>
 
       <Block title="Novo lançamento" theme={theme}>
         <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
@@ -1152,7 +1027,7 @@ export default function FinancePage() {
               <input
                 type="text"
                 style={input(theme, inputBg)}
-                placeholder="Ex.: Combustível visita região sul"
+                placeholder="Ex.: combustível, aluguel, pagamento fornecedor..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
@@ -1211,9 +1086,9 @@ export default function FinancePage() {
             <ActionButton
               label={saving ? "Salvando..." : "Salvar lançamento"}
               theme={theme}
-              onClick={() => {}}
               primary
               disabled={saving}
+              type="submit"
             />
           </div>
         </form>
@@ -1221,92 +1096,308 @@ export default function FinancePage() {
 
       <div style={{ height: 18 }} />
 
-      <Block title="Filtros" theme={theme}>
+      <div
+        style={{
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          marginBottom: 18,
+        }}
+      >
+        <DashboardCard
+          title="Caixa dinheiro"
+          value={formatMoneyBRFromCents(cashBoxSummary.totalCashCents)}
+          valueColor="#2563eb"
+          subtitle={`Matriz: ${formatMoneyBRFromCents(
+            cashBoxSummary.matrixCashCents
+          )} · Regiões aguardando repasse: ${formatMoneyBRFromCents(
+            cashBoxSummary.regionalPendingCents
+          )}`}
+          theme={theme}
+        />
+
+        <DashboardCard
+          title="Caixa boletos"
+          value={formatMoneyBRFromCents(totalPaidBoletosCents)}
+          valueColor="#16a34a"
+          subtitle={`Boletos pagos no mês ${selectedMonth}`}
+          theme={theme}
+        />
+
+        <DashboardCard
+          title="Caixa Pix"
+          value={formatMoneyBRFromCents(totalPaidPixCents)}
+          valueColor="#16a34a"
+          subtitle={`Pix recebidos no mês ${selectedMonth}`}
+          theme={theme}
+        />
+
+        <DashboardCard
+          title="Total em caixas"
+          value={formatMoneyBRFromCents(totalBoxesCents)}
+          valueColor="#111827"
+          subtitle="Soma de dinheiro, boletos pagos e pix"
+          theme={theme}
+        />
+      </div>
+
+      <Block title="Caixa dinheiro por local" theme={theme}>
         <div
           style={{
             display: "grid",
             gap: 14,
-            gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
           }}
         >
-          <div>
-            <label style={label(theme)}>De</label>
-            <input
-              type="date"
-              style={input(theme, inputBg)}
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+          <DashboardCard
+            title="Matriz"
+            value={formatMoneyBRFromCents(cashBoxSummary.matrixCashCents)}
+            valueColor="#16a34a"
+            subtitle="Valor já repassado da região para a matriz"
+            theme={theme}
+          />
+
+          {cashBoxSummary.regionBoxes.map((item) => (
+            <DashboardCard
+              key={item.regionId}
+              title={item.regionName}
+              value={formatMoneyBRFromCents(item.pendingCents)}
+              valueColor={item.pendingCents > 0 ? "#ca8a04" : "#2563eb"}
+              subtitle={`Aguardando repasse: ${formatMoneyBRFromCents(
+                item.pendingCents
+              )} · Já repassado: ${formatMoneyBRFromCents(item.transferredCents)}`}
+              theme={theme}
             />
-          </div>
-
-          <div>
-            <label style={label(theme)}>Até</label>
-            <input
-              type="date"
-              style={input(theme, inputBg)}
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label style={label(theme)}>Pesquisar</label>
-            <input
-              type="text"
-              placeholder="Descrição, categoria ou região"
-              style={input(theme, inputBg)}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label style={label(theme)}>Região</label>
-            <select
-              style={input(theme, inputBg)}
-              value={regionFilter}
-              onChange={(e) => setRegionFilter(e.target.value)}
-            >
-              <option value="">Todas</option>
-              {availableRegions.map((regionName) => (
-                <option key={regionName} value={regionName}>
-                  {regionName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label style={label(theme)}>Tipo</label>
-            <select
-              style={input(theme, inputBg)}
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="">Todos</option>
-              <option value="INCOME">Entrada</option>
-              <option value="EXPENSE">Saída</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={label(theme)}>Escopo</label>
-            <select
-              style={input(theme, inputBg)}
-              value={scopeFilter}
-              onChange={(e) => setScopeFilter(e.target.value)}
-            >
-              <option value="">Todos</option>
-              <option value="REGION">Região</option>
-              <option value="MATRIX">Matriz</option>
-            </select>
-          </div>
+          ))}
         </div>
       </Block>
 
       <div style={{ height: 18 }} />
 
-      <Block title="Lançamentos" theme={theme}>
+      <Block
+        title="Receitas x despesas do mês"
+        theme={theme}
+        right={
+          <div style={{ minWidth: 170 }}>
+            <label style={label(theme)}>Mês</label>
+            <input
+              type="month"
+              style={input(theme, inputBg)}
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+            />
+          </div>
+        }
+      >
+        <div
+          style={{
+            display: "grid",
+            gap: 16,
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          }}
+        >
+          <DashboardCard
+            title="Receitas do mês"
+            value={formatMoneyBRFromCents(monthlyRevenueExpense.revenueCents)}
+            valueColor="#16a34a"
+            subtitle="Recebimentos pagos no mês selecionado"
+            theme={theme}
+          />
+
+          <DashboardCard
+            title="Despesas do mês"
+            value={formatMoneyBRFromCents(monthlyRevenueExpense.expenseCents)}
+            valueColor="#dc2626"
+            subtitle="Saídas lançadas no mês selecionado"
+            theme={theme}
+          />
+
+          <DashboardCard
+            title="Saldo do mês"
+            value={formatMoneyBRFromCents(monthlyRevenueExpense.balanceCents)}
+            valueColor={
+              monthlyRevenueExpense.balanceCents >= 0 ? "#2563eb" : "#dc2626"
+            }
+            subtitle="Receita menos despesa do mês selecionado"
+            theme={theme}
+          />
+        </div>
+      </Block>
+
+      <div style={{ height: 18 }} />
+
+      <Block title="Boletos em atraso" theme={theme}>
+        <div
+          style={{
+            overflowX: "auto",
+            border: `1px solid ${theme.border}`,
+            borderRadius: 14,
+            background: subtleCard,
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              minWidth: 960,
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  background: theme.isDark ? "#0b1324" : "#f8fafc",
+                }}
+              >
+                <th style={th(theme, "left")}>Cliente</th>
+                <th style={th(theme, "left")}>Pedido</th>
+                <th style={th(theme, "left")}>Parcela</th>
+                <th style={th(theme, "left")}>Valor</th>
+                <th style={th(theme, "left")}>Vencimento</th>
+                <th style={th(theme, "left")}>Dias em atraso</th>
+                <th style={th(theme, "left")}>Acesso rápido</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {overdueBoletos.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      padding: 16,
+                      textAlign: "center",
+                      color: theme.subtext,
+                      background: theme.cardBg,
+                    }}
+                  >
+                    Nenhum boleto em atraso encontrado.
+                  </td>
+                </tr>
+              ) : (
+                overdueBoletos.map((item) => (
+                  <tr
+                    key={item.id}
+                    style={{
+                      borderTop: `1px solid ${theme.border}`,
+                      background: theme.cardBg,
+                    }}
+                  >
+                    <td style={td(theme)}>
+                      {item.accountsReceivable?.order?.client?.name || "-"}
+                    </td>
+                    <td style={td(theme)}>
+                      {orderNumberLabel(item.accountsReceivable?.order?.number)}
+                    </td>
+                    <td style={td(theme)}>
+                      {item.installmentNumber}/
+                      {item.accountsReceivable?.installmentCount || 1}
+                    </td>
+                    <td style={{ ...td(theme), fontWeight: 700 }}>
+                      {formatMoneyBRFromCents(item.amountCents)}
+                    </td>
+                    <td style={td(theme)}>{formatDateBR(item.dueDate)}</td>
+                    <td style={{ ...td(theme), color: "#dc2626", fontWeight: 800 }}>
+                      {daysLate(item.dueDate)} dias
+                    </td>
+                    <td style={td(theme)}>
+                      <ActionButton
+                        label="Abrir boleto"
+                        theme={theme}
+                        onClick={() =>
+                          alert("Botão do boleto ainda não está ativo.")
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Block>
+
+      <div style={{ height: 18 }} />
+
+      <Block title="Transferências pendentes da região para a matriz" theme={theme}>
+        <div
+          style={{
+            overflowX: "auto",
+            border: `1px solid ${theme.border}`,
+            borderRadius: 14,
+            background: subtleCard,
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              minWidth: 920,
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  background: theme.isDark ? "#0b1324" : "#f8fafc",
+                }}
+              >
+                <th style={th(theme, "left")}>Data</th>
+                <th style={th(theme, "left")}>Região</th>
+                <th style={th(theme, "left")}>Pedido</th>
+                <th style={th(theme, "left")}>Valor</th>
+                <th style={th(theme, "left")}>Status</th>
+                <th style={th(theme, "left")}>Observações</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {pendingTransfers.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{
+                      padding: 16,
+                      textAlign: "center",
+                      color: theme.subtext,
+                      background: theme.cardBg,
+                    }}
+                  >
+                    Nenhuma transferência pendente encontrada.
+                  </td>
+                </tr>
+              ) : (
+                pendingTransfers.map((item) => (
+                  <tr
+                    key={item.id}
+                    style={{
+                      borderTop: `1px solid ${theme.border}`,
+                      background: theme.cardBg,
+                    }}
+                  >
+                    <td style={td(theme)}>
+                      {formatDateTimeBR(item.createdAt || item.transferredAt)}
+                    </td>
+                    <td style={td(theme)}>{item.region?.name || "-"}</td>
+                    <td style={td(theme)}>
+                      {orderNumberLabel(item.receipt?.order?.number)}
+                    </td>
+                    <td style={{ ...td(theme), fontWeight: 700 }}>
+                      {formatMoneyBRFromCents(item.amountCents)}
+                    </td>
+                    <td style={td(theme)}>
+                      <StatusBadge status={item.status} theme={theme} />
+                    </td>
+                    <td style={td(theme)}>{item.notes || "-"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Block>
+
+      <div style={{ height: 18 }} />
+
+      <Block title="Histórico de pagamentos e saídas" theme={theme}>
         <div
           style={{
             overflowX: "auto",
@@ -1331,6 +1422,87 @@ export default function FinancePage() {
                 <th style={th(theme, "left")}>Data</th>
                 <th style={th(theme, "left")}>Escopo</th>
                 <th style={th(theme, "left")}>Região</th>
+                <th style={th(theme, "left")}>Categoria</th>
+                <th style={th(theme, "left")}>Descrição</th>
+                <th style={th(theme, "left")}>Valor</th>
+                <th style={th(theme, "left")}>Status</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {monthlyExpenseTransactions.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      padding: 16,
+                      textAlign: "center",
+                      color: theme.subtext,
+                      background: theme.cardBg,
+                    }}
+                  >
+                    Nenhuma despesa encontrada para o mês selecionado.
+                  </td>
+                </tr>
+              ) : (
+                monthlyExpenseTransactions.map((item) => (
+                  <tr
+                    key={item.id}
+                    style={{
+                      borderTop: `1px solid ${theme.border}`,
+                      background: theme.cardBg,
+                    }}
+                  >
+                    <td style={td(theme)}>
+                      {formatDateTimeBR(item.paidAt || item.createdAt)}
+                    </td>
+                    <td style={td(theme)}>
+                      {item.scope === "MATRIX" ? "Matriz" : "Região"}
+                    </td>
+                    <td style={td(theme)}>{item.region?.name || "Matriz"}</td>
+                    <td style={td(theme)}>{categoryLabel(item.category)}</td>
+                    <td style={td(theme)}>{item.description}</td>
+                    <td style={{ ...td(theme), color: "#dc2626", fontWeight: 800 }}>
+                      {formatMoneyBRFromCents(item.amountCents)}
+                    </td>
+                    <td style={td(theme)}>
+                      <StatusBadge status={item.status} theme={theme} />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Block>
+
+      <div style={{ height: 18 }} />
+
+      <Block title="Relatório de lançamentos" theme={theme}>
+        <div
+          style={{
+            overflowX: "auto",
+            border: `1px solid ${theme.border}`,
+            borderRadius: 14,
+            background: subtleCard,
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              minWidth: 1160,
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  background: theme.isDark ? "#0b1324" : "#f8fafc",
+                }}
+              >
+                <th style={th(theme, "left")}>Data</th>
+                <th style={th(theme, "left")}>Escopo</th>
+                <th style={th(theme, "left")}>Região</th>
                 <th style={th(theme, "left")}>Tipo</th>
                 <th style={th(theme, "left")}>Categoria</th>
                 <th style={th(theme, "left")}>Descrição</th>
@@ -1341,7 +1513,7 @@ export default function FinancePage() {
             </thead>
 
             <tbody>
-              {filteredTransactions.length === 0 ? (
+              {launchReport.length === 0 ? (
                 <tr>
                   <td
                     colSpan={9}
@@ -1352,69 +1524,43 @@ export default function FinancePage() {
                       background: theme.cardBg,
                     }}
                   >
-                    Nenhum lançamento encontrado para os filtros selecionados.
+                    Nenhum lançamento encontrado.
                   </td>
                 </tr>
               ) : (
-                filteredTransactions.map((item) => {
-                  const badge = statusColors(item.status);
-
-                  return (
-                    <tr
-                      key={item.id}
+                launchReport.map((item) => (
+                  <tr
+                    key={item.id}
+                    style={{
+                      borderTop: `1px solid ${theme.border}`,
+                      background: theme.cardBg,
+                    }}
+                  >
+                    <td style={td(theme)}>{formatDateTimeBR(item.createdAt)}</td>
+                    <td style={td(theme)}>
+                      {item.scope === "MATRIX" ? "Matriz" : "Região"}
+                    </td>
+                    <td style={td(theme)}>{item.region?.name || "Matriz"}</td>
+                    <td
                       style={{
-                        borderTop: `1px solid ${theme.border}`,
-                        background: theme.cardBg,
+                        ...td(theme),
+                        fontWeight: 700,
+                        color: item.type === "INCOME" ? "#16a34a" : "#dc2626",
                       }}
                     >
-                      <td style={td(theme)}>{formatDateBR(item.createdAt)}</td>
-
-                      <td style={td(theme)}>
-                        {item.scope === "MATRIX" ? "Matriz" : "Região"}
-                      </td>
-
-                      <td style={td(theme)}>{item.region?.name || "Matriz"}</td>
-
-                      <td
-                        style={{
-                          ...td(theme),
-                          fontWeight: 700,
-                          color: item.type === "INCOME" ? "#16a34a" : "#dc2626",
-                        }}
-                      >
-                        {item.type === "INCOME" ? "Entrada" : "Saída"}
-                      </td>
-
-                      <td style={td(theme)}>{categoryLabel(item.category)}</td>
-
-                      <td style={td(theme)}>{item.description}</td>
-
-                      <td style={{ ...td(theme), fontWeight: 700 }}>
-                        {formatMoneyBRFromCents(item.amountCents)}
-                      </td>
-
-                      <td style={td(theme)}>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            padding: "6px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            background: badge.bg,
-                            color: badge.color,
-                            border: `1px solid ${badge.border}`,
-                          }}
-                        >
-                          {statusLabel(item.status)}
-                        </span>
-                      </td>
-
-                      <td style={td(theme)}>{formatDateBR(item.dueDate)}</td>
-                    </tr>
-                  );
-                })
+                      {item.type === "INCOME" ? "Entrada" : "Saída"}
+                    </td>
+                    <td style={td(theme)}>{categoryLabel(item.category)}</td>
+                    <td style={td(theme)}>{item.description}</td>
+                    <td style={{ ...td(theme), fontWeight: 700 }}>
+                      {formatMoneyBRFromCents(item.amountCents)}
+                    </td>
+                    <td style={td(theme)}>
+                      <StatusBadge status={item.status} theme={theme} />
+                    </td>
+                    <td style={td(theme)}>{formatDateBR(item.dueDate)}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

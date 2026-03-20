@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateInvestorDistributionPreview } from "@/lib/investor-distribution";
+import { calculateDailyRegionSnapshot } from "@/lib/region-daily-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
-    const month = Number(searchParams.get("month"));
-    const year = Number(searchParams.get("year"));
+    const now = new Date();
+    const month = Number(searchParams.get("month") ?? now.getMonth() + 1);
+    const year = Number(searchParams.get("year") ?? now.getFullYear());
 
     if (!isValidMonth(month) || !isValidYear(year)) {
       return NextResponse.json(
@@ -41,45 +43,47 @@ export async function GET(request: NextRequest) {
     const items = await Promise.all(
       regions.map(async (region) => {
         try {
-          const [monthlyResult, activeShares, preview] = await Promise.all([
-            prisma.regionMonthlyResult.findFirst({
-              where: {
-                regionId: region.id,
-                month,
-                year,
-              },
-              select: {
-                grossRevenueCents: true,
-                ebitdaCents: true,
-                reserveCents: true,
-              },
-            }),
-            prisma.share.findMany({
-              where: {
-                regionId: region.id,
-                OR: [{ isActive: true }, { investorId: { not: null } }],
-              },
-              orderBy: {
-                quotaNumber: "asc",
-              },
-              select: {
-                id: true,
-                quotaNumber: true,
-                amountCents: true,
-                ownerType: true,
-                investorId: true,
-                investor: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    phone: true,
+          const [monthlyResult, activeShares, preview, dailySnapshot] =
+            await Promise.all([
+              prisma.regionMonthlyResult.findFirst({
+                where: {
+                  regionId: region.id,
+                  month,
+                  year,
+                },
+                select: {
+                  grossRevenueCents: true,
+                  ebitdaCents: true,
+                  reserveCents: true,
+                },
+              }),
+              prisma.share.findMany({
+                where: {
+                  regionId: region.id,
+                  OR: [{ isActive: true }, { investorId: { not: null } }],
+                },
+                orderBy: {
+                  quotaNumber: "asc",
+                },
+                select: {
+                  id: true,
+                  quotaNumber: true,
+                  amountCents: true,
+                  ownerType: true,
+                  investorId: true,
+                  investor: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      phone: true,
+                    },
                   },
                 },
-              },
-            }),
-            calculateInvestorDistributionPreview(region.id, month, year),
-          ]);
+              }),
+              calculateInvestorDistributionPreview(region.id, month, year),
+              calculateDailyRegionSnapshot(region.id, month, year),
+            ]);
 
           const activeQuotaCount = activeShares.length;
 
@@ -100,21 +104,41 @@ export async function GET(request: NextRequest) {
             region.maxQuotaCount - activeQuotaCount
           );
 
-          const grossRevenueCents = monthlyResult?.grossRevenueCents ?? 0;
+          const grossRevenueCents =
+            dailySnapshot?.grossRevenueCents ??
+            monthlyResult?.grossRevenueCents ??
+            0;
+
           const operatingProfitCents =
-            (monthlyResult?.ebitdaCents ?? 0) + (monthlyResult?.reserveCents ?? 0);
-          const ebitdaCents = monthlyResult?.ebitdaCents ?? preview.ebitdaCents ?? 0;
-          const reserveCents = monthlyResult?.reserveCents ?? 0;
+            dailySnapshot?.operatingProfitCents ??
+            ((monthlyResult?.ebitdaCents ?? 0) + (monthlyResult?.reserveCents ?? 0));
 
-          const investorPoolCents = (preview.investors ?? []).reduce(
-            (sum, investor) => sum + (investor.totalDistributionCents ?? 0),
-            0
-          );
+          const ebitdaCents =
+            dailySnapshot?.ebitdaEstimatedCents ??
+            monthlyResult?.ebitdaCents ??
+            preview.ebitdaCents ??
+            0;
 
-          const companyPoolCents = Math.max(
-            0,
-            ebitdaCents + reserveCents - investorPoolCents
-          );
+          const reserveCents =
+            dailySnapshot?.reserveEstimatedCents ??
+            monthlyResult?.reserveCents ??
+            0;
+
+          const investorPoolCents =
+            dailySnapshot?.estimatedInvestorPoolCents ??
+            (preview.investors ?? []).reduce(
+              (sum, investor) => sum + (investor.totalDistributionCents ?? 0),
+              0
+            );
+
+          const companyPoolCents =
+            dailySnapshot?.estimatedCompanyPoolCents ??
+            Math.max(0, ebitdaCents + reserveCents - investorPoolCents);
+
+          const valuePerQuotaCents =
+            dailySnapshot?.estimatedValuePerInvestorQuotaCents ??
+            preview.valuePerQuotaCents ??
+            0;
 
           const investorsMap = new Map<
             string,
@@ -173,8 +197,8 @@ export async function GET(request: NextRequest) {
             reserveCents,
             investorPoolCents,
             companyPoolCents,
-            valuePerQuotaCents: preview.valuePerQuotaCents ?? 0,
-            hasMonthlyResult: !!monthlyResult,
+            valuePerQuotaCents,
+            hasMonthlyResult: true,
             investors,
           };
         } catch (error) {

@@ -4,6 +4,8 @@ import {
   calculateDailyRegionSnapshot,
 } from "@/lib/region-daily-engine";
 
+export const dynamic = "force-dynamic";
+
 function isValidMonth(month: number) {
   return Number.isInteger(month) && month >= 1 && month <= 12;
 }

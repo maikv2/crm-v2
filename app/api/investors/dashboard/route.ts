@@ -1,5 +1,41 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { calculateAllRegionsDailySnapshots } from "@/lib/region-daily-engine";
+
+export const dynamic = "force-dynamic";
+
+type DailyInvestorProjection = {
+  investorId: string;
+  investorName: string;
+  quotaCount: number;
+  estimatedDistributionCents: number;
+};
+
+type DailyRegionSnapshot = {
+  regionId: string;
+  regionName: string;
+  grossRevenueCents: number;
+  operatingProfitCents: number;
+  ebitdaEstimatedCents: number;
+  reserveEstimatedCents: number;
+  estimatedInvestorPoolCents: number;
+  estimatedCompanyPoolCents: number;
+  estimatedValuePerInvestorQuotaCents: number;
+  investors?: DailyInvestorProjection[];
+};
+
+type DailyRegionResult =
+  | {
+      success: true;
+      regionId: string;
+      data: DailyRegionSnapshot;
+    }
+  | {
+      success: false;
+      regionId: string;
+      error?: string;
+      data?: null;
+    };
 
 function startOfMonth(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -19,6 +55,8 @@ function monthLabel(date: Date) {
 export async function GET() {
   try {
     const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
 
     const months: {
       start: Date;
@@ -30,8 +68,8 @@ export async function GET() {
       const base = new Date(now.getFullYear(), now.getMonth() - i, 1);
 
       months.push({
-        start: new Date(base.getFullYear(), base.getMonth(), 1),
-        end: new Date(base.getFullYear(), base.getMonth() + 1, 1),
+        start: startOfMonth(base),
+        end: startOfNextMonth(base),
         label: monthLabel(base),
       });
     }
@@ -48,6 +86,7 @@ export async function GET() {
       recentShares,
       regions,
       monthlyData,
+      dailyResultsRaw,
     ] = await Promise.all([
       prisma.investor.count(),
 
@@ -77,10 +116,7 @@ export async function GET() {
             },
           },
         },
-        orderBy: [
-          { regionId: "asc" },
-          { quotaNumber: "asc" },
-        ],
+        orderBy: [{ regionId: "asc" }, { quotaNumber: "asc" }],
       }),
 
       prisma.share.findMany({
@@ -156,6 +192,7 @@ export async function GET() {
             select: {
               id: true,
               name: true,
+              quotaValueCents: true,
             },
           },
         },
@@ -213,13 +250,20 @@ export async function GET() {
           };
         })
       ),
+
+      calculateAllRegionsDailySnapshots(currentMonth, currentYear),
     ]);
+
+    const dailyResults = dailyResultsRaw as DailyRegionResult[];
 
     const totalQuotaCapacity = totalRegionQuotaCapacityAgg._sum.maxQuotaCount ?? 0;
     const totalActiveQuotaCount = activeShares.length;
     const investorQuotaCount = investorShares.length;
     const companyQuotaCount = companyShares.length;
-    const availableQuotaCount = Math.max(0, totalQuotaCapacity - totalActiveQuotaCount);
+    const availableQuotaCount = Math.max(
+      0,
+      totalQuotaCapacity - totalActiveQuotaCount
+    );
 
     const totalInvestedCents = investorShares.reduce((sum, share) => {
       return sum + (share.amountCents || share.region?.quotaValueCents || 0);
@@ -240,10 +284,61 @@ export async function GET() {
       id: share.id,
       investedAt: share.investedAt,
       quotaNumber: share.quotaNumber,
-      amountCents: share.amountCents ?? 0,
+      amountCents: share.amountCents ?? share.region?.quotaValueCents ?? 0,
       investorName: share.investor?.name ?? "Investidor",
       regionName: share.region?.name ?? "Região",
     }));
+
+    const dailySuccessItems: DailyRegionSnapshot[] = dailyResults
+      .filter(
+        (result): result is Extract<DailyRegionResult, { success: true }> =>
+          result.success === true && !!result.data
+      )
+      .map((result) => result.data);
+
+    const currentGrossRevenueCents = dailySuccessItems.reduce((sum, snapshot) => {
+      return sum + (snapshot.grossRevenueCents ?? 0);
+    }, 0);
+
+    const currentOperatingProfitCents = dailySuccessItems.reduce(
+      (sum, snapshot) => {
+        return sum + (snapshot.operatingProfitCents ?? 0);
+      },
+      0
+    );
+
+    const currentEbitdaCents = dailySuccessItems.reduce((sum, snapshot) => {
+      return sum + (snapshot.ebitdaEstimatedCents ?? 0);
+    }, 0);
+
+    const currentReserveCents = dailySuccessItems.reduce((sum, snapshot) => {
+      return sum + (snapshot.reserveEstimatedCents ?? 0);
+    }, 0);
+
+    const currentInvestorPoolCents = dailySuccessItems.reduce((sum, snapshot) => {
+      return sum + (snapshot.estimatedInvestorPoolCents ?? 0);
+    }, 0);
+
+    const currentCompanyPoolCents = dailySuccessItems.reduce((sum, snapshot) => {
+      return sum + (snapshot.estimatedCompanyPoolCents ?? 0);
+    }, 0);
+
+    const currentInvestorCount = dailySuccessItems.reduce((sum, snapshot) => {
+      return sum + (snapshot.investors?.length ?? 0);
+    }, 0);
+
+    const currentAverageValuePerQuotaCents =
+      dailySuccessItems.length > 0
+        ? Math.round(
+            dailySuccessItems.reduce((sum, snapshot) => {
+              return sum + (snapshot.estimatedValuePerInvestorQuotaCents ?? 0);
+            }, 0) / dailySuccessItems.length
+          )
+        : 0;
+
+    const dailyByRegionId = new Map<string, DailyRegionSnapshot>(
+      dailySuccessItems.map((snapshot) => [snapshot.regionId, snapshot])
+    );
 
     const regionsSummary = regions.map((region) => {
       const activeQuotaCount = region.shares.length;
@@ -257,7 +352,12 @@ export async function GET() {
 
       const investedCents = region.shares
         .filter((share) => share.ownerType === "INVESTOR")
-        .reduce((sum, share) => sum + (share.amountCents ?? region.quotaValueCents), 0);
+        .reduce(
+          (sum, share) => sum + (share.amountCents ?? region.quotaValueCents),
+          0
+        );
+
+      const current = dailyByRegionId.get(region.id);
 
       return {
         regionId: region.id,
@@ -269,6 +369,14 @@ export async function GET() {
         companyOwnedCount,
         availableCount,
         investedCents,
+        currentGrossRevenueCents: current?.grossRevenueCents ?? 0,
+        currentOperatingProfitCents: current?.operatingProfitCents ?? 0,
+        currentEbitdaCents: current?.ebitdaEstimatedCents ?? 0,
+        currentReserveCents: current?.reserveEstimatedCents ?? 0,
+        currentInvestorPoolCents: current?.estimatedInvestorPoolCents ?? 0,
+        currentCompanyPoolCents: current?.estimatedCompanyPoolCents ?? 0,
+        currentValuePerQuotaCents:
+          current?.estimatedValuePerInvestorQuotaCents ?? 0,
       };
     });
 
@@ -285,24 +393,27 @@ export async function GET() {
         averageQuotaValueCents,
         totalDistributedCents,
         pendingDistributionCents,
+        currentMonth,
+        currentYear,
+        currentGrossRevenueCents,
+        currentOperatingProfitCents,
+        currentEbitdaCents,
+        currentReserveCents,
+        currentInvestorPoolCents,
+        currentCompanyPoolCents,
+        currentInvestorCount,
+        currentAverageValuePerQuotaCents,
       },
-
       monthly: monthlyData,
-
       recentInvestments,
-
       regionsSummary,
     });
   } catch (error) {
-    console.error("Erro dashboard investor:", error);
+    console.error("GET /api/investors/dashboard error:", error);
 
     return NextResponse.json(
-      {
-        error: "Erro ao carregar dashboard do investidor",
-      },
-      {
-        status: 500,
-      }
+      { error: "Erro ao carregar dashboard dos investidores." },
+      { status: 500 }
     );
   }
 }

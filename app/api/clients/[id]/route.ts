@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { buildAddress, geocodeAddress } from "@/lib/geocoding";
 
 function getIdFromRequest(request: Request) {
   const url = new URL(request.url);
@@ -159,8 +160,7 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    const personType =
-      body.personType === "FISICA" ? "FISICA" : "JURIDICA";
+    const personType = body.personType === "FISICA" ? "FISICA" : "JURIDICA";
 
     const tradeName = normalizeText(body.tradeName);
     const legalName = normalizeText(body.legalName);
@@ -241,34 +241,30 @@ export async function PUT(request: Request) {
       }
 
       if (!isValidCPF(cpf)) {
-        return NextResponse.json(
-          { error: "CPF inválido" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "CPF inválido" }, { status: 400 });
       }
     }
 
     if (personType === "JURIDICA" && cnpj) {
       if (!isValidCNPJ(cnpj)) {
-        return NextResponse.json(
-          { error: "CNPJ inválido" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "CNPJ inválido" }, { status: 400 });
       }
     }
 
-    if (regionId) {
-      const regionExists = await prisma.region.findUnique({
-        where: { id: regionId },
-        select: { id: true },
-      });
+    if (!regionId) {
+      return NextResponse.json(
+        { error: "A região do cliente é obrigatória." },
+        { status: 400 }
+      );
+    }
 
-      if (!regionExists) {
-        return NextResponse.json(
-          { error: "Região inválida" },
-          { status: 400 }
-        );
-      }
+    const regionExists = await prisma.region.findUnique({
+      where: { id: regionId },
+      select: { id: true },
+    });
+
+    if (!regionExists) {
+      return NextResponse.json({ error: "Região inválida" }, { status: 400 });
     }
 
     if (cpf) {
@@ -312,6 +308,26 @@ export async function PUT(request: Request) {
     const finalCode = existingClient.code || "0001";
     const portalPasswordHash = await bcrypt.hash(finalCode, 10);
 
+    const fullAddress = buildAddress([
+      street,
+      number,
+      district,
+      city,
+      state,
+      cep,
+      country,
+    ]);
+
+    let geocoded: { latitude?: number | null; longitude?: number | null } | null =
+      null;
+
+    try {
+      geocoded = await geocodeAddress(fullAddress);
+    } catch (error) {
+      console.error("Geocoding error on client update:", error);
+      geocoded = null;
+    }
+
     await prisma.clientOtherContact.deleteMany({
       where: {
         clientId: id,
@@ -343,9 +359,7 @@ export async function PUT(request: Request) {
 
         stateRegistrationIndicator,
         stateRegistration:
-          stateRegistrationIndicator === "ISENTO"
-            ? null
-            : stateRegistration,
+          stateRegistrationIndicator === "ISENTO" ? null : stateRegistration,
         municipalRegistration,
         suframaRegistration,
 
@@ -357,6 +371,11 @@ export async function PUT(request: Request) {
         city,
         state,
         complement,
+
+        latitude:
+          typeof geocoded?.latitude === "number" ? geocoded.latitude : null,
+        longitude:
+          typeof geocoded?.longitude === "number" ? geocoded.longitude : null,
 
         regionId,
         notes,

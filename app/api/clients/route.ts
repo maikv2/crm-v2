@@ -158,8 +158,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const personType =
-      body.personType === "FISICA" ? "FISICA" : "JURIDICA";
+    const personType = body.personType === "FISICA" ? "FISICA" : "JURIDICA";
 
     const tradeName = normalizeText(body.tradeName);
     const legalName = normalizeText(body.legalName);
@@ -238,19 +237,13 @@ export async function POST(request: Request) {
       }
 
       if (!isValidCPF(cpf)) {
-        return NextResponse.json(
-          { error: "CPF inválido" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "CPF inválido" }, { status: 400 });
       }
     }
 
     if (personType === "JURIDICA" && cnpj) {
       if (!isValidCNPJ(cnpj)) {
-        return NextResponse.json(
-          { error: "CNPJ inválido" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "CNPJ inválido" }, { status: 400 });
       }
     }
 
@@ -267,32 +260,23 @@ export async function POST(request: Request) {
       regionId = loggedUser.regionId;
     }
 
-    if (loggedUser.role === "ADMIN" && regionId) {
-      const regionExists = await prisma.region.findUnique({
-        where: { id: regionId },
-        select: { id: true },
-      });
-
-      if (!regionExists) {
-        return NextResponse.json(
-          { error: "Região inválida" },
-          { status: 400 }
-        );
-      }
+    if (!regionId) {
+      return NextResponse.json(
+        { error: "A região do cliente é obrigatória." },
+        { status: 400 }
+      );
     }
 
-    if (loggedUser.role === "REPRESENTATIVE") {
-      const regionExists = await prisma.region.findUnique({
-        where: { id: regionId! },
-        select: { id: true },
-      });
+    const regionExists = await prisma.region.findUnique({
+      where: { id: regionId },
+      select: { id: true },
+    });
 
-      if (!regionExists) {
-        return NextResponse.json(
-          { error: "Região do representante é inválida." },
-          { status: 400 }
-        );
-      }
+    if (!regionExists) {
+      return NextResponse.json(
+        { error: "Região inválida." },
+        { status: 400 }
+      );
     }
 
     if (cpf) {
@@ -323,6 +307,16 @@ export async function POST(request: Request) {
       }
     }
 
+    if (!street || !number || !district || !city || !state || !cep) {
+      return NextResponse.json(
+        {
+          error:
+            "Para aparecer corretamente no mapa, o cliente precisa ter endereço completo: rua, número, bairro, cidade, estado e CEP.",
+        },
+        { status: 400 }
+      );
+    }
+
     const fullAddress = buildAddress([
       street,
       number,
@@ -333,7 +327,35 @@ export async function POST(request: Request) {
       country,
     ]);
 
-    const geocoded = await geocodeAddress(fullAddress);
+    let geocoded: { latitude?: number | null; longitude?: number | null } | null =
+      null;
+
+    try {
+      geocoded = await geocodeAddress(fullAddress);
+    } catch (error) {
+      console.error("POST /api/clients geocoding error:", error);
+      return NextResponse.json(
+        {
+          error:
+            "Não foi possível localizar o endereço do cliente no mapa. Revise o endereço e tente novamente.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !geocoded ||
+      typeof geocoded.latitude !== "number" ||
+      typeof geocoded.longitude !== "number"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "O endereço informado não retornou coordenadas válidas. Revise os dados e tente novamente.",
+        },
+        { status: 400 }
+      );
+    }
 
     let generatedCode = await generateNextClientCode();
 
@@ -349,8 +371,8 @@ export async function POST(request: Request) {
             legalName,
 
             personType,
-            cpf: cpf || null,
-            cnpj: cnpj || null,
+            cpf: personType === "FISICA" ? cpf || null : null,
+            cnpj: personType === "JURIDICA" ? cnpj || null : null,
 
             roleClient,
             roleSupplier,
@@ -389,8 +411,8 @@ export async function POST(request: Request) {
             portalEnabled: true,
             portalPasswordHash,
 
-            latitude: geocoded?.latitude ?? null,
-            longitude: geocoded?.longitude ?? null,
+            latitude: geocoded.latitude,
+            longitude: geocoded.longitude,
             mapStatus: "CLIENT",
             needsReturn: false,
 

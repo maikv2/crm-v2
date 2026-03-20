@@ -18,6 +18,23 @@ function normalizeText(value?: string | null) {
   return text ? text : null;
 }
 
+function hasOwn(body: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(body, key);
+}
+
+function parseCoordinate(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(",", ".").trim());
+
+  if (!Number.isFinite(parsed)) return null;
+
+  return parsed;
+}
+
 function isValidCPF(cpf: string) {
   cpf = onlyDigits(cpf);
 
@@ -158,72 +175,162 @@ export async function PUT(request: Request) {
       );
     }
 
-    const body = await request.json();
+    const body = (await request.json()) as Record<string, unknown>;
 
-    const personType = body.personType === "FISICA" ? "FISICA" : "JURIDICA";
+    const personType = hasOwn(body, "personType")
+      ? body.personType === "FISICA"
+        ? "FISICA"
+        : "JURIDICA"
+      : ((existingClient.personType as "FISICA" | "JURIDICA" | null) ??
+          "JURIDICA");
 
-    const tradeName = normalizeText(body.tradeName);
-    const legalName = normalizeText(body.legalName);
+    const tradeName = hasOwn(body, "tradeName")
+      ? normalizeText(body.tradeName as string | null)
+      : existingClient.tradeName;
 
-    const cpf = onlyDigits(body.cpf);
-    const cnpj = onlyDigits(body.cnpj);
+    const legalName = hasOwn(body, "legalName")
+      ? normalizeText(body.legalName as string | null)
+      : existingClient.legalName;
 
-    const roleClient = Boolean(body.roleClient);
-    const roleSupplier = Boolean(body.roleSupplier);
-    const roleCarrier = Boolean(body.roleCarrier);
+    const cpf = hasOwn(body, "cpf")
+      ? onlyDigits(body.cpf as string | null)
+      : onlyDigits(existingClient.cpf);
 
-    const registrationCode = normalizeText(body.registrationCode);
+    const cnpj = hasOwn(body, "cnpj")
+      ? onlyDigits(body.cnpj as string | null)
+      : onlyDigits(existingClient.cnpj);
 
-    const billingEmail = normalizeText(body.billingEmail)?.toLowerCase() ?? null;
-    const whatsapp = onlyDigits(body.whatsapp);
+    const roleClient = hasOwn(body, "roleClient")
+      ? Boolean(body.roleClient)
+      : existingClient.roleClient;
 
-    const simpleTaxOption =
-      typeof body.simpleTaxOption === "boolean" ? body.simpleTaxOption : null;
+    const roleSupplier = hasOwn(body, "roleSupplier")
+      ? Boolean(body.roleSupplier)
+      : existingClient.roleSupplier;
 
-    const publicAgency =
-      typeof body.publicAgency === "boolean" ? body.publicAgency : null;
+    const roleCarrier = hasOwn(body, "roleCarrier")
+      ? Boolean(body.roleCarrier)
+      : existingClient.roleCarrier;
 
-    const stateRegistrationIndicator =
-      normalizeText(body.stateRegistrationIndicator) ?? "CONTRIBUINTE";
+    const registrationCode = hasOwn(body, "registrationCode")
+      ? normalizeText(body.registrationCode as string | null)
+      : existingClient.registrationCode;
 
-    const stateRegistration = normalizeText(body.stateRegistration);
-    const municipalRegistration = normalizeText(body.municipalRegistration);
-    const suframaRegistration = normalizeText(body.suframaRegistration);
+    const billingEmail = hasOwn(body, "billingEmail")
+      ? normalizeText(body.billingEmail as string | null)?.toLowerCase() ?? null
+      : existingClient.billingEmail;
 
-    const country = normalizeText(body.country) ?? "Brasil";
-    const cep = onlyDigits(body.cep);
-    const street = normalizeText(body.street);
-    const number = normalizeText(body.number);
-    const district = normalizeText(body.district);
-    const city = normalizeText(body.city);
-    const state = normalizeText(body.state)?.toUpperCase() ?? null;
-    const complement = normalizeText(body.complement);
+    const whatsapp = hasOwn(body, "whatsapp")
+      ? onlyDigits(body.whatsapp as string | null)
+      : onlyDigits(existingClient.whatsapp);
 
-    const regionId = normalizeText(body.regionId);
-    const notes = normalizeText(body.notes);
-    const active =
-      typeof body.active === "boolean" ? body.active : existingClient.active;
+    const simpleTaxOption = hasOwn(body, "simpleTaxOption")
+      ? typeof body.simpleTaxOption === "boolean"
+        ? body.simpleTaxOption
+        : null
+      : existingClient.simpleTaxOption;
+
+    const publicAgency = hasOwn(body, "publicAgency")
+      ? typeof body.publicAgency === "boolean"
+        ? body.publicAgency
+        : null
+      : existingClient.publicAgency;
+
+    const stateRegistrationIndicator = hasOwn(
+      body,
+      "stateRegistrationIndicator"
+    )
+      ? normalizeText(body.stateRegistrationIndicator as string | null) ??
+        "CONTRIBUINTE"
+      : existingClient.stateRegistrationIndicator ?? "CONTRIBUINTE";
+
+    const stateRegistration = hasOwn(body, "stateRegistration")
+      ? normalizeText(body.stateRegistration as string | null)
+      : existingClient.stateRegistration;
+
+    const municipalRegistration = hasOwn(body, "municipalRegistration")
+      ? normalizeText(body.municipalRegistration as string | null)
+      : existingClient.municipalRegistration;
+
+    const suframaRegistration = hasOwn(body, "suframaRegistration")
+      ? normalizeText(body.suframaRegistration as string | null)
+      : existingClient.suframaRegistration;
+
+    const country = hasOwn(body, "country")
+      ? normalizeText(body.country as string | null) ?? "Brasil"
+      : existingClient.country ?? "Brasil";
+
+    const cep = hasOwn(body, "cep")
+      ? onlyDigits(body.cep as string | null)
+      : onlyDigits(existingClient.cep);
+
+    const street = hasOwn(body, "street")
+      ? normalizeText(body.street as string | null)
+      : existingClient.street;
+
+    const number = hasOwn(body, "number")
+      ? normalizeText(body.number as string | null)
+      : existingClient.number;
+
+    const district = hasOwn(body, "district")
+      ? normalizeText(body.district as string | null)
+      : existingClient.district;
+
+    const city = hasOwn(body, "city")
+      ? normalizeText(body.city as string | null)
+      : existingClient.city;
+
+    const state = hasOwn(body, "state")
+      ? normalizeText(body.state as string | null)?.toUpperCase() ?? null
+      : existingClient.state;
+
+    const complement = hasOwn(body, "complement")
+      ? normalizeText(body.complement as string | null)
+      : existingClient.complement;
+
+    const regionId = hasOwn(body, "regionId")
+      ? normalizeText(body.regionId as string | null)
+      : existingClient.regionId;
+
+    const notes = hasOwn(body, "notes")
+      ? normalizeText(body.notes as string | null)
+      : existingClient.notes;
+
+    const active = hasOwn(body, "active")
+      ? typeof body.active === "boolean"
+        ? body.active
+        : existingClient.active
+      : existingClient.active;
 
     const name =
-      normalizeText(body.name) ||
+      (hasOwn(body, "name")
+        ? normalizeText(body.name as string | null)
+        : existingClient.name) ||
       (personType === "JURIDICA"
         ? legalName || tradeName
         : tradeName || legalName);
 
-    const otherContacts = Array.isArray(body.otherContacts)
-      ? body.otherContacts
-          .map((item: any) => ({
-            person: normalizeText(item?.person),
-            email: normalizeText(item?.email)?.toLowerCase() ?? null,
-            phone: onlyDigits(item?.phone) || null,
-            mobile: onlyDigits(item?.mobile) || null,
-            role: normalizeText(item?.role),
-          }))
-          .filter(
-            (item: any) =>
-              item.person || item.email || item.phone || item.mobile || item.role
-          )
-      : [];
+    const hasOtherContacts = hasOwn(body, "otherContacts");
+    const otherContacts = hasOtherContacts
+      ? Array.isArray(body.otherContacts)
+        ? body.otherContacts
+            .map((item: any) => ({
+              person: normalizeText(item?.person),
+              email: normalizeText(item?.email)?.toLowerCase() ?? null,
+              phone: onlyDigits(item?.phone) || null,
+              mobile: onlyDigits(item?.mobile) || null,
+              role: normalizeText(item?.role),
+            }))
+            .filter(
+              (item: any) =>
+                item.person ||
+                item.email ||
+                item.phone ||
+                item.mobile ||
+                item.role
+            )
+        : []
+      : null;
 
     if (!name) {
       return NextResponse.json(
@@ -308,31 +415,75 @@ export async function PUT(request: Request) {
     const finalCode = existingClient.code || "0001";
     const portalPasswordHash = await bcrypt.hash(finalCode, 10);
 
-    const fullAddress = buildAddress([
-      street,
-      number,
-      district,
-      city,
-      state,
-      cep,
-      country,
-    ]);
+    const clearCoordinates = body.clearCoordinates === true;
+    const hasLatitude = hasOwn(body, "latitude");
+    const hasLongitude = hasOwn(body, "longitude");
 
-    let geocoded: { latitude?: number | null; longitude?: number | null } | null =
-      null;
+    let nextLatitude: number | null = existingClient.latitude;
+    let nextLongitude: number | null = existingClient.longitude;
 
-    try {
-      geocoded = await geocodeAddress(fullAddress);
-    } catch (error) {
-      console.error("Geocoding error on client update:", error);
-      geocoded = null;
+    if (clearCoordinates) {
+      nextLatitude = null;
+      nextLongitude = null;
+    } else if (hasLatitude || hasLongitude) {
+      const parsedLatitude = parseCoordinate(body.latitude);
+      const parsedLongitude = parseCoordinate(body.longitude);
+
+      if (parsedLatitude === null || parsedLongitude === null) {
+        return NextResponse.json(
+          { error: "Latitude ou longitude inválida." },
+          { status: 400 }
+        );
+      }
+
+      nextLatitude = parsedLatitude;
+      nextLongitude = parsedLongitude;
+    } else {
+      const addressChanged =
+        hasOwn(body, "country") ||
+        hasOwn(body, "cep") ||
+        hasOwn(body, "street") ||
+        hasOwn(body, "number") ||
+        hasOwn(body, "district") ||
+        hasOwn(body, "city") ||
+        hasOwn(body, "state") ||
+        hasOwn(body, "complement");
+
+      if (addressChanged) {
+        const fullAddress = buildAddress([
+          street,
+          number,
+          district,
+          city,
+          state,
+          cep,
+          country,
+        ]);
+
+        let geocoded: { latitude?: number | null; longitude?: number | null } | null =
+          null;
+
+        try {
+          geocoded = await geocodeAddress(fullAddress);
+        } catch (error) {
+          console.error("Geocoding error on client update:", error);
+          geocoded = null;
+        }
+
+        nextLatitude =
+          typeof geocoded?.latitude === "number" ? geocoded.latitude : null;
+        nextLongitude =
+          typeof geocoded?.longitude === "number" ? geocoded.longitude : null;
+      }
     }
 
-    await prisma.clientOtherContact.deleteMany({
-      where: {
-        clientId: id,
-      },
-    });
+    if (hasOtherContacts) {
+      await prisma.clientOtherContact.deleteMany({
+        where: {
+          clientId: id,
+        },
+      });
+    }
 
     const updatedClient = await prisma.client.update({
       where: { id },
@@ -372,10 +523,8 @@ export async function PUT(request: Request) {
         state,
         complement,
 
-        latitude:
-          typeof geocoded?.latitude === "number" ? geocoded.latitude : null,
-        longitude:
-          typeof geocoded?.longitude === "number" ? geocoded.longitude : null,
+        latitude: nextLatitude,
+        longitude: nextLongitude,
 
         regionId,
         notes,
@@ -384,11 +533,15 @@ export async function PUT(request: Request) {
         portalEnabled: true,
         portalPasswordHash,
 
-        otherContacts: otherContacts.length
+        ...(hasOtherContacts
           ? {
-              create: otherContacts,
+              otherContacts: otherContacts && otherContacts.length
+                ? {
+                    create: otherContacts,
+                  }
+                : undefined,
             }
-          : undefined,
+          : {}),
       },
       include: {
         region: true,

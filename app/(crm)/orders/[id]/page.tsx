@@ -301,6 +301,56 @@ function StatusBadge({
   );
 }
 
+function ProductImage({
+  sku,
+  name,
+  alt,
+  theme,
+}: {
+  sku?: string | null;
+  name?: string | null;
+  alt: string;
+  theme: ThemeShape;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if ((!sku && !name) || failed) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 12,
+          color: theme.isDark ? "#94a3b8" : "#64748b",
+          textAlign: "center",
+          padding: 8,
+        }}
+      >
+        Sem imagem
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={`/api/product-image?sku=${encodeURIComponent(
+        sku ?? ""
+      )}&name=${encodeURIComponent(name ?? "")}`}
+      alt={alt}
+      onError={() => setFailed(true)}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        display: "block",
+      }}
+    />
+  );
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -678,28 +728,12 @@ export default function OrderDetailPage() {
                         overflow: "hidden",
                       }}
                     >
-                      {item.product?.imageUrl ? (
-                        <img
-                          src={item.product.imageUrl}
-                          alt={item.product?.name || "Produto"}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "contain",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: muted,
-                            textAlign: "center",
-                            padding: 8,
-                          }}
-                        >
-                          Sem imagem
-                        </div>
-                      )}
+                      <ProductImage
+                        sku={item.product?.sku}
+                        name={item.product?.name}
+                        alt={item.product?.name || "Produto"}
+                        theme={theme}
+                      />
                     </div>
 
                     <div>

@@ -12,7 +12,10 @@ import {
 } from "lucide-react";
 
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
-import { MobileCard, MobileSectionTitle } from "@/app/components/mobile/mobile-shell";
+import {
+  MobileCard,
+  MobileSectionTitle,
+} from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 

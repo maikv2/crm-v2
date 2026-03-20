@@ -307,55 +307,45 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!street || !number || !district || !city || !state || !cep) {
-      return NextResponse.json(
-        {
-          error:
-            "Para aparecer corretamente no mapa, o cliente precisa ter endereço completo: rua, número, bairro, cidade, estado e CEP.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const fullAddress = buildAddress([
-      street,
-      number,
-      district,
-      city,
-      state,
-      cep,
-      country,
-    ]);
+    const hasEnoughAddressForGeocoding =
+      Boolean(street) &&
+      Boolean(number) &&
+      Boolean(district) &&
+      Boolean(city) &&
+      Boolean(state) &&
+      Boolean(cep);
 
     let geocoded: { latitude?: number | null; longitude?: number | null } | null =
       null;
 
-    try {
-      geocoded = await geocodeAddress(fullAddress);
-    } catch (error) {
-      console.error("POST /api/clients geocoding error:", error);
-      return NextResponse.json(
-        {
-          error:
-            "Não foi possível localizar o endereço do cliente no mapa. Revise o endereço e tente novamente.",
-        },
-        { status: 400 }
-      );
+    if (hasEnoughAddressForGeocoding) {
+      const fullAddress = buildAddress([
+        street,
+        number,
+        district,
+        city,
+        state,
+        cep,
+        country,
+      ]);
+
+      try {
+        geocoded = await geocodeAddress(fullAddress);
+      } catch (error) {
+        console.error("POST /api/clients geocoding error:", error);
+        geocoded = null;
+      }
     }
 
-    if (
-      !geocoded ||
-      typeof geocoded.latitude !== "number" ||
-      typeof geocoded.longitude !== "number"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "O endereço informado não retornou coordenadas válidas. Revise os dados e tente novamente.",
-        },
-        { status: 400 }
-      );
-    }
+    const latitude =
+      geocoded && typeof geocoded.latitude === "number"
+        ? geocoded.latitude
+        : null;
+
+    const longitude =
+      geocoded && typeof geocoded.longitude === "number"
+        ? geocoded.longitude
+        : null;
 
     let generatedCode = await generateNextClientCode();
 
@@ -411,8 +401,8 @@ export async function POST(request: Request) {
             portalEnabled: true,
             portalPasswordHash,
 
-            latitude: geocoded.latitude,
-            longitude: geocoded.longitude,
+            latitude,
+            longitude,
             mapStatus: "CLIENT",
             needsReturn: false,
 

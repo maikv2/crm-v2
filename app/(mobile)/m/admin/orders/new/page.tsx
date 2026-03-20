@@ -11,7 +11,7 @@ export default function MobileAdminOrdersNewPage() {
       subtitle="Fluxo nativo mobile do admin"
       desktopHref="/orders/new"
     >
-      <Suspense fallback={<div style={{ padding: 16 }}>Carregando...</div>}>
+      <Suspense fallback={null}>
         <MobileAdminOrderForm />
       </Suspense>
     </MobilePageFrame>

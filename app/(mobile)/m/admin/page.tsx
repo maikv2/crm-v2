@@ -2,143 +2,371 @@
 
 import Link from "next/link";
 import {
-  Users,
-  Package,
+  ArrowRight,
+  BriefcaseBusiness,
+  ChartColumn,
   Map,
+  Package,
   ShoppingCart,
-  Wallet,
   UserCog,
+  Users,
+  Wallet,
 } from "lucide-react";
 
-import { useTheme } from "../../../providers/theme-provider";
-import { getThemeColors } from "../../../../lib/theme";
+import MobileShell, {
+  MobileCard,
+  MobileSectionTitle,
+} from "@/app/components/mobile/mobile-shell";
+import { adminMobileNavItems } from "@/app/components/mobile/mobile-admin-shared";
+import { useTheme } from "@/app/providers/theme-provider";
+import { getThemeColors } from "@/lib/theme";
 
-export default function AdminMobileHome() {
+type QuickCardProps = {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+};
+
+function QuickCard({ href, icon, title, description }: QuickCardProps) {
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
-  function Card({
-    href,
-    icon,
-    title,
-    description,
-  }: {
-    href: string;
-    icon: React.ReactNode;
-    title: string;
-    description: string;
-  }) {
-    return (
-      <Link
-        href={href}
+  return (
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <MobileCard
         style={{
-          border: `1px solid ${colors.border}`,
-          borderRadius: 14,
-          padding: 16,
-          display: "block",
-          textDecoration: "none",
-          color: colors.text,
-          background: colors.cardBg,
+          padding: 14,
+          borderRadius: 18,
+          height: "100%",
         }}
       >
         <div
           style={{
+            width: 42,
+            height: 42,
+            borderRadius: 14,
+            background: colors.isDark ? "#111f39" : "#e8f0ff",
+            color: colors.primary,
             display: "flex",
             alignItems: "center",
-            gap: 10,
-            marginBottom: 8,
+            justifyContent: "center",
+            marginBottom: 12,
           }}
         >
           {icon}
+        </div>
 
-          <div
-            style={{
-              fontWeight: 800,
-              fontSize: 15,
-            }}
-          >
-            {title}
-          </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 900,
+            color: colors.text,
+            lineHeight: 1.2,
+            marginBottom: 6,
+          }}
+        >
+          {title}
         </div>
 
         <div
           style={{
             fontSize: 12,
             color: colors.subtext,
+            lineHeight: 1.45,
           }}
         >
           {description}
         </div>
-      </Link>
-    );
-  }
+      </MobileCard>
+    </Link>
+  );
+}
+
+type LineLinkProps = {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+};
+
+function LineLink({ href, icon, title, description }: LineLinkProps) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   return (
-    <div
-      style={{
-        padding: 20,
-        minHeight: "100vh",
-        background: colors.pageBg,
-      }}
-    >
-      <h1
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <div
         style={{
-          fontSize: 22,
-          fontWeight: 900,
-          marginBottom: 20,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "14px 0",
+          borderBottom: `1px solid ${colors.border}`,
         }}
       >
-        Admin Mobile
-      </h1>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 14,
+            background: colors.isDark ? "#111827" : "#f8fafc",
+            border: `1px solid ${colors.border}`,
+            color: colors.primary,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </div>
+
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              color: colors.text,
+              lineHeight: 1.25,
+            }}
+          >
+            {title}
+          </div>
+
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 12,
+              color: colors.subtext,
+              lineHeight: 1.4,
+            }}
+          >
+            {description}
+          </div>
+        </div>
+
+        <ArrowRight size={16} color={colors.subtext} />
+      </div>
+    </Link>
+  );
+}
+
+export default function AdminMobileHome() {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
+
+  return (
+    <MobileShell
+      title="Admin Mobile"
+      subtitle="Painel mobile do CRM V2"
+      navItems={adminMobileNavItems}
+      showBrand
+      brandHref="/m/admin"
+    >
+      <MobileCard
+        style={{
+          background: colors.isDark
+            ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
+            : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
+          borderRadius: 22,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 22,
+            fontWeight: 900,
+            color: colors.text,
+            lineHeight: 1.1,
+            marginBottom: 8,
+            letterSpacing: -0.4,
+          }}
+        >
+          Controle rápido da operação
+        </div>
+
+        <div
+          style={{
+            fontSize: 13,
+            color: colors.isDark ? "rgba(255,255,255,0.86)" : colors.subtext,
+            lineHeight: 1.55,
+            marginBottom: 16,
+          }}
+        >
+          Acesse clientes, pedidos, financeiro, representantes e cadastros com
+          navegação pensada para mobile.
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 12,
+              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+              border: `1px solid ${
+                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+              }`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: colors.subtext,
+                marginBottom: 4,
+              }}
+            >
+              Perfil
+            </div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 900,
+                color: colors.text,
+              }}
+            >
+              Administrador
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 12,
+              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+              border: `1px solid ${
+                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+              }`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: colors.subtext,
+                marginBottom: 4,
+              }}
+            >
+              Experiência
+            </div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 900,
+                color: colors.text,
+              }}
+            >
+              Mobile nativo
+            </div>
+          </div>
+        </div>
+      </MobileCard>
 
       <div
         style={{
           display: "grid",
-          gap: 14,
+          gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+          gap: 12,
         }}
       >
-        <Card
+        <QuickCard
           href="/m/admin/clients"
-          icon={<Users size={20} />}
+          icon={<Users size={18} />}
           title="Clientes"
-          description="Lista de clientes"
+          description="Lista, busca e acesso rápido aos cadastros."
         />
-
-        <Card
+        <QuickCard
           href="/m/admin/orders"
-          icon={<ShoppingCart size={20} />}
+          icon={<ShoppingCart size={18} />}
           title="Pedidos"
-          description="Pedidos do sistema"
+          description="Acompanhe pedidos e abra novos lançamentos."
         />
-
-        <Card
-          href="/m/admin/exhibitors"
-          icon={<Package size={20} />}
-          title="Expositores"
-          description="Gestão de expositores"
-        />
-
-        <Card
-          href="/m/admin/regions"
-          icon={<Map size={20} />}
-          title="Regiões"
-          description="Gerenciar regiões"
-        />
-
-        <Card
+        <QuickCard
           href="/m/admin/finance"
-          icon={<Wallet size={20} />}
+          icon={<Wallet size={18} />}
           title="Financeiro"
-          description="Contas e transferências"
+          description="Recebíveis, transferências e visão resumida."
         />
-
-        <Card
-          href="/m/admin/representatives"
-          icon={<UserCog size={20} />}
-          title="Representantes"
-          description="Gestão de representantes"
+        <QuickCard
+          href="/m/admin/regions"
+          icon={<Map size={18} />}
+          title="Regiões"
+          description="Controle das regiões e estrutura comercial."
         />
       </div>
-    </div>
+
+      <MobileCard>
+        <MobileSectionTitle title="Acesso rápido" />
+        <div style={{ display: "grid" }}>
+          <LineLink
+            href="/m/admin/exhibitors"
+            icon={<Package size={18} />}
+            title="Expositores"
+            description="Gestão de expositores e acompanhamento."
+          />
+          <LineLink
+            href="/m/admin/representatives"
+            icon={<UserCog size={18} />}
+            title="Representantes"
+            description="Equipe comercial por região."
+          />
+          <LineLink
+            href="/m/admin/prospects"
+            icon={<BriefcaseBusiness size={18} />}
+            title="Prospectos"
+            description="Leads e oportunidades comerciais."
+          />
+          <LineLink
+            href="/m/admin/sales"
+            icon={<ChartColumn size={18} />}
+            title="Vendas"
+            description="Resumo comercial em tela mobile."
+          />
+        </div>
+      </MobileCard>
+
+      <MobileCard>
+        <MobileSectionTitle title="Cadastros e ajustes" />
+        <div style={{ display: "grid", gap: 10 }}>
+          <Link href="/m/admin/cadastros" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 14,
+                background: colors.isDark ? "#111827" : "#f8fafc",
+                border: `1px solid ${colors.border}`,
+                color: colors.text,
+                fontSize: 14,
+                fontWeight: 800,
+              }}
+            >
+              Abrir central de cadastros
+            </div>
+          </Link>
+
+          <Link href="/m/admin/more" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 14,
+                background: colors.isDark ? "#111827" : "#f8fafc",
+                border: `1px solid ${colors.border}`,
+                color: colors.text,
+                fontSize: 14,
+                fontWeight: 800,
+              }}
+            >
+              Ver mais opções do sistema
+            </div>
+          </Link>
+        </div>
+      </MobileCard>
+    </MobileShell>
   );
 }

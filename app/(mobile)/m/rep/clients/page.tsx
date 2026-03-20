@@ -2,10 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, MessageCircle, Phone, User2 } from "lucide-react";
+import {
+  ChevronRight,
+  MapPin,
+  MessageCircle,
+  Phone,
+  User2,
+  Users,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileRepListPage from "@/app/components/mobile/mobile-rep-list-page";
-import { MobileCard, formatDateBR } from "@/app/components/mobile/mobile-shell";
+import {
+  MobileCard,
+  MobileSectionTitle,
+  MobileStatCard,
+  formatDateBR,
+} from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -127,6 +139,22 @@ export default function MobileRepClientsPage() {
     });
   }, [clients, search]);
 
+  const summary = useMemo(() => {
+    return filtered.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        if (item.active === false) acc.inactive += 1;
+        else acc.active += 1;
+        return acc;
+      },
+      {
+        total: 0,
+        active: 0,
+        inactive: 0,
+      }
+    );
+  }, [filtered]);
+
   return (
     <MobileRepListPage
       title="Clientes"
@@ -136,6 +164,94 @@ export default function MobileRepClientsPage() {
       onSearchChange={setSearch}
       searchPlaceholder="Buscar por nome, cidade, bairro ou região"
     >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+          gap: 12,
+        }}
+      >
+        <MobileStatCard
+          label="Clientes visíveis"
+          value={String(summary.total)}
+          helper="Resultado do filtro atual"
+        />
+        <MobileStatCard
+          label="Ativos"
+          value={String(summary.active)}
+          helper={`${summary.inactive} inativos`}
+        />
+      </div>
+
+      <MobileCard
+        style={{
+          background: colors.isDark
+            ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
+            : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
+        }}
+      >
+        <MobileSectionTitle title="Visão rápida da região" />
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 12,
+              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+              border: `1px solid ${
+                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+              }`,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 14,
+                background: colors.isDark ? "#111f39" : "#e8f0ff",
+                color: colors.primary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Users size={18} />
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: colors.subtext,
+                  marginBottom: 2,
+                }}
+              >
+                Operação comercial
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 900,
+                  color: colors.text,
+                  lineHeight: 1.35,
+                }}
+              >
+                Consulta rápida com ligação e WhatsApp direto na base da sua região
+              </div>
+            </div>
+          </div>
+        </div>
+      </MobileCard>
+
       {loading ? (
         <MobileCard>Carregando clientes...</MobileCard>
       ) : error ? (
@@ -148,7 +264,7 @@ export default function MobileRepClientsPage() {
 
           return (
             <MobileCard key={client.id} style={{ padding: 14 }}>
-              <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gap: 12 }}>
                 <div
                   style={{
                     display: "flex",
@@ -160,9 +276,10 @@ export default function MobileRepClientsPage() {
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
-                        fontSize: 15,
+                        fontSize: 16,
                         fontWeight: 900,
                         color: colors.text,
+                        lineHeight: 1.2,
                       }}
                     >
                       {client.name}
@@ -203,7 +320,7 @@ export default function MobileRepClientsPage() {
                 <div
                   style={{
                     display: "grid",
-                    gap: 6,
+                    gap: 8,
                     fontSize: 12,
                     color: colors.subtext,
                   }}
@@ -243,7 +360,7 @@ export default function MobileRepClientsPage() {
                         color: colors.text,
                       }}
                     >
-                      <User2 size={14} />
+                      <ChevronRight size={14} />
                       Abrir
                     </div>
                   </Link>
@@ -302,7 +419,7 @@ export default function MobileRepClientsPage() {
                       }}
                     >
                       <MessageCircle size={14} />
-                      WhatsApp
+                      Whats
                     </div>
                   </a>
                 </div>

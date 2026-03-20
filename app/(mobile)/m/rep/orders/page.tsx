@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
+import MobileAppear from "@/app/components/mobile/mobile-appear";
+import MobileFab from "@/app/components/mobile/mobile-fab";
+import MobileSkeletonCard from "@/app/components/mobile/mobile-skeleton-card";
 import {
   MobileCard,
   MobileSectionTitle,
@@ -175,302 +178,316 @@ export default function RepOrdersMobile() {
   }, [filtered]);
 
   return (
-    <MobileRepPageFrame
-      title="Pedidos"
-      subtitle="Acompanhe os pedidos da sua região"
-      desktopHref="/rep/orders"
-    >
-      <MobileCard>
-        <div
-          style={{
-            display: "grid",
-            gap: 10,
-          }}
-        >
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por número, cliente, expositor ou status"
-            style={{
-              width: "100%",
-              height: 46,
-              borderRadius: 14,
-              border: `1px solid ${colors.border}`,
-              background: colors.inputBg,
-              color: colors.text,
-              padding: "0 14px",
-              outline: "none",
-              fontSize: 14,
-            }}
-          />
-
-          <Link href="/m/rep/orders/new" style={{ textDecoration: "none" }}>
+    <>
+      <MobileRepPageFrame
+        title="Pedidos"
+        subtitle="Acompanhe os pedidos da sua região"
+        desktopHref="/rep/orders"
+      >
+        <MobileAppear>
+          <MobileCard>
             <div
               style={{
-                minHeight: 46,
-                borderRadius: 14,
-                border: "none",
-                background: colors.primary,
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                fontSize: 14,
-                fontWeight: 900,
+                display: "grid",
+                gap: 10,
               }}
             >
-              <Package size={16} />
-              Novo pedido
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por número, cliente, expositor ou status"
+                style={{
+                  width: "100%",
+                  height: 46,
+                  borderRadius: 14,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.inputBg,
+                  color: colors.text,
+                  padding: "0 14px",
+                  outline: "none",
+                  fontSize: 14,
+                }}
+              />
+
+              <Link href="/m/rep/orders/new" style={{ textDecoration: "none" }}>
+                <div
+                  style={{
+                    minHeight: 46,
+                    borderRadius: 14,
+                    border: "none",
+                    background: colors.primary,
+                    color: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    fontSize: 14,
+                    fontWeight: 900,
+                  }}
+                >
+                  <Package size={16} />
+                  Novo pedido
+                </div>
+              </Link>
             </div>
-          </Link>
-        </div>
-      </MobileCard>
+          </MobileCard>
+        </MobileAppear>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-          gap: 12,
-        }}
-      >
-        <MobileStatCard
-          label="Pedidos"
-          value={String(summary.total)}
-          helper="Resultado do filtro atual"
-        />
-        <MobileStatCard
-          label="Valor total"
-          value={formatMoneyBR(summary.totalValue)}
-          helper="Soma dos pedidos visíveis"
-        />
-      </div>
-
-      <MobileCard
-        style={{
-          background: colors.isDark
-            ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
-            : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
-        }}
-      >
-        <MobileSectionTitle title="Resumo rápido" />
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-            gap: 10,
-          }}
-        >
+        <MobileAppear delay={50}>
           <div
             style={{
-              borderRadius: 16,
-              padding: 12,
-              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
-              border: `1px solid ${
-                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
-              }`,
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+              gap: 12,
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: colors.subtext,
-                marginBottom: 4,
-              }}
-            >
-              Pendentes
-            </div>
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 900,
-                color: colors.text,
-              }}
-            >
-              {summary.pending}
-            </div>
+            <MobileStatCard
+              label="Pedidos"
+              value={String(summary.total)}
+              helper="Resultado do filtro atual"
+            />
+            <MobileStatCard
+              label="Valor total"
+              value={formatMoneyBR(summary.totalValue)}
+              helper="Soma dos pedidos visíveis"
+            />
           </div>
+        </MobileAppear>
 
-          <div
+        <MobileAppear delay={90}>
+          <MobileCard
             style={{
-              borderRadius: 16,
-              padding: 12,
-              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
-              border: `1px solid ${
-                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
-              }`,
+              background: colors.isDark
+                ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
+                : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
             }}
           >
+            <MobileSectionTitle title="Resumo rápido" />
             <div
               style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: colors.subtext,
-                marginBottom: 4,
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+                gap: 10,
               }}
             >
-              Pagos
-            </div>
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 900,
-                color: colors.text,
-              }}
-            >
-              {summary.paid}
-            </div>
-          </div>
-        </div>
-      </MobileCard>
-
-      {loading ? (
-        <MobileCard>Carregando pedidos...</MobileCard>
-      ) : error ? (
-        <MobileCard>{error}</MobileCard>
-      ) : filtered.length === 0 ? (
-        <MobileCard>Nenhum pedido encontrado.</MobileCard>
-      ) : (
-        filtered.map((order) => (
-          <Link
-            key={order.id}
-            href="/rep/orders"
-            style={{ textDecoration: "none" }}
-          >
-            <MobileCard style={{ padding: 14 }}>
               <div
                 style={{
-                  display: "grid",
-                  gap: 12,
+                  borderRadius: 16,
+                  padding: 12,
+                  background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+                  border: `1px solid ${
+                    colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+                  }`,
                 }}
               >
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: 10,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: colors.subtext,
+                    marginBottom: 4,
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
+                  Pendentes
+                </div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 900,
+                    color: colors.text,
+                  }}
+                >
+                  {summary.pending}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 16,
+                  padding: 12,
+                  background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+                  border: `1px solid ${
+                    colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+                  }`,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: colors.subtext,
+                    marginBottom: 4,
+                  }}
+                >
+                  Pagos
+                </div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 900,
+                    color: colors.text,
+                  }}
+                >
+                  {summary.paid}
+                </div>
+              </div>
+            </div>
+          </MobileCard>
+        </MobileAppear>
+
+        {loading ? (
+          <MobileAppear delay={120}>
+            <div style={{ display: "grid", gap: 12 }}>
+              <MobileSkeletonCard />
+              <MobileSkeletonCard />
+              <MobileSkeletonCard />
+            </div>
+          </MobileAppear>
+        ) : error ? (
+          <MobileCard>{error}</MobileCard>
+        ) : filtered.length === 0 ? (
+          <MobileCard>Nenhum pedido encontrado.</MobileCard>
+        ) : (
+          filtered.map((order, index) => (
+            <MobileAppear key={order.id} delay={Math.min(index * 35, 180)}>
+              <Link href="/rep/orders" style={{ textDecoration: "none" }}>
+                <MobileCard style={{ padding: 14 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 12,
+                    }}
+                  >
                     <div
                       style={{
-                        fontSize: 16,
-                        fontWeight: 900,
-                        color: colors.text,
-                        lineHeight: 1.2,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: 10,
                       }}
                     >
-                      Pedido #{order.number ?? "-"}
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 16,
+                            fontWeight: 900,
+                            color: colors.text,
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          Pedido #{order.number ?? "-"}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 12,
+                            color: colors.subtext,
+                          }}
+                        >
+                          {order.client?.name || "Cliente não informado"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 900,
+                          color: colors.primary,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatMoneyBR(order.totalCents ?? 0)}
+                      </div>
                     </div>
+
                     <div
                       style={{
-                        marginTop: 4,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          background: colors.isDark ? "#111f39" : "#e8f0ff",
+                          color: colors.primary,
+                        }}
+                      >
+                        {getStatusLabel(order.status)}
+                      </span>
+
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          background: colors.isDark ? "#111827" : "#f8fafc",
+                          color: colors.text,
+                          border: `1px solid ${colors.border}`,
+                        }}
+                      >
+                        {getPaymentStatusLabel(order.paymentStatus)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
                         fontSize: 12,
                         color: colors.subtext,
                       }}
                     >
-                      {order.client?.name || "Cliente não informado"}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <CalendarDays size={14} />
+                        {formatDateTimeBR(order.createdAt || order.issuedAt)}
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Store size={14} />
+                        {order.exhibitor?.name ||
+                          order.exhibitor?.code ||
+                          "Sem expositor"}
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Wallet size={14} />
+                        {order.paymentMethod || "Pagamento não informado"}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        paddingTop: 4,
+                        borderTop: `1px solid ${colors.border}`,
+                        color: colors.subtext,
+                        fontSize: 12,
+                        fontWeight: 800,
+                      }}
+                    >
+                      <div>
+                        {order.totalItems ? `${order.totalItems} item(ns)` : "Abrir pedido"}
+                      </div>
+                      <ChevronRight size={16} />
                     </div>
                   </div>
+                </MobileCard>
+              </Link>
+            </MobileAppear>
+          ))
+        )}
+      </MobileRepPageFrame>
 
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 900,
-                      color: colors.primary,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {formatMoneyBR(order.totalCents ?? 0)}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 8,
-                  }}
-                >
-                  <span
-                    style={{
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      background: colors.isDark ? "#111f39" : "#e8f0ff",
-                      color: colors.primary,
-                    }}
-                  >
-                    {getStatusLabel(order.status)}
-                  </span>
-
-                  <span
-                    style={{
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      background: colors.isDark ? "#111827" : "#f8fafc",
-                      color: colors.text,
-                      border: `1px solid ${colors.border}`,
-                    }}
-                  >
-                    {getPaymentStatusLabel(order.paymentStatus)}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 8,
-                    fontSize: 12,
-                    color: colors.subtext,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <CalendarDays size={14} />
-                    {formatDateTimeBR(order.createdAt || order.issuedAt)}
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <Store size={14} />
-                    {order.exhibitor?.name ||
-                      order.exhibitor?.code ||
-                      "Sem expositor"}
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <Wallet size={14} />
-                    {order.paymentMethod || "Pagamento não informado"}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingTop: 4,
-                    borderTop: `1px solid ${colors.border}`,
-                    color: colors.subtext,
-                    fontSize: 12,
-                    fontWeight: 800,
-                  }}
-                >
-                  <div>
-                    {order.totalItems ? `${order.totalItems} item(ns)` : "Abrir pedido"}
-                  </div>
-                  <ChevronRight size={16} />
-                </div>
-              </div>
-            </MobileCard>
-          </Link>
-        ))
-      )}
-    </MobileRepPageFrame>
+      <MobileFab href="/m/rep/orders/new" label="Novo" />
+    </>
   );
 }

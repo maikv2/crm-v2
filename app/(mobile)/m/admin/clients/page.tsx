@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileAdminListPage from "@/app/components/mobile/mobile-admin-list-page";
+import MobileAppear from "@/app/components/mobile/mobile-appear";
+import MobileFab from "@/app/components/mobile/mobile-fab";
+import MobileSkeletonCard from "@/app/components/mobile/mobile-skeleton-card";
 import {
   MobileCard,
   MobileSectionTitle,
@@ -140,279 +143,295 @@ export default function MobileAdminClientsPage() {
   }, [filtered]);
 
   return (
-    <MobileAdminListPage
-      title="Clientes"
-      subtitle="Lista mobile de clientes"
-      desktopHref="/clients"
-      search={search}
-      onSearchChange={setSearch}
-      searchPlaceholder="Buscar por nome, cidade, bairro ou região"
-      createHref="/m/admin/clients/new"
-      createLabel="Novo cliente"
-    >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-          gap: 12,
-        }}
+    <>
+      <MobileAdminListPage
+        title="Clientes"
+        subtitle="Lista mobile de clientes"
+        desktopHref="/clients"
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Buscar por nome, cidade, bairro ou região"
+        createHref="/m/admin/clients/new"
+        createLabel="Novo cliente"
       >
-        <MobileStatCard
-          label="Clientes visíveis"
-          value={String(summary.total)}
-          helper="Resultado do filtro atual"
-        />
-        <MobileStatCard
-          label="Ativos"
-          value={String(summary.active)}
-          helper={`${summary.inactive} inativos`}
-        />
-      </div>
-
-      <MobileCard
-        style={{
-          background: colors.isDark
-            ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
-            : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
-        }}
-      >
-        <MobileSectionTitle title="Visão rápida da base" />
-        <div
-          style={{
-            display: "grid",
-            gap: 10,
-          }}
-        >
+        <MobileAppear>
           <div
             style={{
-              borderRadius: 16,
-              padding: 12,
-              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
-              border: `1px solid ${
-                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
-              }`,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+              gap: 12,
             }}
           >
+            <MobileStatCard
+              label="Clientes visíveis"
+              value={String(summary.total)}
+              helper="Resultado do filtro atual"
+            />
+            <MobileStatCard
+              label="Ativos"
+              value={String(summary.active)}
+              helper={`${summary.inactive} inativos`}
+            />
+          </div>
+        </MobileAppear>
+
+        <MobileAppear delay={60}>
+          <MobileCard
+            style={{
+              background: colors.isDark
+                ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
+                : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
+            }}
+          >
+            <MobileSectionTitle title="Visão rápida da base" />
             <div
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 14,
-                background: colors.isDark ? "#111f39" : "#e8f0ff",
-                color: colors.primary,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
+                display: "grid",
+                gap: 10,
               }}
             >
-              <Users size={18} />
-            </div>
-
-            <div>
               <div
                 style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: colors.subtext,
-                  marginBottom: 2,
-                }}
-              >
-                Gestão mobile
-              </div>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 900,
-                  color: colors.text,
-                  lineHeight: 1.35,
-                }}
-              >
-                Consulta rápida com ligação e WhatsApp direto na listagem
-              </div>
-            </div>
-          </div>
-        </div>
-      </MobileCard>
-
-      {loading ? (
-        <MobileCard>Carregando clientes...</MobileCard>
-      ) : error ? (
-        <MobileCard>{error}</MobileCard>
-      ) : filtered.length === 0 ? (
-        <MobileCard>Nenhum cliente encontrado.</MobileCard>
-      ) : (
-        filtered.map((client) => {
-          const whatsapp = toWhatsapp(client.whatsapp || client.phone);
-
-          return (
-            <MobileCard key={client.id} style={{ padding: 14 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gap: 12,
+                  borderRadius: 16,
+                  padding: 12,
+                  background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+                  border: `1px solid ${
+                    colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+                  }`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
                 }}
               >
                 <div
                   style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 14,
+                    background: colors.isDark ? "#111f39" : "#e8f0ff",
+                    color: colors.primary,
                     display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: 10,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
+                  <Users size={18} />
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: colors.subtext,
+                      marginBottom: 2,
+                    }}
+                  >
+                    Gestão mobile
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 900,
+                      color: colors.text,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    Consulta rápida com ligação e WhatsApp direto na listagem
+                  </div>
+                </div>
+              </div>
+            </div>
+          </MobileCard>
+        </MobileAppear>
+
+        {loading ? (
+          <MobileAppear delay={120}>
+            <div style={{ display: "grid", gap: 12 }}>
+              <MobileSkeletonCard />
+              <MobileSkeletonCard />
+              <MobileSkeletonCard />
+            </div>
+          </MobileAppear>
+        ) : error ? (
+          <MobileCard>{error}</MobileCard>
+        ) : filtered.length === 0 ? (
+          <MobileCard>Nenhum cliente encontrado.</MobileCard>
+        ) : (
+          filtered.map((client, index) => {
+            const whatsapp = toWhatsapp(client.whatsapp || client.phone);
+
+            return (
+              <MobileAppear key={client.id} delay={Math.min(index * 35, 180)}>
+                <MobileCard style={{ padding: 14 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 12,
+                    }}
+                  >
                     <div
                       style={{
-                        fontSize: 16,
-                        fontWeight: 900,
-                        color: colors.text,
-                        lineHeight: 1.2,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: 10,
                       }}
                     >
-                      {client.name}
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 16,
+                            fontWeight: 900,
+                            color: colors.text,
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {client.name}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 12,
+                            color: colors.subtext,
+                          }}
+                        >
+                          {client.region?.name || "Sem região"}
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          background:
+                            client.active === false
+                              ? colors.isDark
+                                ? "#2a1313"
+                                : "#fee2e2"
+                              : colors.isDark
+                              ? "#0f2a17"
+                              : "#dcfce7",
+                          color: client.active === false ? "#ef4444" : "#16a34a",
+                        }}
+                      >
+                        {client.active === false ? "Inativo" : "Ativo"}
+                      </span>
                     </div>
 
                     <div
                       style={{
-                        marginTop: 4,
+                        display: "grid",
+                        gap: 8,
                         fontSize: 12,
                         color: colors.subtext,
                       }}
                     >
-                      {client.region?.name || "Sem região"}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <MapPin size={14} />
+                        {[client.city, client.district].filter(Boolean).join(" • ") ||
+                          "Sem localização"}
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <User2 size={14} />
+                        Última visita: {formatDateBR(client.lastVisitAt)}
+                      </div>
                     </div>
-                  </div>
 
-                  <span
-                    style={{
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      background:
-                        client.active === false
-                          ? colors.isDark
-                            ? "#2a1313"
-                            : "#fee2e2"
-                          : colors.isDark
-                          ? "#0f2a17"
-                          : "#dcfce7",
-                      color: client.active === false ? "#ef4444" : "#16a34a",
-                    }}
-                  >
-                    {client.active === false ? "Inativo" : "Ativo"}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 8,
-                    fontSize: 12,
-                    color: colors.subtext,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <MapPin size={14} />
-                    {[client.city, client.district].filter(Boolean).join(" • ") ||
-                      "Sem localização"}
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <User2 size={14} />
-                    Última visita: {formatDateBR(client.lastVisitAt)}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0,1fr))",
-                    gap: 8,
-                  }}
-                >
-                  <Link href="/clients" style={{ textDecoration: "none" }}>
                     <div
                       style={{
-                        minHeight: 42,
-                        borderRadius: 12,
-                        border: `1px solid ${colors.border}`,
-                        background: colors.cardBg,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: colors.text,
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(0,1fr))",
+                        gap: 8,
                       }}
                     >
-                      <ChevronRight size={14} />
-                      Abrir
-                    </div>
-                  </Link>
+                      <Link href="/clients" style={{ textDecoration: "none" }}>
+                        <div
+                          style={{
+                            minHeight: 42,
+                            borderRadius: 12,
+                            border: `1px solid ${colors.border}`,
+                            background: colors.cardBg,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: colors.text,
+                          }}
+                        >
+                          <ChevronRight size={14} />
+                          Abrir
+                        </div>
+                      </Link>
 
-                  <a
-                    href={client.phone ? `tel:${client.phone}` : "#"}
-                    style={{ textDecoration: "none" }}
-                  >
-                    <div
-                      style={{
-                        minHeight: 42,
-                        borderRadius: 12,
-                        border: `1px solid ${colors.border}`,
-                        background: colors.cardBg,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: colors.text,
-                        opacity: client.phone ? 1 : 0.5,
-                      }}
-                    >
-                      <Phone size={14} />
-                      Ligar
-                    </div>
-                  </a>
+                      <a
+                        href={client.phone ? `tel:${client.phone}` : "#"}
+                        style={{ textDecoration: "none" }}
+                      >
+                        <div
+                          style={{
+                            minHeight: 42,
+                            borderRadius: 12,
+                            border: `1px solid ${colors.border}`,
+                            background: colors.cardBg,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: colors.text,
+                            opacity: client.phone ? 1 : 0.5,
+                          }}
+                        >
+                          <Phone size={14} />
+                          Ligar
+                        </div>
+                      </a>
 
-                  <a
-                    href={whatsapp ? `https://wa.me/${whatsapp}` : "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ textDecoration: "none" }}
-                  >
-                    <div
-                      style={{
-                        minHeight: 42,
-                        borderRadius: 12,
-                        border: `1px solid ${colors.border}`,
-                        background: colors.cardBg,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: colors.text,
-                        opacity: whatsapp ? 1 : 0.5,
-                      }}
-                    >
-                      <MessageCircle size={14} />
-                      Whats
+                      <a
+                        href={whatsapp ? `https://wa.me/${whatsapp}` : "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ textDecoration: "none" }}
+                      >
+                        <div
+                          style={{
+                            minHeight: 42,
+                            borderRadius: 12,
+                            border: `1px solid ${colors.border}`,
+                            background: colors.cardBg,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: colors.text,
+                            opacity: whatsapp ? 1 : 0.5,
+                          }}
+                        >
+                          <MessageCircle size={14} />
+                          Whats
+                        </div>
+                      </a>
                     </div>
-                  </a>
-                </div>
-              </div>
-            </MobileCard>
-          );
-        })
-      )}
-    </MobileAdminListPage>
+                  </div>
+                </MobileCard>
+              </MobileAppear>
+            );
+          })
+        )}
+      </MobileAdminListPage>
+
+      <MobileFab href="/m/admin/clients/new" label="Novo" />
+    </>
   );
 }

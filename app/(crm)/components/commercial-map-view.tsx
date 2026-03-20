@@ -24,6 +24,11 @@ export type CommercialMapPoint = {
   } | null;
 };
 
+type DisplayPoint = CommercialMapPoint & {
+  displayLatitude: number;
+  displayLongitude: number;
+};
+
 function formatDateBR(value?: string | null) {
   if (!value) return "-";
 
@@ -72,6 +77,49 @@ function createMarkerIcon(color: string) {
   });
 }
 
+function spreadPoints(points: CommercialMapPoint[]): DisplayPoint[] {
+  const groups = new Map<string, CommercialMapPoint[]>();
+
+  for (const point of points) {
+    const key = `${point.latitude.toFixed(6)}_${point.longitude.toFixed(6)}`;
+
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+
+    groups.get(key)!.push(point);
+  }
+
+  const result: DisplayPoint[] = [];
+
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      result.push({
+        ...group[0],
+        displayLatitude: group[0].latitude,
+        displayLongitude: group[0].longitude,
+      });
+      continue;
+    }
+
+    const radius = 0.00018;
+
+    group.forEach((point, index) => {
+      const angle = (2 * Math.PI * index) / group.length;
+      const offsetLat = Math.sin(angle) * radius;
+      const offsetLng = Math.cos(angle) * radius;
+
+      result.push({
+        ...point,
+        displayLatitude: point.latitude + offsetLat,
+        displayLongitude: point.longitude + offsetLng,
+      });
+    });
+  }
+
+  return result;
+}
+
 export default function CommercialMapView({
   points,
   themeMode,
@@ -80,25 +128,25 @@ export default function CommercialMapView({
   themeMode: "light" | "dark";
 }) {
   const safePoints = Array.isArray(points) ? points : [];
+  const displayPoints = useMemo(() => spreadPoints(safePoints), [safePoints]);
   const theme = getThemeColors(themeMode);
 
-  const muted = theme.isDark ? "#94a3b8" : "#64748b";
   const border = theme.isDark ? "#1e293b" : theme.border;
 
   const center = useMemo<[number, number]>(() => {
-    if (safePoints.length > 0) {
+    if (displayPoints.length > 0) {
       const avgLat =
-        safePoints.reduce((sum, item) => sum + item.latitude, 0) /
-        safePoints.length;
+        displayPoints.reduce((sum, item) => sum + item.latitude, 0) /
+        displayPoints.length;
       const avgLng =
-        safePoints.reduce((sum, item) => sum + item.longitude, 0) /
-        safePoints.length;
+        displayPoints.reduce((sum, item) => sum + item.longitude, 0) /
+        displayPoints.length;
 
       return [avgLat, avgLng];
     }
 
     return [-27.1004, -52.6152];
-  }, [safePoints]);
+  }, [displayPoints]);
 
   return (
     <div>
@@ -200,14 +248,14 @@ export default function CommercialMapView({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {safePoints.map((point) => {
+          {displayPoints.map((point) => {
             const color = getMarkerColor(point);
             const icon = createMarkerIcon(color);
 
             return (
               <Marker
                 key={`${point.kind}-${point.id}`}
-                position={[point.latitude, point.longitude]}
+                position={[point.displayLatitude, point.displayLongitude]}
                 icon={icon}
               >
                 <Popup>
@@ -256,16 +304,15 @@ export default function CommercialMapView({
         </MapContainer>
       </div>
 
-      {safePoints.length === 0 ? (
+      {displayPoints.length === 0 ? (
         <div
           style={{
-            marginTop: 12,
-            color: muted,
+            marginTop: 14,
             fontSize: 14,
-            fontWeight: 600,
+            color: theme.subtext,
           }}
         >
-          Nenhum ponto encontrado.
+          Nenhum ponto encontrado com os filtros selecionados.
         </div>
       ) : null}
     </div>

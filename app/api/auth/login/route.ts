@@ -3,41 +3,37 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const body = await req.json();
+    const body = await request.json();
 
-    const email = String(body?.email ?? "").toLowerCase().trim();
-    const password = String(body?.password ?? "").trim();
+    const email = String(body.email || "").toLowerCase().trim();
+    const password = String(body.password || "");
 
     if (!email || !password) {
       return NextResponse.json(
-        { error: "Informe e-mail e senha." },
+        { error: "Email e senha são obrigatórios." },
         { status: 400 }
       );
     }
 
     const user = await prisma.user.findUnique({
       where: { email },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        active: true,
-        passwordHash: true,
-      },
     });
 
-    if (!user || !user.active) {
+    if (!user || !user.passwordHash) {
       return NextResponse.json(
         { error: "Usuário ou senha inválidos." },
         { status: 401 }
       );
     }
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
+    const passwordMatch = await bcrypt.compare(
+      password,
+      user.passwordHash
+    );
 
-    if (!valid) {
+    if (!passwordMatch) {
       return NextResponse.json(
         { error: "Usuário ou senha inválidos." },
         { status: 401 }
@@ -46,22 +42,29 @@ export async function POST(req: Request) {
 
     const cookieStore = await cookies();
 
-    cookieStore.set("crm_session", user.id, {
+    cookieStore.set({
+      name: "crm_session",
+      value: user.id,
       httpOnly: true,
-      path: "/",
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
     });
 
     return NextResponse.json({
       ok: true,
-      role: user.role,
+      user: {
+        id: user.id,
+        role: user.role,
+        name: user.name,
+      },
     });
   } catch (error) {
-    console.error("LOGIN ERROR:", error);
+    console.error(error);
 
     return NextResponse.json(
-      { error: "Erro interno de autenticação." },
+      { error: "Erro ao realizar login." },
       { status: 500 }
     );
   }

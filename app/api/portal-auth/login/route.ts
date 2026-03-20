@@ -78,12 +78,15 @@ export async function POST(req: Request) {
 
     const cookieStore = await cookies();
 
-    cookieStore.set("portal_session", client.id, {
-      httpOnly: true,
-      path: "/",
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
+cookieStore.set({
+  name: "portal_session",
+  value: client.id,
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/",
+  maxAge: 60 * 60 * 24 * 7,
+});
 
     return NextResponse.json({
       ok: true,

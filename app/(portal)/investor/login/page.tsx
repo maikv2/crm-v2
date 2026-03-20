@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-export default function InvestorLoginPage() {
+function InvestorLoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { theme: mode } = useTheme();
@@ -185,5 +185,13 @@ export default function InvestorLoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function InvestorLoginPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Carregando...</div>}>
+      <InvestorLoginPageContent />
+    </Suspense>
   );
 }

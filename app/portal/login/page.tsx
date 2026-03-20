@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function ActionButton({
@@ -130,7 +130,7 @@ function InfoCard({
   );
 }
 
-export default function PortalLoginPage() {
+function PortalLoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -391,5 +391,13 @@ export default function PortalLoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PortalLoginPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Carregando...</div>}>
+      <PortalLoginPageContent />
+    </Suspense>
   );
 }

@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { theme: mode } = useTheme();
@@ -120,105 +120,89 @@ export default function LoginPage() {
               marginBottom: 6,
             }}
           >
-            Acessar CRM
+            CRM V2
           </div>
 
           <div
             style={{
               fontSize: 14,
               color: muted,
+              lineHeight: 1.55,
             }}
           >
-            Entre com seu e-mail e senha
+            Acesse sua conta para continuar.
           </div>
-
-          {redirect === "/m" ? (
-            <div
-              style={{
-                marginTop: 10,
-                fontSize: 12,
-                color: theme.primary,
-                fontWeight: 700,
-              }}
-            >
-              Você está entrando pela versão mobile.
-            </div>
-          ) : null}
         </div>
-
-        {error && (
-          <div
-            style={{
-              border: "1px solid #ef4444",
-              borderRadius: 12,
-              padding: 12,
-              marginBottom: 16,
-              color: "#ef4444",
-              fontSize: 14,
-            }}
-          >
-            {error}
-          </div>
-        )}
 
         <div style={{ display: "grid", gap: 14 }}>
           <div>
-            <label
+            <div
               style={{
-                display: "block",
                 fontSize: 13,
                 fontWeight: 700,
-                marginBottom: 6,
+                marginBottom: 8,
               }}
             >
               E-mail
-            </label>
-
+            </div>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              placeholder="Digite seu e-mail"
               style={inputStyle}
-              placeholder="seu@email.com"
             />
           </div>
 
           <div>
-            <label
+            <div
               style={{
-                display: "block",
                 fontSize: 13,
                 fontWeight: 700,
-                marginBottom: 6,
+                marginBottom: 8,
               }}
             >
               Senha
-            </label>
-
+            </div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
+              placeholder="Digite sua senha"
               style={inputStyle}
-              placeholder="••••••••"
             />
           </div>
+
+          {error ? (
+            <div
+              style={{
+                borderRadius: 12,
+                border: "1px solid #fecaca",
+                background: theme.isDark ? "rgba(127,29,29,0.18)" : "#fef2f2",
+                color: "#dc2626",
+                padding: 12,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
 
           <button
             type="submit"
             disabled={loading}
             style={{
               marginTop: 6,
-              padding: "12px 14px",
+              height: 46,
               borderRadius: 12,
-              border: `1px solid ${theme.primary}`,
-              background: theme.primary,
-              color: "white",
+              border: "none",
+              background: "#2563eb",
+              color: "#ffffff",
               fontWeight: 800,
-              cursor: "pointer",
-              opacity: loading ? 0.7 : 1,
+              fontSize: 14,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.75 : 1,
             }}
           >
             {loading ? "Entrando..." : "Entrar"}
@@ -226,5 +210,13 @@ export default function LoginPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Carregando...</div>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

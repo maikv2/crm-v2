@@ -8,11 +8,15 @@ import {
   Sun,
   Plus,
   LogOut,
+  Building2,
+  Shield,
+  KeyRound,
+  Users,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "../providers/theme-provider";
 import { getThemeColors } from "../../lib/theme";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function getPageTitle(pathname: string) {
   if (pathname.startsWith("/clients")) return "Clientes";
@@ -26,6 +30,7 @@ function getPageTitle(pathname: string) {
   if (pathname.startsWith("/regions")) return "Regiões";
   if (pathname.startsWith("/investors")) return "Investidores";
   if (pathname.startsWith("/representatives")) return "Representantes";
+  if (pathname.startsWith("/settings")) return "Configurações";
   if (pathname.startsWith("/rep/sales-dashboard")) return "Painel de Vendas";
   if (pathname.startsWith("/rep/agenda")) return "Agenda";
   if (pathname.startsWith("/rep/clients")) return "Clientes";
@@ -51,11 +56,16 @@ export default function Header() {
   const colors = getThemeColors(theme);
 
   const [openCadastros, setOpenCadastros] = useState(false);
+  const [openSettings, setOpenSettings] = useState(false);
   const [user, setUser] = useState<LoggedUser | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  const cadastrosRef = useRef<HTMLDivElement | null>(null);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
+
   const title = getPageTitle(pathname);
   const isRepresentative = user?.role === "REPRESENTATIVE";
+  const isAdmin = user?.role === "ADMIN";
 
   useEffect(() => {
     let active = true;
@@ -88,6 +98,23 @@ export default function Header() {
       active = false;
     };
   }, [pathname]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node;
+
+      if (cadastrosRef.current && !cadastrosRef.current.contains(target)) {
+        setOpenCadastros(false);
+      }
+
+      if (settingsRef.current && !settingsRef.current.contains(target)) {
+        setOpenSettings(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function handleLogout() {
     try {
@@ -165,10 +192,13 @@ export default function Header() {
           <span style={{ fontSize: 14 }}>Buscar clientes, pedidos...</span>
         </div>
 
-        <div style={{ position: "relative" }}>
+        <div ref={cadastrosRef} style={{ position: "relative" }}>
           <button
             type="button"
-            onClick={() => setOpenCadastros(!openCadastros)}
+            onClick={() => {
+              setOpenCadastros((prev) => !prev);
+              setOpenSettings(false);
+            }}
             style={{
               height: 40,
               padding: "0 12px",
@@ -353,23 +383,92 @@ export default function Header() {
           />
         </button>
 
-        <button
-          type="button"
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
-            border: `1px solid ${colors.border}`,
-            background: colors.cardBg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            color: "#a78bfa",
-          }}
-        >
-          <Settings size={16} />
-        </button>
+        {isAdmin ? (
+          <div ref={settingsRef} style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setOpenSettings((prev) => !prev);
+                setOpenCadastros(false);
+              }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                border: `1px solid ${colors.border}`,
+                background: colors.cardBg,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: "#a78bfa",
+              }}
+            >
+              <Settings size={16} />
+            </button>
+
+            {openSettings && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 45,
+                  right: 0,
+                  width: 250,
+                  borderRadius: 12,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.cardBg,
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
+                  padding: 6,
+                  zIndex: 60,
+                }}
+              >
+                <div
+                  onClick={() => {
+                    setOpenSettings(false);
+                    router.push("/settings");
+                  }}
+                  style={menuItemWithIconStyle(colors)}
+                >
+                  <Shield size={15} />
+                  Configurações gerais
+                </div>
+
+                <div
+                  onClick={() => {
+                    setOpenSettings(false);
+                    router.push("/settings/company");
+                  }}
+                  style={menuItemWithIconStyle(colors)}
+                >
+                  <Building2 size={15} />
+                  Dados da empresa
+                </div>
+
+                <div
+                  onClick={() => {
+                    setOpenSettings(false);
+                    router.push("/settings/access");
+                  }}
+                  style={menuItemWithIconStyle(colors)}
+                >
+                  <Users size={15} />
+                  Usuários e acessos
+                </div>
+
+                <div
+                  onClick={() => {
+                    setOpenSettings(false);
+                    router.push("/settings/security");
+                  }}
+                  style={menuItemWithIconStyle(colors)}
+                >
+                  <KeyRound size={15} />
+                  Segurança e senhas
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -447,5 +546,19 @@ function menuItemStyle(colors: any) {
     fontSize: 14,
     fontWeight: 600,
     color: colors.text,
+  };
+}
+
+function menuItemWithIconStyle(colors: any) {
+  return {
+    padding: "10px 12px",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontSize: 14,
+    fontWeight: 600,
+    color: colors.text,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
   };
 }

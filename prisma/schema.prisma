@@ -628,6 +628,32 @@ model Prospect {
   representative   User?          @relation("RepresentativeProspects", fields: [representativeId], references: [id])
 }
 
+model SystemSetting {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  singletonKey String   @unique @default("main")
+  companyName  String?
+  tradeName    String?
+  legalName    String?
+  cnpj         String?  @unique
+  phone        String?
+  whatsapp     String?
+  email        String?
+  website      String?
+  country      String?
+  cep          String?
+  street       String?
+  number       String?
+  district     String?
+  city         String?
+  state        String?
+  complement   String?
+  logoUrl      String?
+  primaryColor String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+}
+
 enum UserRole {
   ADMIN
   REPRESENTATIVE

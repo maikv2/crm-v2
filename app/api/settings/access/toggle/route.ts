@@ -1,42 +1,54 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/admin-settings-auth";
+import { requireAdminUser } from "@/lib/admin-auth";
 
-export const dynamic = "force-dynamic";
-
-type ToggleTargetKind = "USER" | "INVESTOR" | "CLIENT";
-
-function normalizeText(value?: string | null) {
-  const text = String(value ?? "").trim();
-  return text ? text : null;
-}
-
-export async function POST(request: Request) {
-  const admin = await requireAdminSession();
-
-  if (!admin.ok) {
-    return admin.response;
-  }
-
+export async function PATCH(request: Request) {
   try {
+    await requireAdminUser();
+
     const body = await request.json();
+    const userId = body?.userId;
 
-    const kind = String(body.kind ?? "").trim() as ToggleTargetKind;
-    const targetId = normalizeText(body.targetId);
-    const active = Boolean(body.active);
-
-    if (!targetId) {
+    if (!userId) {
       return NextResponse.json(
-        { error: "O alvo da alteração é obrigatório." },
+        { error: "userId é obrigatório" },
         { status: 400 }
       );
     }
 
-    if (kind === "USER") {
-      const existing = await prisma.user.findUnique({
-        where: { id: targetId },
-        select: { id: true },
-      });
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        active: true,
+      },
+    });
 
-      if (!existing) {
-        return NextResponse.json(
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Usuário não encontrado" },
+        { status: 404 }
+      );
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        active: !existing.active,
+      },
+      select: {
+        id: true,
+        active: true,
+      },
+    });
+
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error("toggle user error:", error);
+
+    return NextResponse.json(
+      { error: "Erro ao alterar status do usuário" },
+      { status: 500 }
+    );
+  }
+}

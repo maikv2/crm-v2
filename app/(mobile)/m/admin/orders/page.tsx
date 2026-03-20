@@ -2,10 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ShoppingCart, User2 } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronRight,
+  ShoppingCart,
+  User2,
+  Wallet,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileAdminListPage from "@/app/components/mobile/mobile-admin-list-page";
-import { MobileCard, formatDateTimeBR, formatMoneyBR } from "@/app/components/mobile/mobile-shell";
+import {
+  MobileCard,
+  MobileSectionTitle,
+  MobileStatCard,
+  formatDateTimeBR,
+  formatMoneyBR,
+} from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -29,6 +41,34 @@ type OrderItem = {
     name: string;
   } | null;
 };
+
+function getStatusLabel(value?: string | null) {
+  if (!value) return "Sem status";
+
+  const map: Record<string, string> = {
+    PENDING: "Pendente",
+    APPROVED: "Aprovado",
+    COMPLETED: "Concluído",
+    CANCELLED: "Cancelado",
+    DRAFT: "Rascunho",
+  };
+
+  return map[value] || value;
+}
+
+function getPaymentStatusLabel(value?: string | null) {
+  if (!value) return "Pagamento";
+
+  const map: Record<string, string> = {
+    PENDING: "Pendente",
+    PAID: "Pago",
+    PARTIAL: "Parcial",
+    CANCELLED: "Cancelado",
+    OVERDUE: "Vencido",
+  };
+
+  return map[value] || value;
+}
 
 export default function MobileAdminOrdersPage() {
   const router = useRouter();
@@ -80,7 +120,9 @@ export default function MobileAdminOrdersPage() {
       } catch (err) {
         console.error(err);
         if (active) {
-          setError(err instanceof Error ? err.message : "Erro ao carregar pedidos.");
+          setError(
+            err instanceof Error ? err.message : "Erro ao carregar pedidos."
+          );
         }
       } finally {
         if (active) setLoading(false);
@@ -109,6 +151,26 @@ export default function MobileAdminOrdersPage() {
     });
   }, [orders, search]);
 
+  const summary = useMemo(() => {
+    return filtered.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        acc.totalValue += item.totalCents ?? 0;
+
+        if (item.paymentStatus === "PENDING") acc.pending += 1;
+        if (item.paymentStatus === "PAID") acc.paid += 1;
+
+        return acc;
+      },
+      {
+        total: 0,
+        totalValue: 0,
+        pending: 0,
+        paid: 0,
+      }
+    );
+  }, [filtered]);
+
   return (
     <MobileAdminListPage
       title="Pedidos"
@@ -120,6 +182,104 @@ export default function MobileAdminOrdersPage() {
       createHref="/m/admin/orders/new"
       createLabel="Novo pedido"
     >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+          gap: 12,
+        }}
+      >
+        <MobileStatCard
+          label="Pedidos encontrados"
+          value={String(summary.total)}
+          helper="Resultado do filtro atual"
+        />
+        <MobileStatCard
+          label="Valor total"
+          value={formatMoneyBR(summary.totalValue)}
+          helper="Soma dos pedidos visíveis"
+        />
+      </div>
+
+      <MobileCard
+        style={{
+          background: colors.isDark
+            ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
+            : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
+        }}
+      >
+        <MobileSectionTitle title="Resumo rápido" />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 12,
+              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+              border: `1px solid ${
+                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+              }`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: colors.subtext,
+                marginBottom: 4,
+              }}
+            >
+              Pendentes
+            </div>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 900,
+                color: colors.text,
+              }}
+            >
+              {summary.pending}
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 12,
+              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+              border: `1px solid ${
+                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+              }`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: colors.subtext,
+                marginBottom: 4,
+              }}
+            >
+              Pagos
+            </div>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 900,
+                color: colors.text,
+              }}
+            >
+              {summary.paid}
+            </div>
+          </div>
+        </div>
+      </MobileCard>
+
       {loading ? (
         <MobileCard>Carregando pedidos...</MobileCard>
       ) : error ? (
@@ -128,12 +288,16 @@ export default function MobileAdminOrdersPage() {
         <MobileCard>Nenhum pedido encontrado.</MobileCard>
       ) : (
         filtered.map((order) => (
-          <Link key={order.id} href="/orders">
+          <Link
+            key={order.id}
+            href="/orders"
+            style={{ textDecoration: "none" }}
+          >
             <MobileCard style={{ padding: 14 }}>
               <div
                 style={{
                   display: "grid",
-                  gap: 10,
+                  gap: 12,
                 }}
               >
                 <div
@@ -147,9 +311,10 @@ export default function MobileAdminOrdersPage() {
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
-                        fontSize: 15,
+                        fontSize: 16,
                         fontWeight: 900,
                         color: colors.text,
+                        lineHeight: 1.2,
                       }}
                     >
                       Pedido #{order.number ?? "-"}
@@ -161,7 +326,7 @@ export default function MobileAdminOrdersPage() {
                         color: colors.subtext,
                       }}
                     >
-                      {order.client?.name || "Cliente"}
+                      {order.client?.name || "Cliente não informado"}
                     </div>
                   </div>
 
@@ -194,7 +359,7 @@ export default function MobileAdminOrdersPage() {
                       color: colors.primary,
                     }}
                   >
-                    {order.status || "Sem status"}
+                    {getStatusLabel(order.status)}
                   </span>
 
                   <span
@@ -208,14 +373,14 @@ export default function MobileAdminOrdersPage() {
                       border: `1px solid ${colors.border}`,
                     }}
                   >
-                    {order.paymentStatus || "Pagamento"}
+                    {getPaymentStatusLabel(order.paymentStatus)}
                   </span>
                 </div>
 
                 <div
                   style={{
                     display: "grid",
-                    gap: 6,
+                    gap: 8,
                     fontSize: 12,
                     color: colors.subtext,
                   }}
@@ -234,6 +399,32 @@ export default function MobileAdminOrdersPage() {
                     <User2 size={14} />
                     {order.seller?.name || "Sem vendedor"}
                   </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingTop: 4,
+                    borderTop: `1px solid ${colors.border}`,
+                    color: colors.subtext,
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Wallet size={14} />
+                    Abrir visão completa
+                  </div>
+
+                  <ChevronRight size={16} />
                 </div>
               </div>
             </MobileCard>

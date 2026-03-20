@@ -2,10 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, MessageCircle, Phone, User2 } from "lucide-react";
+import {
+  ChevronRight,
+  MapPin,
+  MessageCircle,
+  Phone,
+  User2,
+  Users,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileAdminListPage from "@/app/components/mobile/mobile-admin-list-page";
-import { MobileCard, formatDateBR } from "@/app/components/mobile/mobile-shell";
+import {
+  MobileCard,
+  MobileSectionTitle,
+  MobileStatCard,
+  formatDateBR,
+} from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -80,7 +92,9 @@ export default function MobileAdminClientsPage() {
       } catch (err) {
         console.error(err);
         if (active) {
-          setError(err instanceof Error ? err.message : "Erro ao carregar clientes.");
+          setError(
+            err instanceof Error ? err.message : "Erro ao carregar clientes."
+          );
         }
       } finally {
         if (active) setLoading(false);
@@ -109,6 +123,22 @@ export default function MobileAdminClientsPage() {
     });
   }, [clients, search]);
 
+  const summary = useMemo(() => {
+    return filtered.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        if (item.active === false) acc.inactive += 1;
+        else acc.active += 1;
+        return acc;
+      },
+      {
+        total: 0,
+        active: 0,
+        inactive: 0,
+      }
+    );
+  }, [filtered]);
+
   return (
     <MobileAdminListPage
       title="Clientes"
@@ -120,6 +150,94 @@ export default function MobileAdminClientsPage() {
       createHref="/m/admin/clients/new"
       createLabel="Novo cliente"
     >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+          gap: 12,
+        }}
+      >
+        <MobileStatCard
+          label="Clientes visíveis"
+          value={String(summary.total)}
+          helper="Resultado do filtro atual"
+        />
+        <MobileStatCard
+          label="Ativos"
+          value={String(summary.active)}
+          helper={`${summary.inactive} inativos`}
+        />
+      </div>
+
+      <MobileCard
+        style={{
+          background: colors.isDark
+            ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
+            : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
+        }}
+      >
+        <MobileSectionTitle title="Visão rápida da base" />
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 12,
+              background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
+              border: `1px solid ${
+                colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
+              }`,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 14,
+                background: colors.isDark ? "#111f39" : "#e8f0ff",
+                color: colors.primary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Users size={18} />
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: colors.subtext,
+                  marginBottom: 2,
+                }}
+              >
+                Gestão mobile
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 900,
+                  color: colors.text,
+                  lineHeight: 1.35,
+                }}
+              >
+                Consulta rápida com ligação e WhatsApp direto na listagem
+              </div>
+            </div>
+          </div>
+        </div>
+      </MobileCard>
+
       {loading ? (
         <MobileCard>Carregando clientes...</MobileCard>
       ) : error ? (
@@ -135,7 +253,7 @@ export default function MobileAdminClientsPage() {
               <div
                 style={{
                   display: "grid",
-                  gap: 10,
+                  gap: 12,
                 }}
               >
                 <div
@@ -149,9 +267,10 @@ export default function MobileAdminClientsPage() {
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
-                        fontSize: 15,
+                        fontSize: 16,
                         fontWeight: 900,
                         color: colors.text,
+                        lineHeight: 1.2,
                       }}
                     >
                       {client.name}
@@ -182,10 +301,7 @@ export default function MobileAdminClientsPage() {
                           : colors.isDark
                           ? "#0f2a17"
                           : "#dcfce7",
-                      color:
-                        client.active === false
-                          ? "#ef4444"
-                          : "#16a34a",
+                      color: client.active === false ? "#ef4444" : "#16a34a",
                     }}
                   >
                     {client.active === false ? "Inativo" : "Ativo"}
@@ -195,14 +311,15 @@ export default function MobileAdminClientsPage() {
                 <div
                   style={{
                     display: "grid",
-                    gap: 6,
+                    gap: 8,
                     fontSize: 12,
                     color: colors.subtext,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <MapPin size={14} />
-                    {[client.city, client.district].filter(Boolean).join(" • ") || "Sem localização"}
+                    {[client.city, client.district].filter(Boolean).join(" • ") ||
+                      "Sem localização"}
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -218,7 +335,7 @@ export default function MobileAdminClientsPage() {
                     gap: 8,
                   }}
                 >
-                  <Link href="/clients">
+                  <Link href="/clients" style={{ textDecoration: "none" }}>
                     <div
                       style={{
                         minHeight: 42,
@@ -234,12 +351,15 @@ export default function MobileAdminClientsPage() {
                         color: colors.text,
                       }}
                     >
-                      <User2 size={14} />
+                      <ChevronRight size={14} />
                       Abrir
                     </div>
                   </Link>
 
-                  <a href={client.phone ? `tel:${client.phone}` : "#"}>
+                  <a
+                    href={client.phone ? `tel:${client.phone}` : "#"}
+                    style={{ textDecoration: "none" }}
+                  >
                     <div
                       style={{
                         minHeight: 42,
@@ -265,6 +385,7 @@ export default function MobileAdminClientsPage() {
                     href={whatsapp ? `https://wa.me/${whatsapp}` : "#"}
                     target="_blank"
                     rel="noreferrer"
+                    style={{ textDecoration: "none" }}
                   >
                     <div
                       style={{

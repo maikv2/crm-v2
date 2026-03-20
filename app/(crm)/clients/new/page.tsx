@@ -347,18 +347,18 @@ export default function NewClientPage() {
   }, [loggedUser?.role, loggedUser?.regionId]);
 
   const canSubmit = useMemo(() => {
-    const mainName =
-      form.personType === "JURIDICA" ? form.legalName.trim() : form.tradeName.trim();
+    const hasName =
+      form.personType === "JURIDICA"
+        ? Boolean(form.legalName.trim() || form.tradeName.trim())
+        : Boolean(form.tradeName.trim());
 
-    if (!mainName) return false;
+    if (!hasName) return false;
     if (isRepresentative && !form.regionId) return false;
 
     return true;
   }, [form, isRepresentative]);
 
-  const representativeRegion = regions.find(
-    (region) => region.id === form.regionId
-  );
+  const representativeRegion = regions.find((region) => region.id === form.regionId);
 
   function updateField<K extends keyof ClientForm>(field: K, value: ClientForm[K]) {
     setForm((prev) => ({
@@ -556,9 +556,7 @@ export default function NewClientPage() {
     }
   }
 
-  const regionLabel = isRepresentative
-    ? "Região do representante"
-    : "Região";
+  const regionLabel = isRepresentative ? "Região do representante" : "Região";
 
   return (
     <div
@@ -732,7 +730,9 @@ export default function NewClientPage() {
             )}
 
             <div style={fieldStyle}>
-              <label style={{ ...labelStyle, color: theme.subtext }}>Nome fantasia *</label>
+              <label style={{ ...labelStyle, color: theme.subtext }}>
+                Nome fantasia {form.personType === "FISICA" ? "*" : ""}
+              </label>
               <input
                 style={{
                   ...inputStyle,
@@ -913,7 +913,9 @@ export default function NewClientPage() {
         <Section title="Informações fiscais" theme={theme}>
           <div style={grid3Style}>
             <div style={{ ...fieldStyle, gridColumn: "span 2" }}>
-              <label style={{ ...labelStyle, color: theme.subtext }}>Razão social</label>
+              <label style={{ ...labelStyle, color: theme.subtext }}>
+                Razão social {form.personType === "JURIDICA" ? "(opcional)" : ""}
+              </label>
               <input
                 style={{
                   ...inputStyle,
@@ -1070,6 +1072,23 @@ export default function NewClientPage() {
         </Section>
 
         <Section title="Endereço" theme={theme}>
+          <div
+            style={{
+              ...helpBoxStyle,
+              marginTop: 0,
+              marginBottom: 18,
+              background: theme.isDark ? "#0f172a" : "#eff6ff",
+              border: theme.isDark ? `1px solid ${theme.border}` : "1px solid #dbeafe",
+              color: theme.isDark ? "#cbd5e1" : "#1e3a8a",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Endereço pode ser parcial</div>
+            <div style={{ fontSize: 13 }}>
+              O cliente pode ser cadastrado mesmo com endereço incompleto. Depois, as
+              coordenadas podem ser ajustadas manualmente no mapa.
+            </div>
+          </div>
+
           <div style={grid5Style}>
             <div style={fieldStyle}>
               <label style={{ ...labelStyle, color: theme.subtext }}>País</label>

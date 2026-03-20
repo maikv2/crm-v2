@@ -1,224 +1,175 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
   BriefcaseBusiness,
-  ChevronRight,
-  ClipboardPlus,
   Package,
-  ShoppingCart,
-  Users,
   Wrench,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
-import { MobileCard, MobileSectionTitle } from "@/app/components/mobile/mobile-shell";
-import { repOperationLinks } from "@/app/components/mobile/mobile-rep-shared";
+import MobileAppear from "@/app/components/mobile/mobile-appear";
+import {
+  MobileCard,
+  MobileSectionTitle,
+  MobileStatCard,
+} from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-type RepOverviewResponse = {
-  summary: {
-    pendingPortalRequests: number;
-    pendingProspectsCount: number;
-    visitsTodayCount: number;
-    exhibitorsCount: number;
-    clientsCount: number;
-  };
+type ShortcutProps = {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
 };
 
-export default function MobileRepOperationsPage() {
-  const router = useRouter();
+function Shortcut({ href, icon, title, description }: ShortcutProps) {
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<RepOverviewResponse | null>(null);
+  return (
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <MobileCard
+        style={{
+          padding: 14,
+          borderRadius: 18,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 14,
+              background: colors.isDark ? "#111f39" : "#e8f0ff",
+              color: colors.primary,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {icon}
+          </div>
 
-  useEffect(() => {
-    let active = true;
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 900,
+                color: colors.text,
+                lineHeight: 1.2,
+                marginBottom: 6,
+              }}
+            >
+              {title}
+            </div>
 
-    async function loadOperations() {
-      try {
-        setLoading(true);
-        setError(null);
+            <div
+              style={{
+                fontSize: 12,
+                color: colors.subtext,
+                lineHeight: 1.45,
+              }}
+            >
+              {description}
+            </div>
+          </div>
 
-        const res = await fetch("/api/mobile/rep/overview", {
-          cache: "no-store",
-        });
+          <ArrowRight size={16} color={colors.subtext} />
+        </div>
+      </MobileCard>
+    </Link>
+  );
+}
 
-        const json = await res.json().catch(() => null);
-
-        if (res.status === 401) {
-          router.push("/login?redirect=/m/rep/operations");
-          return;
-        }
-
-        if (res.status === 403) {
-          router.push("/m/rep");
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error(json?.error || "Erro ao carregar operações.");
-        }
-
-        if (active) {
-          setData(json);
-        }
-      } catch (err) {
-        console.error(err);
-        if (active) {
-          setError(
-            err instanceof Error ? err.message : "Erro ao carregar operações."
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadOperations();
-
-    return () => {
-      active = false;
-    };
-  }, [router]);
-
-  const operationLinks = data
-    ? [
-        {
-          href: repOperationLinks.orders,
-          label: "Pedidos da região",
-          helper: `${data.summary.pendingPortalRequests} solicitações pendentes`,
-          icon: ShoppingCart,
-        },
-        {
-          href: repOperationLinks.clients,
-          label: "Clientes da região",
-          helper: `${data.summary.clientsCount} clientes`,
-          icon: Users,
-        },
-        {
-          href: repOperationLinks.visit,
-          label: "Registrar visita",
-          helper: `${data.summary.visitsTodayCount} visitas hoje`,
-          icon: ClipboardPlus,
-        },
-        {
-          href: repOperationLinks.exhibitors,
-          label: "Expositores",
-          helper: `${data.summary.exhibitorsCount} expositores`,
-          icon: Package,
-        },
-        {
-          href: repOperationLinks.prospects,
-          label: "Prospectos",
-          helper: `${data.summary.pendingProspectsCount} prospectos pendentes`,
-          icon: BriefcaseBusiness,
-        },
-        {
-          href: repOperationLinks.maintenance,
-          label: "Manutenções e operação",
-          helper: "Acompanhar expositores e movimentação",
-          icon: Wrench,
-        },
-      ]
-    : [];
+export default function RepOperationsMobile() {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   return (
     <MobileRepPageFrame
       title="Operações"
-      subtitle="Atalhos rápidos da sua região"
+      subtitle="Centro operacional da sua região"
       desktopHref="/rep"
     >
-      {loading ? (
-        <MobileCard>Carregando operações...</MobileCard>
-      ) : error ? (
-        <MobileCard>{error}</MobileCard>
-      ) : (
-        <MobileCard>
-          <MobileSectionTitle title="Ferramentas" />
+      <MobileAppear>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+            gap: 12,
+          }}
+        >
+          <MobileStatCard
+            label="Área"
+            value="Operações"
+            helper="Centro operacional"
+          />
+          <MobileStatCard
+            label="Modo"
+            value="Regional"
+            helper="Somente sua região"
+          />
+        </div>
+      </MobileAppear>
 
-          <div style={{ display: "grid", gap: 10 }}>
-            {operationLinks.map((item) => {
-              const Icon = item.icon;
-
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  style={{ textDecoration: "none" }}
-                >
-                  <div
-                    style={{
-                      minHeight: 62,
-                      borderRadius: 16,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.cardBg,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "0 14px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        minWidth: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: 12,
-                          background: colors.isDark ? "#111827" : "#f8fafc",
-                          border: `1px solid ${colors.border}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Icon size={18} />
-                      </div>
-
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 900,
-                            color: colors.text,
-                          }}
-                        >
-                          {item.label}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 12,
-                            color: colors.subtext,
-                          }}
-                        >
-                          {item.helper}
-                        </div>
-                      </div>
-                    </div>
-
-                    <ChevronRight size={18} color={colors.subtext} />
-                  </div>
-                </Link>
-              );
-            })}
+      <MobileAppear delay={60}>
+        <MobileCard
+          style={{
+            background: colors.isDark
+              ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
+              : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
+          }}
+        >
+          <MobileSectionTitle title="Fluxo operacional" />
+          <div
+            style={{
+              fontSize: 13,
+              color: colors.isDark
+                ? "rgba(255,255,255,0.86)"
+                : colors.subtext,
+              lineHeight: 1.6,
+            }}
+          >
+            Centralize solicitações, visitas, pedidos e demandas operacionais com
+            o mesmo padrão visual do admin.
           </div>
         </MobileCard>
-      )}
+      </MobileAppear>
+
+      <MobileAppear delay={110}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <Shortcut
+            href="/m/rep/visit"
+            icon={<BriefcaseBusiness size={18} />}
+            title="Registrar visita"
+            description="Lançe visitas e acompanhe a agenda comercial."
+          />
+
+          <Shortcut
+            href="/m/rep/orders/new"
+            icon={<Package size={18} />}
+            title="Novo pedido"
+            description="Abra um novo pedido diretamente na versão mobile."
+          />
+
+          <Shortcut
+            href="/rep"
+            icon={<Wrench size={18} />}
+            title="Abrir painel completo"
+            description="Acessar a área completa do representante no desktop."
+          />
+        </div>
+      </MobileAppear>
     </MobileRepPageFrame>
   );
 }

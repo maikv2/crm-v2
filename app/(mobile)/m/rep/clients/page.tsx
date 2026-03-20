@@ -11,7 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import MobileRepListPage from "@/app/components/mobile/mobile-rep-list-page";
+import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import MobileAppear from "@/app/components/mobile/mobile-appear";
 import MobileSkeletonCard from "@/app/components/mobile/mobile-skeleton-card";
 import {
@@ -158,15 +158,34 @@ export default function MobileRepClientsPage() {
   }, [filtered]);
 
   return (
-    <MobileRepListPage
+    <MobileRepPageFrame
       title="Clientes"
       subtitle="Clientes da sua região"
       desktopHref="/rep/clients"
-      search={search}
-      onSearchChange={setSearch}
-      searchPlaceholder="Buscar por nome, cidade, bairro ou região"
     >
       <MobileAppear>
+        <MobileCard>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome, cidade, bairro ou região"
+            style={{
+              width: "100%",
+              height: 46,
+              borderRadius: 14,
+              border: `1px solid ${colors.border}`,
+              background: colors.inputBg,
+              color: colors.text,
+              padding: "0 14px",
+              outline: "none",
+              fontSize: 14,
+            }}
+          />
+        </MobileCard>
+      </MobileAppear>
+
+      <MobileAppear delay={50}>
         <div
           style={{
             display: "grid",
@@ -187,7 +206,7 @@ export default function MobileRepClientsPage() {
         </div>
       </MobileAppear>
 
-      <MobileAppear delay={60}>
+      <MobileAppear delay={90}>
         <MobileCard
           style={{
             background: colors.isDark
@@ -196,12 +215,7 @@ export default function MobileRepClientsPage() {
           }}
         >
           <MobileSectionTitle title="Visão rápida da região" />
-          <div
-            style={{
-              display: "grid",
-              gap: 10,
-            }}
-          >
+          <div style={{ display: "grid", gap: 10 }}>
             <div
               style={{
                 borderRadius: 16,
@@ -442,6 +456,6 @@ export default function MobileRepClientsPage() {
           );
         })
       )}
-    </MobileRepListPage>
+    </MobileRepPageFrame>
   );
 }

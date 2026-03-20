@@ -186,12 +186,7 @@ export default function RepOrdersMobile() {
       >
         <MobileAppear>
           <MobileCard>
-            <div
-              style={{
-                display: "grid",
-                gap: 10,
-              }}
-            >
+            <div style={{ display: "grid", gap: 10 }}>
               <input
                 type="text"
                 value={search}
@@ -353,12 +348,7 @@ export default function RepOrdersMobile() {
             <MobileAppear key={order.id} delay={Math.min(index * 35, 180)}>
               <Link href="/rep/orders" style={{ textDecoration: "none" }}>
                 <MobileCard style={{ padding: 14 }}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 12,
-                    }}
-                  >
+                  <div style={{ display: "grid", gap: 12 }}>
                     <div
                       style={{
                         display: "flex",
@@ -401,13 +391,7 @@ export default function RepOrdersMobile() {
                       </div>
                     </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 8,
-                      }}
-                    >
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                       <span
                         style={{
                           borderRadius: 999,
@@ -475,7 +459,9 @@ export default function RepOrdersMobile() {
                       }}
                     >
                       <div>
-                        {order.totalItems ? `${order.totalItems} item(ns)` : "Abrir pedido"}
+                        {order.totalItems
+                          ? `${order.totalItems} item(ns)`
+                          : "Abrir pedido"}
                       </div>
                       <ChevronRight size={16} />
                     </div>

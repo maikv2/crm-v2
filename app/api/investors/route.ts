@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const investors = await prisma.investor.findMany({
@@ -10,10 +12,7 @@ export async function GET() {
       include: {
         shares: {
           where: {
-            OR: [
-              { isActive: true },
-              { investorId: { not: null } },
-            ],
+            OR: [{ isActive: true }, { investorId: { not: null } }],
           },
           include: {
             region: {

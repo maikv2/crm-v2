@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateInvestorDistributionPreview } from "@/lib/investor-distribution";
 
+export const dynamic = "force-dynamic";
+
 function isValidMonth(month: number) {
   return Number.isInteger(month) && month >= 1 && month <= 12;
 }
@@ -55,10 +57,7 @@ export async function GET(request: NextRequest) {
             prisma.share.findMany({
               where: {
                 regionId: region.id,
-                OR: [
-                  { isActive: true },
-                  { investorId: { not: null } },
-                ],
+                OR: [{ isActive: true }, { investorId: { not: null } }],
               },
               orderBy: {
                 quotaNumber: "asc",

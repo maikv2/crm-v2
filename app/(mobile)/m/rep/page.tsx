@@ -6,7 +6,6 @@ import {
   CalendarDays,
   ChevronRight,
   CircleDollarSign,
-  Package,
   PlusCircle,
   Store,
   Target,
@@ -187,9 +186,9 @@ export default function RepMobileDashboardPage() {
         const agendaJson = (await agendaRes.json().catch(() => null)) as
           | AgendaResponse
           | null;
-        const commissionsJson = (await commissionsRes.json().catch(() => null)) as
-          | CommissionsResponse
-          | null;
+        const commissionsJson = (await commissionsRes.json().catch(
+          () => null
+        )) as CommissionsResponse | null;
 
         if (!dashboardRes.ok) {
           throw new Error(
@@ -298,14 +297,14 @@ export default function RepMobileDashboardPage() {
             }}
           >
             <MobileStatCard
-              label="Visitas hoje"
-              value={String(dashboard?.summary?.visitsToday ?? 0)}
-              helper={`${agendaSummary.visitadosHoje} já visitados`}
-            />
-            <MobileStatCard
               label="Revisitas atrasadas"
               value={String(agendaSummary.atrasados)}
               helper={`${agendaSummary.proximos} próximas`}
+            />
+            <MobileStatCard
+              label="Visitas hoje"
+              value={String(dashboard?.summary?.visitsToday ?? 0)}
+              helper={`${agendaSummary.visitadosHoje} já visitados`}
             />
             <MobileStatCard
               label="Comissão do mês"
@@ -359,7 +358,7 @@ export default function RepMobileDashboardPage() {
             <div style={{ display: "grid", gap: 12 }}>
               <Shortcut
                 href="/m/rep/visit"
-                title="Minha agenda"
+                title="Abrir agenda do dia"
                 subtitle="Ver visitas do dia, atrasadas e próximas"
                 icon={<CalendarDays size={18} />}
               />
@@ -372,23 +371,9 @@ export default function RepMobileDashboardPage() {
             <div style={{ display: "grid", gap: 12 }}>
               <Shortcut
                 href="/m/rep/operations"
-                title="Abrir operações"
+                title="Abrir centro de operações"
                 subtitle="Cadastros, mapa, agenda e apoio operacional"
                 icon={<Wrench size={18} />}
-              />
-
-              <Shortcut
-                href="/m/rep/orders"
-                title="Pedidos"
-                subtitle="Consultar pedidos e andamento"
-                icon={<Package size={18} />}
-              />
-
-              <Shortcut
-                href="/m/rep/finance"
-                title="Financeiro"
-                subtitle="Ver comissão, cobranças e repasses"
-                icon={<CircleDollarSign size={18} />}
               />
             </div>
           </MobileCard>

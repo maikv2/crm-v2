@@ -1,9 +1,9 @@
 import {
   Home,
-  MoreHorizontal,
   Package,
   Users,
   Wallet,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 
@@ -18,17 +18,17 @@ export const repMobileNavItems: RepMobileNavItem[] = [
   { label: "Pedidos", href: "/m/rep/orders", icon: Package },
   { label: "Financeiro", href: "/m/rep/finance", icon: Wallet },
   { label: "Clientes", href: "/m/rep/clients", icon: Users },
-  { label: "Mais", href: "/m/rep/operations", icon: MoreHorizontal },
+  { label: "OP", href: "/m/rep/operations", icon: Wrench },
 ];
 
 export const repOperationLinks = {
   clients: "/m/rep/clients",
   orders: "/m/rep/orders",
-  commissions: "/m/rep/commissions",
+  commissions: "/m/rep/finance/commissions",
   finance: "/m/rep/finance",
   operations: "/m/rep/operations",
   visit: "/m/rep/visit",
-  exhibitors: "/m/rep/operations",
-  prospects: "/m/rep/operations",
-  maintenance: "/m/rep/operations",
+  exhibitors: "/m/rep/exhibitors",
+  prospects: "/m/rep/prospects",
+  map: "/m/rep/map",
 };

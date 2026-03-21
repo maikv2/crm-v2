@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ChevronRight,
   CircleDollarSign,
+  Map,
   Package,
   PlusCircle,
   Store,
@@ -45,7 +46,6 @@ type AgendaResponse = {
   hoje?: any[];
   proximos?: any[];
   visitadosHoje?: any[];
-  regionName?: string | null;
 };
 
 type CommissionsResponse = {
@@ -305,21 +305,21 @@ export default function RepMobileDashboardPage() {
               />
 
               <Shortcut
-                href="/clients/new"
+                href="/m/rep/clients/new"
                 title="Novo cliente"
                 subtitle="Cadastrar um novo cliente rapidamente"
                 icon={<UserPlus size={18} />}
               />
 
               <Shortcut
-                href="/rep/exhibitors"
+                href="/m/rep/exhibitors/new"
                 title="Novo expositor"
-                subtitle="Abrir a área de expositores da região"
+                subtitle="Abrir o cadastro do expositor da região"
                 icon={<Store size={18} />}
               />
 
               <Shortcut
-                href="/rep/prospects"
+                href="/m/rep/prospects"
                 title="Prospectos"
                 subtitle="Cadastrar e acompanhar prospecções"
                 icon={<Target size={18} />}
@@ -337,66 +337,13 @@ export default function RepMobileDashboardPage() {
                 subtitle="Ver visitas do dia, atrasadas e próximas"
                 icon={<CalendarDays size={18} />}
               />
-            </div>
 
-            <div
-              style={{
-                marginTop: 14,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                  color: colors.text,
-                }}
-              >
-                <span>Visitas para hoje</span>
-                <strong>{agendaSummary.hoje}</strong>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                  color: colors.text,
-                }}
-              >
-                <span>Clientes atrasados</span>
-                <strong>{agendaSummary.atrasados}</strong>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                  color: colors.text,
-                }}
-              >
-                <span>Visitados hoje</span>
-                <strong>{agendaSummary.visitadosHoje}</strong>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                  color: colors.text,
-                }}
-              >
-                <span>Próximas visitas</span>
-                <strong>{agendaSummary.proximos}</strong>
-              </div>
+              <Shortcut
+                href="/m/rep/map"
+                title="Mapa"
+                subtitle="Abrir clientes e prospectos com rota no Google Maps"
+                icon={<Map size={18} />}
+              />
             </div>
           </MobileCard>
 
@@ -407,7 +354,7 @@ export default function RepMobileDashboardPage() {
               <Shortcut
                 href="/m/rep/operations"
                 title="Abrir operações"
-                subtitle="Acessar ferramentas operacionais do representante"
+                subtitle="Cadastros, mapa, agenda e apoio operacional"
                 icon={<Wrench size={18} />}
               />
 

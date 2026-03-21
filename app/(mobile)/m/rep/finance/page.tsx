@@ -13,28 +13,30 @@ import {
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-type CommissionsResponse = {
-  dayCommissionCents?: number;
-  weekCommissionCents?: number;
-  monthCommissionCents?: number;
-  totalGeneratedCents?: number;
-  awaitingTransferCents?: number;
-  transferredCents?: number;
-};
-
-type ReceivableItem = {
-  id: string;
-  clientName?: string | null;
-  amountCents?: number | null;
-  dueDate?: string | null;
-  status?: string | null;
+type CommissionSummaryResponse = {
+  summary?: {
+    total?: number;
+    available?: number;
+    awaitingTransfer?: number;
+    awaitingPayment?: number;
+  };
 };
 
 type ReceivablesResponse = {
-  items?: ReceivableItem[];
-  totalOpenCents?: number;
-  overdueCents?: number;
-  paidCents?: number;
+  items?: Array<{
+    id: string;
+    amountCents?: number | null;
+    dueDate?: string | null;
+    status?: string | null;
+  }>;
+};
+
+type TransfersResponse = {
+  items?: Array<{
+    id: string;
+    amountCents?: number | null;
+    status?: string | null;
+  }>;
 };
 
 function Shortcut({
@@ -115,13 +117,11 @@ export default function MobileRepFinancePage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [commissions, setCommissions] = useState<CommissionsResponse | null>(
-    null
-  );
-  const [receivables, setReceivables] = useState<ReceivablesResponse | null>(
-    null
-  );
+  const [commissions, setCommissions] =
+    useState<CommissionSummaryResponse | null>(null);
+  const [receivables, setReceivables] =
+    useState<ReceivablesResponse | null>(null);
+  const [transfers, setTransfers] = useState<TransfersResponse | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -131,23 +131,28 @@ export default function MobileRepFinancePage() {
         setLoading(true);
         setError(null);
 
-        const [commissionsRes, receivablesRes] = await Promise.all([
-          fetch("/api/rep/commissions", { cache: "no-store" }),
-          fetch("/api/rep/receivables", { cache: "no-store" }),
-        ]);
+        const [commissionsRes, receivablesRes, transfersRes] = await Promise.all(
+          [
+            fetch("/api/rep/finance/commissions", { cache: "no-store" }),
+            fetch("/api/rep/finance/receivables", { cache: "no-store" }),
+            fetch("/api/rep/finance/transfers", { cache: "no-store" }),
+          ]
+        );
 
         const commissionsJson = await commissionsRes.json().catch(() => null);
         const receivablesJson = await receivablesRes.json().catch(() => null);
+        const transfersJson = await transfersRes.json().catch(() => null);
 
         if (!commissionsRes.ok) {
           throw new Error(
-            commissionsJson?.error || "Erro ao carregar comissões."
+            commissionsJson?.error || "Erro ao carregar financeiro."
           );
         }
 
         if (active) {
           setCommissions(commissionsJson);
-          setReceivables(receivablesRes.ok ? receivablesJson : null);
+          setReceivables(receivablesJson);
+          setTransfers(transfersJson);
         }
       } catch (err) {
         console.error(err);
@@ -170,15 +175,46 @@ export default function MobileRepFinancePage() {
     };
   }, []);
 
-  const receivableStats = useMemo(() => {
+  const receivablesStats = useMemo(() => {
+    const now = new Date();
     const items = receivables?.items ?? [];
-    return {
-      totalItems: items.length,
-      totalOpenCents: receivables?.totalOpenCents ?? 0,
-      overdueCents: receivables?.overdueCents ?? 0,
-      paidCents: receivables?.paidCents ?? 0,
-    };
+
+    return items.reduce(
+      (acc, item) => {
+        const value = item.amountCents ?? 0;
+        const isPaid = String(item.status ?? "").toUpperCase().includes("PAID");
+        const dueDate = item.dueDate ? new Date(item.dueDate) : null;
+        const overdue = !isPaid && dueDate && dueDate.getTime() < now.getTime();
+
+        if (isPaid) acc.paid += value;
+        else acc.open += value;
+
+        if (overdue) acc.overdue += value;
+
+        return acc;
+      },
+      {
+        open: 0,
+        overdue: 0,
+        paid: 0,
+      }
+    );
   }, [receivables]);
+
+  const transferStats = useMemo(() => {
+    return (transfers?.items ?? []).reduce(
+      (acc, item) => {
+        const value = item.amountCents ?? 0;
+        const status = String(item.status ?? "").toUpperCase();
+
+        if (status.includes("PENDING")) acc.pending += value;
+        else acc.done += value;
+
+        return acc;
+      },
+      { pending: 0, done: 0 }
+    );
+  }, [transfers]);
 
   return (
     <MobileRepPageFrame
@@ -192,41 +228,6 @@ export default function MobileRepFinancePage() {
         <MobileCard>{error}</MobileCard>
       ) : (
         <>
-          <MobileCard style={{ padding: 16 }}>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: colors.subtext,
-                marginBottom: 8,
-              }}
-            >
-              Comissão do mês
-            </div>
-
-            <div
-              style={{
-                fontSize: 28,
-                lineHeight: 1.1,
-                fontWeight: 900,
-                color: colors.text,
-                marginBottom: 8,
-              }}
-            >
-              {formatMoneyBR(commissions?.monthCommissionCents ?? 0)}
-            </div>
-
-            <div
-              style={{
-                fontSize: 13,
-                color: colors.subtext,
-              }}
-            >
-              Semana: {formatMoneyBR(commissions?.weekCommissionCents ?? 0)} •
-              Hoje: {formatMoneyBR(commissions?.dayCommissionCents ?? 0)}
-            </div>
-          </MobileCard>
-
           <div
             style={{
               display: "grid",
@@ -236,23 +237,23 @@ export default function MobileRepFinancePage() {
           >
             <MobileStatCard
               label="Total gerado"
-              value={formatMoneyBR(commissions?.totalGeneratedCents ?? 0)}
+              value={formatMoneyBR(commissions?.summary?.total ?? 0)}
               helper="Comissões acumuladas"
             />
             <MobileStatCard
+              label="Aguardando pagamento"
+              value={formatMoneyBR(commissions?.summary?.awaitingPayment ?? 0)}
+              helper="Pedido ainda não pago"
+            />
+            <MobileStatCard
               label="Aguardando repasse"
-              value={formatMoneyBR(commissions?.awaitingTransferCents ?? 0)}
-              helper="Pendente para receber"
+              value={formatMoneyBR(commissions?.summary?.awaitingTransfer ?? 0)}
+              helper="Pago pelo cliente"
             />
             <MobileStatCard
-              label="Já repassado"
-              value={formatMoneyBR(commissions?.transferredCents ?? 0)}
-              helper="Histórico pago"
-            />
-            <MobileStatCard
-              label="Contas abertas"
-              value={formatMoneyBR(receivableStats.totalOpenCents)}
-              helper={`${receivableStats.totalItems} títulos`}
+              label="Contas em aberto"
+              value={formatMoneyBR(receivablesStats.open)}
+              helper={formatMoneyBR(receivablesStats.overdue)}
             />
           </div>
 
@@ -263,17 +264,15 @@ export default function MobileRepFinancePage() {
               <Shortcut
                 href="/m/rep/finance/commissions"
                 title="Minhas comissões"
-                subtitle="Acompanhar comissão gerada, pendente e repassada"
+                subtitle="Acompanhar comissão gerada, pendente e disponível"
                 icon={<CircleDollarSign size={18} />}
               />
-
               <Shortcut
                 href="/m/rep/finance/receivables"
                 title="Contas a receber"
-                subtitle="Ver cobranças em aberto, pagas e em atraso"
+                subtitle="Ver cobranças em aberto, pagas e atrasadas"
                 icon={<Receipt size={18} />}
               />
-
               <Shortcut
                 href="/m/rep/finance/transfers"
                 title="Repasses"
@@ -284,7 +283,7 @@ export default function MobileRepFinancePage() {
           </MobileCard>
 
           <MobileCard>
-            <MobileSectionTitle title="Resumo de cobranças" />
+            <MobileSectionTitle title="Resumo rápido" />
 
             <div style={{ display: "grid", gap: 10 }}>
               <div
@@ -297,7 +296,7 @@ export default function MobileRepFinancePage() {
                 }}
               >
                 <span>Em aberto</span>
-                <strong>{formatMoneyBR(receivableStats.totalOpenCents)}</strong>
+                <strong>{formatMoneyBR(receivablesStats.open)}</strong>
               </div>
 
               <div
@@ -310,7 +309,7 @@ export default function MobileRepFinancePage() {
                 }}
               >
                 <span>Em atraso</span>
-                <strong>{formatMoneyBR(receivableStats.overdueCents)}</strong>
+                <strong>{formatMoneyBR(receivablesStats.overdue)}</strong>
               </div>
 
               <div
@@ -322,8 +321,21 @@ export default function MobileRepFinancePage() {
                   color: colors.text,
                 }}
               >
-                <span>Já pagas</span>
-                <strong>{formatMoneyBR(receivableStats.paidCents)}</strong>
+                <span>Já pago</span>
+                <strong>{formatMoneyBR(receivablesStats.paid)}</strong>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  fontSize: 14,
+                  color: colors.text,
+                }}
+              >
+                <span>Repasses pendentes</span>
+                <strong>{formatMoneyBR(transferStats.pending)}</strong>
               </div>
             </div>
           </MobileCard>

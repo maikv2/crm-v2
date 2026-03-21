@@ -16,8 +16,22 @@ function isRepPath(pathname: string) {
   return pathname === "/rep" || pathname.startsWith("/rep/");
 }
 
+function isRepresentativeSharedAdminForm(pathname: string) {
+  if (pathname === "/clients/new") return true;
+  if (pathname === "/exhibitors/new") return true;
+
+  const isClientEdit =
+    pathname.startsWith("/clients/") && pathname.endsWith("/edit");
+
+  return isClientEdit;
+}
+
 function getRedirectByRole(user: AuthUser, pathname: string) {
-  if (user.role === "REPRESENTATIVE" && !isRepPath(pathname)) {
+  if (
+    user.role === "REPRESENTATIVE" &&
+    !isRepPath(pathname) &&
+    !isRepresentativeSharedAdminForm(pathname)
+  ) {
     return "/rep";
   }
 

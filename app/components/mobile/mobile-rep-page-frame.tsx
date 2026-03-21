@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Smartphone } from "lucide-react";
 import MobileShell from "@/app/components/mobile/mobile-shell";
 import { repMobileNavItems } from "@/app/components/mobile/mobile-rep-shared";
 import { useTheme } from "@/app/providers/theme-provider";
@@ -42,13 +43,16 @@ export default function MobileRepPageFrame({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              gap: 6,
               fontSize: 12,
               fontWeight: 800,
               whiteSpace: "nowrap",
               textDecoration: "none",
             }}
+            title="Abrir modo normal"
           >
-            Desktop
+            <Smartphone size={15} />
+            Normal
           </Link>
         ) : undefined
       }

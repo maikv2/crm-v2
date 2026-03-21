@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Smartphone } from "lucide-react";
 import MobileShell from "@/app/components/mobile/mobile-shell";
 import { adminMobileNavItems } from "@/app/components/mobile/mobile-admin-shared";
 import { useTheme } from "@/app/providers/theme-provider";
@@ -26,6 +27,7 @@ export default function MobilePageFrame({
       subtitle={subtitle}
       navItems={adminMobileNavItems}
       showBrand
+      brandHref="/m/admin"
       rightSlot={
         desktopHref ? (
           <Link
@@ -41,12 +43,16 @@ export default function MobilePageFrame({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              gap: 6,
               fontSize: 12,
               fontWeight: 800,
               whiteSpace: "nowrap",
+              textDecoration: "none",
             }}
+            title="Abrir modo normal"
           >
-            Desktop
+            <Smartphone size={15} />
+            Normal
           </Link>
         ) : undefined
       }

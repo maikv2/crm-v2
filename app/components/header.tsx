@@ -19,29 +19,34 @@ import { getThemeColors } from "../../lib/theme";
 import { useEffect, useRef, useState } from "react";
 
 function getPageTitle(pathname: string) {
-  if (pathname.startsWith("/mobile/admin/clients")) return "Clientes";
-  if (pathname.startsWith("/mobile/admin/dashboard")) return "Dashboard";
-  if (pathname.startsWith("/mobile/admin/exhibitors")) return "Expositores";
-  if (pathname.startsWith("/mobile/admin/products")) return "Produtos";
-  if (pathname.startsWith("/mobile/admin/orders")) return "Pedidos";
-  if (pathname.startsWith("/mobile/admin/finance")) return "Financeiro";
-  if (pathname.startsWith("/mobile/admin/stock")) return "Estoque";
-  if (pathname.startsWith("/mobile/admin/sales-dashboard")) return "Painel de Vendas";
-  if (pathname.startsWith("/mobile/admin/regions")) return "Regiões";
-  if (pathname.startsWith("/mobile/admin/investors")) return "Investidores";
-  if (pathname.startsWith("/mobile/admin/representatives")) return "Representantes";
-  if (pathname.startsWith("/mobile/admin/settings")) return "Configurações";
+  if (pathname.startsWith("/m/admin/clients")) return "Clientes";
+  if (pathname.startsWith("/m/admin")) return "Dashboard";
+  if (pathname.startsWith("/m/admin/exhibitors")) return "Expositores";
+  if (pathname.startsWith("/m/admin/products")) return "Produtos";
+  if (pathname.startsWith("/m/admin/orders")) return "Pedidos";
+  if (pathname.startsWith("/m/admin/finance")) return "Financeiro";
+  if (pathname.startsWith("/m/admin/stock")) return "Estoque";
+  if (pathname.startsWith("/m/admin/sales")) return "Painel de Vendas";
+  if (pathname.startsWith("/m/admin/regions")) return "Regiões";
+  if (pathname.startsWith("/m/admin/investors")) return "Investidores";
+  if (pathname.startsWith("/m/admin/representatives")) return "Representantes";
+  if (pathname.startsWith("/m/admin/settings")) return "Configurações";
+  if (pathname.startsWith("/m/admin/prospects")) return "Prospectos";
+  if (pathname.startsWith("/m/admin/map")) return "Mapa";
+  if (pathname.startsWith("/m/admin/alerts")) return "Alertas";
 
-  if (pathname.startsWith("/mobile/rep/sales-dashboard")) return "Painel de Vendas";
-  if (pathname.startsWith("/mobile/rep/agenda")) return "Agenda";
-  if (pathname.startsWith("/mobile/rep/clients")) return "Clientes";
-  if (pathname.startsWith("/mobile/rep/exhibitors")) return "Expositores";
-  if (pathname.startsWith("/mobile/rep/stock")) return "Estoque";
-  if (pathname.startsWith("/mobile/rep/orders")) return "Pedidos";
-  if (pathname.startsWith("/mobile/rep/finance")) return "Financeiro";
-  if (pathname.startsWith("/mobile/rep")) return "Representante";
+  if (pathname.startsWith("/m/rep/clients")) return "Clientes";
+  if (pathname.startsWith("/m/rep/orders")) return "Pedidos";
+  if (pathname.startsWith("/m/rep/finance")) return "Financeiro";
+  if (pathname.startsWith("/m/rep/commissions")) return "Comissões";
+  if (pathname.startsWith("/m/rep/operations")) return "Operações";
+  if (pathname.startsWith("/m/rep/visit")) return "Visitas";
+  if (pathname.startsWith("/m/rep")) return "Representante";
 
-  if (pathname.startsWith("/mobile/investor")) return "Investidor";
+  if (pathname.startsWith("/m/investor/quotas")) return "Cotas";
+  if (pathname.startsWith("/m/investor/distributions")) return "Distribuições";
+  if (pathname.startsWith("/m/investor/portal")) return "Portal do Investidor";
+  if (pathname.startsWith("/m/investor")) return "Investidor";
 
   if (pathname.startsWith("/clients")) return "Clientes";
   if (pathname.startsWith("/dashboard")) return "Dashboard";
@@ -55,6 +60,10 @@ function getPageTitle(pathname: string) {
   if (pathname.startsWith("/investors")) return "Investidores";
   if (pathname.startsWith("/representatives")) return "Representantes";
   if (pathname.startsWith("/settings")) return "Configurações";
+  if (pathname.startsWith("/prospects")) return "Prospectos";
+  if (pathname.startsWith("/map")) return "Mapa";
+  if (pathname.startsWith("/alerts")) return "Alertas";
+
   if (pathname.startsWith("/rep/sales-dashboard")) return "Painel de Vendas";
   if (pathname.startsWith("/rep/agenda")) return "Agenda";
   if (pathname.startsWith("/rep/clients")) return "Clientes";
@@ -62,7 +71,14 @@ function getPageTitle(pathname: string) {
   if (pathname.startsWith("/rep/stock")) return "Estoque";
   if (pathname.startsWith("/rep/orders")) return "Pedidos";
   if (pathname.startsWith("/rep/finance")) return "Financeiro";
+  if (pathname.startsWith("/rep/commissions")) return "Comissões";
+  if (pathname.startsWith("/rep/operations")) return "Operações";
+  if (pathname.startsWith("/rep/visit")) return "Visitas";
   if (pathname.startsWith("/rep")) return "Representante";
+
+  if (pathname.startsWith("/investor/quotas")) return "Cotas";
+  if (pathname.startsWith("/investor/distributions")) return "Distribuições";
+  if (pathname.startsWith("/investor/portal")) return "Portal do Investidor";
   if (pathname.startsWith("/investor")) return "Investidor";
 
   return "V2 CRM";
@@ -75,68 +91,77 @@ type LoggedUser = {
   role: string;
 };
 
-function getDesktopBasePath(user: LoggedUser | null) {
-  if (user?.role === "REPRESENTATIVE") return "/rep";
-  if (user?.role === "INVESTOR") return "/investor";
-  return "";
+function isMobileRoute(pathname: string) {
+  return (
+    pathname.startsWith("/m/admin") ||
+    pathname.startsWith("/m/rep") ||
+    pathname.startsWith("/m/investor")
+  );
 }
 
-function getMobileBasePath(user: LoggedUser | null) {
-  if (user?.role === "REPRESENTATIVE") return "/mobile/rep";
-  if (user?.role === "INVESTOR") return "/mobile/investor";
-  return "/mobile/admin";
-}
-
-function getToggleRoute(pathname: string, user: LoggedUser | null) {
-  const mobileBase = getMobileBasePath(user);
-  const desktopBase = getDesktopBasePath(user);
-
-  const isMobileRoute =
-    pathname.startsWith("/mobile/admin") ||
-    pathname.startsWith("/mobile/rep") ||
-    pathname.startsWith("/mobile/investor");
-
-  if (isMobileRoute) {
-    if (pathname.startsWith("/mobile/admin")) {
-      const rest = pathname.replace("/mobile/admin", "") || "/dashboard";
-      return `${desktopBase}${rest}`;
-    }
-
-    if (pathname.startsWith("/mobile/rep")) {
-      const rest = pathname.replace("/mobile/rep", "") || "";
-      return `${desktopBase}${rest || ""}`;
-    }
-
-    if (pathname.startsWith("/mobile/investor")) {
-      const rest = pathname.replace("/mobile/investor", "") || "";
-      return `${desktopBase}${rest || ""}`;
-    }
-  }
-
+function desktopToMobile(pathname: string, user: LoggedUser | null) {
   if (user?.role === "REPRESENTATIVE") {
     if (pathname.startsWith("/rep")) {
-      const rest = pathname.replace("/rep", "") || "";
-      return `${mobileBase}${rest || ""}`;
+      const rest = pathname.replace("/rep", "");
+      return `/m/rep${rest}`;
     }
-
-    return mobileBase;
+    return "/m/rep";
   }
 
   if (user?.role === "INVESTOR") {
     if (pathname.startsWith("/investor")) {
-      const rest = pathname.replace("/investor", "") || "";
-      return `${mobileBase}${rest || ""}`;
+      const rest = pathname.replace("/investor", "");
+      return `/m/investor${rest}`;
     }
-
-    return mobileBase;
+    return "/m/investor";
   }
 
-  if (pathname.startsWith("/rep") || pathname.startsWith("/investor")) {
-    return mobileBase;
+  if (pathname === "/" || pathname === "") return "/m/admin";
+  if (pathname.startsWith("/dashboard")) return "/m/admin";
+  if (pathname.startsWith("/sales-dashboard")) return "/m/admin/sales";
+  if (pathname.startsWith("/clients")) return pathname.replace("/clients", "/m/admin/clients");
+  if (pathname.startsWith("/orders")) return pathname.replace("/orders", "/m/admin/orders");
+  if (pathname.startsWith("/exhibitors")) return pathname.replace("/exhibitors", "/m/admin/exhibitors");
+  if (pathname.startsWith("/finance")) return pathname.replace("/finance", "/m/admin/finance");
+  if (pathname.startsWith("/regions")) return pathname.replace("/regions", "/m/admin/regions");
+  if (pathname.startsWith("/representatives")) return pathname.replace("/representatives", "/m/admin/representatives");
+  if (pathname.startsWith("/prospects")) return pathname.replace("/prospects", "/m/admin/prospects");
+  if (pathname.startsWith("/map")) return pathname.replace("/map", "/m/admin/map");
+  if (pathname.startsWith("/settings")) return pathname.replace("/settings", "/m/admin/settings");
+  if (pathname.startsWith("/alerts")) return pathname.replace("/alerts", "/m/admin/alerts");
+
+  return "/m/admin";
+}
+
+function mobileToDesktop(pathname: string, user: LoggedUser | null) {
+  if (pathname.startsWith("/m/rep")) {
+    const rest = pathname.replace("/m/rep", "");
+    return `/rep${rest}`;
   }
 
-  const rest = pathname || "/dashboard";
-  return `${mobileBase}${rest === "/" ? "/dashboard" : rest}`;
+  if (pathname.startsWith("/m/investor")) {
+    const rest = pathname.replace("/m/investor", "");
+    return `/investor${rest}`;
+  }
+
+  if (pathname === "/m/admin") return "/dashboard";
+  if (pathname.startsWith("/m/admin/sales")) return pathname.replace("/m/admin/sales", "/sales-dashboard");
+  if (pathname.startsWith("/m/admin/clients")) return pathname.replace("/m/admin/clients", "/clients");
+  if (pathname.startsWith("/m/admin/orders")) return pathname.replace("/m/admin/orders", "/orders");
+  if (pathname.startsWith("/m/admin/exhibitors")) return pathname.replace("/m/admin/exhibitors", "/exhibitors");
+  if (pathname.startsWith("/m/admin/finance")) return pathname.replace("/m/admin/finance", "/finance");
+  if (pathname.startsWith("/m/admin/regions")) return pathname.replace("/m/admin/regions", "/regions");
+  if (pathname.startsWith("/m/admin/representatives")) {
+    return pathname.replace("/m/admin/representatives", "/representatives");
+  }
+  if (pathname.startsWith("/m/admin/prospects")) return pathname.replace("/m/admin/prospects", "/prospects");
+  if (pathname.startsWith("/m/admin/map")) return pathname.replace("/m/admin/map", "/map");
+  if (pathname.startsWith("/m/admin/settings")) return pathname.replace("/m/admin/settings", "/settings");
+  if (pathname.startsWith("/m/admin/alerts")) return pathname.replace("/m/admin/alerts", "/alerts");
+
+  if (user?.role === "REPRESENTATIVE") return "/rep";
+  if (user?.role === "INVESTOR") return "/investor";
+  return "/dashboard";
 }
 
 export default function Header() {
@@ -156,19 +181,14 @@ export default function Header() {
   const title = getPageTitle(pathname);
   const isRepresentative = user?.role === "REPRESENTATIVE";
   const isAdmin = user?.role === "ADMIN";
-  const isMobileRoute =
-    pathname.startsWith("/mobile/admin") ||
-    pathname.startsWith("/mobile/rep") ||
-    pathname.startsWith("/mobile/investor");
+  const mobile = isMobileRoute(pathname);
 
   useEffect(() => {
     let active = true;
 
     async function loadUser() {
       try {
-        const res = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
 
         if (!res.ok) {
           if (active) setUser(null);
@@ -213,11 +233,7 @@ export default function Header() {
   async function handleLogout() {
     try {
       setLoggingOut(true);
-
-      await fetch("/api/auth/logout", {
-        method: "POST",
-      });
-
+      await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");
       router.refresh();
     } catch (error) {
@@ -228,10 +244,10 @@ export default function Header() {
   }
 
   function handleToggleMobile() {
-    const nextRoute = getToggleRoute(pathname, user);
+    const nextRoute = mobile ? mobileToDesktop(pathname, user) : desktopToMobile(pathname, user);
 
     try {
-      localStorage.setItem("preferred_view_mode", isMobileRoute ? "desktop" : "mobile");
+      localStorage.setItem("preferred_view_mode", mobile ? "desktop" : "mobile");
     } catch (error) {
       console.error(error);
     }
@@ -462,7 +478,7 @@ export default function Header() {
         <button
           type="button"
           onClick={handleToggleMobile}
-          title={isMobileRoute ? "Voltar para modo normal" : "Abrir modo mobile"}
+          title={mobile ? "Abrir modo normal" : "Abrir modo mobile"}
           style={{
             height: 40,
             minWidth: 108,
@@ -475,13 +491,13 @@ export default function Header() {
             justifyContent: "center",
             gap: 8,
             cursor: "pointer",
-            color: isMobileRoute ? "#2563eb" : colors.text,
+            color: mobile ? "#2563eb" : colors.text,
             fontWeight: 700,
             fontSize: 13,
           }}
         >
           <Smartphone size={16} />
-          {isMobileRoute ? "Normal" : "Mobile"}
+          {mobile ? "Normal" : "Mobile"}
         </button>
 
         {isAdmin ? (

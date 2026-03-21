@@ -6,10 +6,11 @@ import {
   CalendarDays,
   ChevronRight,
   CircleDollarSign,
-  ClipboardList,
   Package,
   PlusCircle,
-  Users,
+  Store,
+  Target,
+  UserPlus,
   Wrench,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -299,51 +300,52 @@ export default function RepMobileDashboardPage() {
               <Shortcut
                 href="/m/rep/orders/new"
                 title="Novo pedido"
-                subtitle="Abrir o fluxo de pedido mobile"
+                subtitle="Abrir o fluxo mobile para lançar um pedido"
                 icon={<PlusCircle size={18} />}
               />
 
               <Shortcut
-                href="/m/rep/orders"
-                title="Pedidos"
-                subtitle="Consultar pedidos e andamento"
-                icon={<Package size={18} />}
+                href="/clients/new"
+                title="Novo cliente"
+                subtitle="Cadastrar um novo cliente rapidamente"
+                icon={<UserPlus size={18} />}
               />
 
               <Shortcut
-                href="/m/rep/clients"
-                title="Clientes"
-                subtitle="Abrir carteira de clientes da região"
-                icon={<Users size={18} />}
+                href="/rep/exhibitors"
+                title="Novo expositor"
+                subtitle="Abrir a área de expositores da região"
+                icon={<Store size={18} />}
               />
 
               <Shortcut
-                href="/m/rep/finance"
-                title="Financeiro"
-                subtitle="Comissões e visão financeira do representante"
-                icon={<CircleDollarSign size={18} />}
-              />
-
-              <Shortcut
-                href="/m/rep/visit"
-                title="Agenda"
-                subtitle="Abrir área de visitas e rotina comercial"
-                icon={<CalendarDays size={18} />}
-              />
-
-              <Shortcut
-                href="/m/rep/operations"
-                title="Centro de operações"
-                subtitle="Ferramentas operacionais do representante"
-                icon={<Wrench size={18} />}
+                href="/rep/prospects"
+                title="Prospectos"
+                subtitle="Cadastrar e acompanhar prospecções"
+                icon={<Target size={18} />}
               />
             </div>
           </MobileCard>
 
           <MobileCard>
-            <MobileSectionTitle title="Resumo do dia" />
+            <MobileSectionTitle title="Agenda" />
 
-            <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "grid", gap: 12 }}>
+              <Shortcut
+                href="/m/rep/visit"
+                title="Minha agenda"
+                subtitle="Ver visitas do dia, atrasadas e próximas"
+                icon={<CalendarDays size={18} />}
+              />
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                display: "grid",
+                gap: 10,
+              }}
+            >
               <div
                 style={{
                   display: "flex",
@@ -399,18 +401,29 @@ export default function RepMobileDashboardPage() {
           </MobileCard>
 
           <MobileCard>
-            <MobileSectionTitle title="Observação desta etapa" />
-            <div
-              style={{
-                fontSize: 13,
-                lineHeight: 1.6,
-                color: colors.subtext,
-              }}
-            >
-              Nesta primeira mudança, eu só estou devolvendo um dashboard real
-              para o representante no mobile. Ainda não mexi em mapa,
-              expositores, prospectos, botão de novo cliente ou centro de
-              operações.
+            <MobileSectionTitle title="Centro de operações" />
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <Shortcut
+                href="/m/rep/operations"
+                title="Abrir operações"
+                subtitle="Acessar ferramentas operacionais do representante"
+                icon={<Wrench size={18} />}
+              />
+
+              <Shortcut
+                href="/m/rep/orders"
+                title="Pedidos"
+                subtitle="Consultar pedidos e andamento"
+                icon={<Package size={18} />}
+              />
+
+              <Shortcut
+                href="/m/rep/finance"
+                title="Financeiro"
+                subtitle="Ver comissão, cobranças e repasses"
+                icon={<CircleDollarSign size={18} />}
+              />
             </div>
           </MobileCard>
         </>

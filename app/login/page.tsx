@@ -80,6 +80,8 @@ function LoginPageContent() {
         return;
       }
 
+      const role = json?.user?.role;
+
       let prefersMobile = forceMobileParam;
 
       try {
@@ -96,7 +98,7 @@ function LoginPageContent() {
         console.error(err);
       }
 
-      router.push(resolveDefaultRouteByRole(json.role, prefersMobile));
+      router.push(resolveDefaultRouteByRole(role, prefersMobile));
     } catch (err: any) {
       setError(err?.message || "Erro ao realizar login.");
     } finally {

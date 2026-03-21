@@ -39,11 +39,6 @@ export default function MobileEntryPage() {
             router.replace("/m/rep");
             return;
           }
-
-          if (role === "INVESTOR") {
-            router.replace("/m/investor");
-            return;
-          }
         }
 
         const portalRes = await fetch("/api/portal-auth/me", {

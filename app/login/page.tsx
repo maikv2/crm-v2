@@ -5,22 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-function resolveDefaultRouteByRole(role: string, prefersMobile: boolean) {
-  if (role === "ADMIN") {
-    return prefersMobile ? "/m/admin" : "/dashboard";
-  }
-
-  if (role === "REPRESENTATIVE") {
-    return prefersMobile ? "/m/rep" : "/rep";
-  }
-
-  if (role === "INVESTOR") {
-    return prefersMobile ? "/m/investor" : "/investor";
-  }
-
-  return prefersMobile ? "/m/admin" : "/dashboard";
-}
-
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -29,14 +13,12 @@ function LoginPageContent() {
 
   const redirect = useMemo(() => {
     const value = searchParams.get("redirect")?.trim();
-
     if (!value) return null;
     if (!value.startsWith("/")) return null;
-
     return value;
   }, [searchParams]);
 
-  const forceMobileParam = useMemo(() => {
+  const forcedMobile = useMemo(() => {
     return searchParams.get("m") === "1";
   }, [searchParams]);
 
@@ -45,7 +27,7 @@ function LoginPageContent() {
   const border = theme.isDark ? "#1e293b" : theme.border;
   const muted = theme.isDark ? "#94a3b8" : "#64748b";
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -58,18 +40,35 @@ function LoginPageContent() {
       setLoading(true);
       setError(null);
 
-      const res = await fetch("/api/auth/login", {
+      let mobile = forcedMobile;
+
+      try {
+        const savedMode = localStorage.getItem("v2_view_mode");
+
+        if (savedMode === "mobile") {
+          mobile = true;
+        } else if (savedMode === "desktop") {
+          mobile = false;
+        } else if (window.matchMedia("(max-width: 900px)").matches) {
+          mobile = true;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+
+      const res = await fetch("/api/session/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email,
+          identifier,
           password,
+          mobile,
         }),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
 
       if (!res.ok) {
         throw new Error(json?.error || "Erro ao realizar login.");
@@ -77,28 +76,14 @@ function LoginPageContent() {
 
       if (redirect) {
         router.push(redirect);
+        router.refresh();
         return;
       }
 
-      const role = json?.user?.role;
+      const destination = String(json?.destination || "/login");
 
-      let prefersMobile = forceMobileParam;
-
-      try {
-        const savedMode = localStorage.getItem("v2_view_mode");
-
-        if (savedMode === "mobile") {
-          prefersMobile = true;
-        } else if (savedMode === "desktop") {
-          prefersMobile = false;
-        } else if (window.matchMedia("(max-width: 900px)").matches) {
-          prefersMobile = true;
-        }
-      } catch (err) {
-        console.error(err);
-      }
-
-      router.push(resolveDefaultRouteByRole(role, prefersMobile));
+      router.push(destination);
+      router.refresh();
     } catch (err: any) {
       setError(err?.message || "Erro ao realizar login.");
     } finally {
@@ -160,7 +145,8 @@ function LoginPageContent() {
               lineHeight: 1.55,
             }}
           >
-            Acesse sua conta para continuar.
+            Entre com seu acesso. O sistema identifica automaticamente o perfil
+            e abre a área correta.
           </div>
         </div>
 
@@ -173,13 +159,13 @@ function LoginPageContent() {
                 marginBottom: 8,
               }}
             >
-              E-mail
+              Usuário / e-mail
             </div>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Digite seu e-mail"
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="Digite seu e-mail ou usuário"
               style={inputStyle}
             />
           </div>

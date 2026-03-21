@@ -1,11 +1,116 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "../components/sidebar";
 import Header from "../components/header";
+
+type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "REPRESENTATIVE" | string;
+};
+
+function isRepPath(pathname: string) {
+  return pathname === "/rep" || pathname.startsWith("/rep/");
+}
+
+function getRedirectByRole(user: AuthUser, pathname: string) {
+  if (user.role === "REPRESENTATIVE" && !isRepPath(pathname)) {
+    return "/rep";
+  }
+
+  if (user.role === "ADMIN" && isRepPath(pathname)) {
+    return "/dashboard";
+  }
+
+  return null;
+}
 
 export default function CRMLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const [loading, setLoading] = useState(true);
+  const [allowed, setAllowed] = useState(false);
+
+  const loginRedirect = useMemo(() => {
+    const safePath = pathname?.startsWith("/") ? pathname : "/dashboard";
+    return `/login?redirect=${encodeURIComponent(safePath)}`;
+  }, [pathname]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function validateAccess() {
+      try {
+        setLoading(true);
+        setAllowed(false);
+
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+        });
+
+        const json = await res.json().catch(() => null);
+
+        if (!active) return;
+
+        if (!res.ok || !json?.user) {
+          router.replace(loginRedirect);
+          return;
+        }
+
+        const user = json.user as AuthUser;
+        const redirectTo = getRedirectByRole(user, pathname);
+
+        if (redirectTo) {
+          router.replace(redirectTo);
+          return;
+        }
+
+        setAllowed(true);
+      } catch (error) {
+        console.error(error);
+        if (!active) return;
+        router.replace(loginRedirect);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    validateAccess();
+
+    return () => {
+      active = false;
+    };
+  }, [pathname, router, loginRedirect]);
+
+  if (loading || !allowed) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#f3f6fb",
+          color: "#0f172a",
+          fontWeight: 800,
+          fontSize: 15,
+        }}
+      >
+        Carregando...
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f3f6fb" }}>
       <Sidebar />

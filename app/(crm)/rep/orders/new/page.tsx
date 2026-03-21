@@ -1,16 +1,7 @@
 "use client";
 
-import { Suspense } from "react";
-import NewRepOrderPageContent from "./page-content";
+import NewOrderPage from "@/app/(crm)/orders/new/page-content";
 
-function RepOrdersNewPageInner() {
-  return <NewRepOrderPageContent />;
-}
-
-export default function RepOrdersNewPage() {
-  return (
-    <Suspense fallback={<div style={{ padding: 24 }}>Carregando...</div>}>
-      <RepOrdersNewPageInner />
-    </Suspense>
-  );
+export default function RepNewOrderPage() {
+  return <NewOrderPage mode="REPRESENTATIVE" />;
 }

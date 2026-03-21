@@ -2,12 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CircleDollarSign, Coins, HandCoins, PieChart } from "lucide-react";
+import {
+  CircleDollarSign,
+  Coins,
+  HandCoins,
+  PieChart,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileShell, {
   MobileCard,
   MobileInfoRow,
   MobileSectionTitle,
+  MobileStatCard,
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
 import { investorMobileNavItems } from "@/app/components/mobile/mobile-investor-shared";
@@ -69,6 +75,10 @@ export default function MobileInvestorPage() {
   const router = useRouter();
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
+
+  const cardSurface = colors.isDark ? "#111827" : "#ffffff";
+  const softSurface = colors.isDark ? "#111827" : "#f8fafc";
+  const highlightSurface = colors.isDark ? "#111827" : "#eef4ff";
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -163,7 +173,7 @@ export default function MobileInvestorPage() {
               padding: "0 12px",
               borderRadius: 10,
               border: `1px solid ${colors.border}`,
-              background: colors.card,
+              background: cardSurface,
               color: colors.text,
               fontSize: 12,
               fontWeight: 800,
@@ -230,34 +240,38 @@ export default function MobileInvestorPage() {
             ) : null}
           </MobileCard>
 
-          <MobileCard>
-            <MobileSectionTitle title="Indicadores" />
-
-            <MobileInfoRow
-              title="Cotas ativas"
-              right={String(data.summary.activeQuotaCount ?? 0)}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <MobileStatCard
+              label="Cotas ativas"
+              value={String(data.summary.activeQuotaCount ?? 0)}
             />
-
-            <MobileInfoRow
-              title="Regiões"
-              right={String(data.summary.totalRegions ?? 0)}
+            <MobileStatCard
+              label="Regiões"
+              value={String(data.summary.totalRegions ?? 0)}
             />
-
-            <MobileInfoRow
-              title="Total investido"
-              right={formatMoneyBR(data.summary.totalInvestedCents ?? 0)}
+            <MobileStatCard
+              label="Investido"
+              value={formatMoneyBR(data.summary.totalInvestedCents ?? 0)}
             />
-
-            <MobileInfoRow
-              title="Total recebido"
-              right={formatMoneyBR(data.summary.totalDistributedCents ?? 0)}
+            <MobileStatCard
+              label="Recebido"
+              value={formatMoneyBR(data.summary.totalDistributedCents ?? 0)}
             />
-
-            <MobileInfoRow
-              title="Pendente"
-              right={formatMoneyBR(data.summary.pendingDistributionCents ?? 0)}
+            <MobileStatCard
+              label="Pendente"
+              value={formatMoneyBR(data.summary.pendingDistributionCents ?? 0)}
             />
-          </MobileCard>
+            <MobileStatCard
+              label="Projeção"
+              value={formatMoneyBR(data.summary.pendingDistributionCents ?? 0)}
+            />
+          </div>
 
           <MobileCard>
             <MobileSectionTitle title="Ações rápidas" />
@@ -268,7 +282,7 @@ export default function MobileInvestorPage() {
                   style={{
                     borderRadius: 16,
                     padding: 14,
-                    background: colors.isDark ? "#111827" : "#f8fafc",
+                    background: softSurface,
                     border: `1px solid ${colors.border}`,
                     display: "flex",
                     alignItems: "center",
@@ -281,6 +295,7 @@ export default function MobileInvestorPage() {
                     style={{
                       fontSize: 14,
                       fontWeight: 800,
+                      color: colors.text,
                       wordBreak: "break-word",
                     }}
                   >
@@ -297,7 +312,7 @@ export default function MobileInvestorPage() {
                   style={{
                     borderRadius: 16,
                     padding: 14,
-                    background: colors.isDark ? "#111827" : "#f8fafc",
+                    background: softSurface,
                     border: `1px solid ${colors.border}`,
                     display: "flex",
                     alignItems: "center",
@@ -310,6 +325,7 @@ export default function MobileInvestorPage() {
                     style={{
                       fontSize: 14,
                       fontWeight: 800,
+                      color: colors.text,
                       wordBreak: "break-word",
                     }}
                   >
@@ -323,7 +339,7 @@ export default function MobileInvestorPage() {
                   style={{
                     borderRadius: 16,
                     padding: 14,
-                    background: colors.isDark ? "#111827" : "#f8fafc",
+                    background: softSurface,
                     border: `1px solid ${colors.border}`,
                     display: "flex",
                     alignItems: "center",
@@ -336,6 +352,7 @@ export default function MobileInvestorPage() {
                     style={{
                       fontSize: 14,
                       fontWeight: 800,
+                      color: colors.text,
                       wordBreak: "break-word",
                     }}
                   >
@@ -403,7 +420,7 @@ export default function MobileInvestorPage() {
           <Link href="/m/investor/portal" style={{ textDecoration: "none" }}>
             <MobileCard
               style={{
-                background: colors.isDark ? "#111827" : "#eef4ff",
+                background: highlightSurface,
               }}
             >
               <div
@@ -420,6 +437,7 @@ export default function MobileInvestorPage() {
                   style={{
                     fontSize: 15,
                     fontWeight: 900,
+                    color: colors.text,
                     wordBreak: "break-word",
                   }}
                 >

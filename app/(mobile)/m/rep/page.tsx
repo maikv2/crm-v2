@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function MobileRepEntry() {
+export default function RepMobileHome() {
   const router = useRouter();
 
   useEffect(() => {
@@ -13,14 +13,17 @@ export default function MobileRepEntry() {
   return (
     <div
       style={{
-        height: "100vh",
+        minHeight: "100vh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: 16,
+        background: "#f3f4f6",
+        color: "#111827",
+        fontSize: 14,
+        fontWeight: 600,
       }}
     >
-      Carregando...
+      Carregando área do representante...
     </div>
   );
 }

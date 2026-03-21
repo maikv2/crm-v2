@@ -160,11 +160,11 @@ export default function RepFinanceMobile() {
           />
 
           <FinanceShortcut
-            href="/rep/finance"
-            icon={<Wallet size={18} />}
-            title="Visão completa"
-            description="Abrir a área completa do financeiro do representante."
-          />
+  href="/m/rep/finance"
+  icon={<Wallet size={18} />}
+  title="Visão completa"
+  description="Abrir a área completa do financeiro do representante."
+/>
         </div>
       </MobileAppear>
     </MobileRepPageFrame>

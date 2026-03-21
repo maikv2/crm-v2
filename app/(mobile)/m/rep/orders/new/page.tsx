@@ -1,7 +1,7 @@
 "use client";
 
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
-import NewRepOrderPage from "@/app/(crm)/rep/orders/new/page";
+import NewRepOrderPageContent from "@/app/(crm)/rep/orders/new/page-content";
 
 export default function MobileRepOrdersNewPage() {
   return (
@@ -10,7 +10,7 @@ export default function MobileRepOrdersNewPage() {
       subtitle="Fluxo do representante"
       desktopHref="/rep/orders/new"
     >
-      <NewRepOrderPage />
+      <NewRepOrderPageContent />
     </MobileRepPageFrame>
   );
 }

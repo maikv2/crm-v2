@@ -302,6 +302,12 @@ export default function Header() {
         method: "POST",
       });
 
+      try {
+        localStorage.removeItem("v2_view_mode");
+      } catch (error) {
+        console.error(error);
+      }
+
       router.push("/login");
       router.refresh();
     } catch (error) {

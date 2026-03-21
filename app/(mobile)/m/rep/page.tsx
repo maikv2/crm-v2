@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   CalendarDays,
   ChevronRight,
+  CircleDollarSign,
   PlusCircle,
   Store,
   Target,
@@ -26,6 +27,7 @@ type AuthMeResponse = {
   user?: {
     id: string;
     name?: string | null;
+    regionId?: string | null;
     region?: {
       id: string;
       name?: string | null;
@@ -136,6 +138,7 @@ function Shortcut({
 export default function RepMobileDashboardPage() {
   const router = useRouter();
   const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -210,6 +213,7 @@ export default function RepMobileDashboardPage() {
           setCommissions(commissionsJson);
         }
       } catch (err) {
+        console.error(err);
         if (active) {
           setError(
             err instanceof Error
@@ -251,7 +255,14 @@ export default function RepMobileDashboardPage() {
       ) : (
         <>
           <MobileCard style={{ padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: colors.subtext,
+                marginBottom: 8,
+              }}
+            >
               Vendas do mês
             </div>
 
@@ -260,13 +271,19 @@ export default function RepMobileDashboardPage() {
                 fontSize: 28,
                 lineHeight: 1.1,
                 fontWeight: 900,
+                color: colors.text,
                 marginBottom: 8,
               }}
             >
               {formatMoneyBR(dashboard?.summary?.salesThisMonthCents ?? 0)}
             </div>
 
-            <div style={{ fontSize: 13, opacity: 0.75 }}>
+            <div
+              style={{
+                fontSize: 13,
+                color: colors.subtext,
+              }}
+            >
               {dashboard?.summary?.ordersThisMonth ?? 0} pedidos no mês •{" "}
               {dashboard?.summary?.clients ?? 0} clientes ativos na região
             </div>
@@ -322,7 +339,7 @@ export default function RepMobileDashboardPage() {
               <Shortcut
                 href="/m/rep/exhibitors/new"
                 title="Novo expositor"
-                subtitle="Cadastrar um novo expositor da região"
+                subtitle="Abrir o cadastro do expositor da região"
                 icon={<Store size={18} />}
               />
 
@@ -337,22 +354,28 @@ export default function RepMobileDashboardPage() {
 
           <MobileCard>
             <MobileSectionTitle title="Agenda" />
-            <Shortcut
-              href="/m/rep/visit"
-              title="Abrir agenda do dia"
-              subtitle="Ver visitas do dia, atrasadas e próximas"
-              icon={<CalendarDays size={18} />}
-            />
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <Shortcut
+                href="/m/rep/visit"
+                title="Abrir agenda do dia"
+                subtitle="Ver visitas do dia, atrasadas e próximas"
+                icon={<CalendarDays size={18} />}
+              />
+            </div>
           </MobileCard>
 
           <MobileCard>
             <MobileSectionTitle title="Centro de operações" />
-            <Shortcut
-              href="/m/rep/operations"
-              title="Abrir centro de operações"
-              subtitle="Cadastros, mapa, agenda e apoio operacional"
-              icon={<Wrench size={18} />}
-            />
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <Shortcut
+                href="/m/rep/operations"
+                title="Abrir centro de operações"
+                subtitle="Cadastros, mapa, agenda e apoio operacional"
+                icon={<Wrench size={18} />}
+              />
+            </div>
           </MobileCard>
         </>
       )}

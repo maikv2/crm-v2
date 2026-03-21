@@ -6,7 +6,6 @@ import {
   CalendarDays,
   ChevronRight,
   CircleDollarSign,
-  Map,
   Package,
   PlusCircle,
   Store,
@@ -25,19 +24,30 @@ import {
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-type DashboardResponse = {
-  region: {
+type AuthMeResponse = {
+  user?: {
     id: string;
-    name: string;
+    name?: string | null;
+    regionId?: string | null;
+    region?: {
+      id: string;
+      name?: string | null;
+    } | null;
   } | null;
-  summary: {
-    clients: number;
-    exhibitors: number;
-    ordersThisMonth: number;
-    salesThisMonthCents: number;
-    visitsToday: number;
-    overdueVisits: number;
-    portalRequestsPending: number;
+};
+
+type DashboardResponse = {
+  region?: {
+    id: string;
+    name?: string | null;
+  } | null;
+  summary?: {
+    clients?: number;
+    exhibitors?: number;
+    ordersThisMonth?: number;
+    salesThisMonthCents?: number;
+    visitsToday?: number;
+    overdueVisits?: number;
   };
 };
 
@@ -134,6 +144,8 @@ export default function RepMobileDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [userName, setUserName] = useState("Representante");
+  const [regionName, setRegionName] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [agenda, setAgenda] = useState<AgendaResponse | null>(null);
   const [commissions, setCommissions] = useState<CommissionsResponse | null>(
@@ -148,13 +160,16 @@ export default function RepMobileDashboardPage() {
         setLoading(true);
         setError(null);
 
-        const [dashboardRes, agendaRes, commissionsRes] = await Promise.all([
-          fetch("/api/rep/dashboard", { cache: "no-store" }),
-          fetch("/api/rep/agenda", { cache: "no-store" }),
-          fetch("/api/rep/commissions", { cache: "no-store" }),
-        ]);
+        const [authRes, dashboardRes, agendaRes, commissionsRes] =
+          await Promise.all([
+            fetch("/api/auth/me", { cache: "no-store" }),
+            fetch("/api/rep/dashboard", { cache: "no-store" }),
+            fetch("/api/rep/agenda", { cache: "no-store" }),
+            fetch("/api/rep/commissions", { cache: "no-store" }),
+          ]);
 
         if (
+          authRes.status === 401 ||
           dashboardRes.status === 401 ||
           agendaRes.status === 401 ||
           commissionsRes.status === 401
@@ -163,25 +178,40 @@ export default function RepMobileDashboardPage() {
           return;
         }
 
-        const dashboardJson = await dashboardRes.json().catch(() => null);
-        const agendaJson = await agendaRes.json().catch(() => null);
-        const commissionsJson = await commissionsRes.json().catch(() => null);
+        const authJson = (await authRes.json().catch(() => null)) as
+          | AuthMeResponse
+          | null;
+        const dashboardJson = (await dashboardRes.json().catch(() => null)) as
+          | DashboardResponse
+          | null;
+        const agendaJson = (await agendaRes.json().catch(() => null)) as
+          | AgendaResponse
+          | null;
+        const commissionsJson = (await commissionsRes.json().catch(() => null)) as
+          | CommissionsResponse
+          | null;
 
         if (!dashboardRes.ok) {
           throw new Error(
-            dashboardJson?.error ||
+            (dashboardJson as any)?.error ||
               "Erro ao carregar dashboard do representante."
           );
         }
 
         if (!agendaRes.ok) {
-          throw new Error(agendaJson?.error || "Erro ao carregar agenda.");
+          throw new Error((agendaJson as any)?.error || "Erro ao carregar agenda.");
         }
 
         if (active) {
+          setUserName(authJson?.user?.name?.trim() || "Representante");
+          setRegionName(
+            authJson?.user?.region?.name?.trim() ||
+              dashboardJson?.region?.name?.trim() ||
+              null
+          );
           setDashboard(dashboardJson);
           setAgenda(agendaJson);
-          setCommissions(commissionsRes.ok ? commissionsJson : null);
+          setCommissions(commissionsJson);
         }
       } catch (err) {
         console.error(err);
@@ -215,12 +245,8 @@ export default function RepMobileDashboardPage() {
 
   return (
     <MobileRepPageFrame
-      title="Dashboard"
-      subtitle={
-        dashboard?.region?.name
-          ? `Região ${dashboard.region.name}`
-          : "Painel mobile do representante"
-      }
+      title="Bem-vindo"
+      subtitle={regionName ? `${userName} • Região ${regionName}` : userName}
       desktopHref="/rep"
     >
       {loading ? (
@@ -277,12 +303,12 @@ export default function RepMobileDashboardPage() {
               helper={`${agendaSummary.visitadosHoje} já visitados`}
             />
             <MobileStatCard
-              label="Atrasados"
-              value={String(dashboard?.summary?.overdueVisits ?? 0)}
-              helper={`${agendaSummary.proximos} próximos`}
+              label="Revisitas atrasadas"
+              value={String(agendaSummary.atrasados)}
+              helper={`${agendaSummary.proximos} próximas`}
             />
             <MobileStatCard
-              label="Comissão mês"
+              label="Comissão do mês"
               value={formatMoneyBR(commissions?.monthCommissionCents ?? 0)}
               helper={formatMoneyBR(commissions?.weekCommissionCents ?? 0)}
             />
@@ -336,13 +362,6 @@ export default function RepMobileDashboardPage() {
                 title="Minha agenda"
                 subtitle="Ver visitas do dia, atrasadas e próximas"
                 icon={<CalendarDays size={18} />}
-              />
-
-              <Shortcut
-                href="/m/rep/map"
-                title="Mapa"
-                subtitle="Abrir clientes e prospectos com rota no Google Maps"
-                icon={<Map size={18} />}
               />
             </div>
           </MobileCard>

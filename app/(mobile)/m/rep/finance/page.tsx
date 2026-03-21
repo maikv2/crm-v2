@@ -13,7 +13,14 @@ import {
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-type CommissionSummaryResponse = {
+type CommissionsResponse = {
+  items?: Array<{
+    id: string;
+    orderNumber?: number | null;
+    clientName?: string | null;
+    commissionCents?: number | null;
+    status?: string | null;
+  }>;
   summary?: {
     total?: number;
     available?: number;
@@ -28,6 +35,14 @@ type ReceivablesResponse = {
     amountCents?: number | null;
     dueDate?: string | null;
     status?: string | null;
+    client?: {
+      id: string;
+      name?: string | null;
+    } | null;
+    order?: {
+      id: string;
+      number?: number | null;
+    } | null;
   }>;
 };
 
@@ -35,7 +50,9 @@ type TransfersResponse = {
   items?: Array<{
     id: string;
     amountCents?: number | null;
+    transferredAt?: string | null;
     status?: string | null;
+    notes?: string | null;
   }>;
 };
 
@@ -117,10 +134,13 @@ export default function MobileRepFinancePage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [commissions, setCommissions] =
-    useState<CommissionSummaryResponse | null>(null);
-  const [receivables, setReceivables] =
-    useState<ReceivablesResponse | null>(null);
+
+  const [commissions, setCommissions] = useState<CommissionsResponse | null>(
+    null
+  );
+  const [receivables, setReceivables] = useState<ReceivablesResponse | null>(
+    null
+  );
   const [transfers, setTransfers] = useState<TransfersResponse | null>(null);
 
   useEffect(() => {
@@ -139,13 +159,19 @@ export default function MobileRepFinancePage() {
           ]
         );
 
-        const commissionsJson = await commissionsRes.json().catch(() => null);
-        const receivablesJson = await receivablesRes.json().catch(() => null);
-        const transfersJson = await transfersRes.json().catch(() => null);
+        const commissionsJson = (await commissionsRes
+          .json()
+          .catch(() => null)) as CommissionsResponse | null;
+        const receivablesJson = (await receivablesRes
+          .json()
+          .catch(() => null)) as ReceivablesResponse | null;
+        const transfersJson = (await transfersRes
+          .json()
+          .catch(() => null)) as TransfersResponse | null;
 
         if (!commissionsRes.ok) {
           throw new Error(
-            commissionsJson?.error || "Erro ao carregar financeiro."
+            (commissionsJson as any)?.error || "Erro ao carregar financeiro."
           );
         }
 
@@ -175,14 +201,14 @@ export default function MobileRepFinancePage() {
     };
   }, []);
 
-  const receivablesStats = useMemo(() => {
+  const receivableStats = useMemo(() => {
     const now = new Date();
-    const items = receivables?.items ?? [];
 
-    return items.reduce(
+    return (receivables?.items ?? []).reduce(
       (acc, item) => {
         const value = item.amountCents ?? 0;
-        const isPaid = String(item.status ?? "").toUpperCase().includes("PAID");
+        const status = String(item.status ?? "").toUpperCase();
+        const isPaid = status.includes("PAID");
         const dueDate = item.dueDate ? new Date(item.dueDate) : null;
         const overdue = !isPaid && dueDate && dueDate.getTime() < now.getTime();
 
@@ -193,11 +219,7 @@ export default function MobileRepFinancePage() {
 
         return acc;
       },
-      {
-        open: 0,
-        overdue: 0,
-        paid: 0,
-      }
+      { open: 0, overdue: 0, paid: 0 }
     );
   }, [receivables]);
 
@@ -219,7 +241,7 @@ export default function MobileRepFinancePage() {
   return (
     <MobileRepPageFrame
       title="Financeiro"
-      subtitle="Resumo financeiro do representante"
+      subtitle="Minhas comissões, contas a receber e repasses"
       desktopHref="/rep/finance"
     >
       {loading ? (
@@ -228,115 +250,113 @@ export default function MobileRepFinancePage() {
         <MobileCard>{error}</MobileCard>
       ) : (
         <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-              gap: 12,
-            }}
-          >
-            <MobileStatCard
-              label="Total gerado"
-              value={formatMoneyBR(commissions?.summary?.total ?? 0)}
-              helper="Comissões acumuladas"
-            />
-            <MobileStatCard
-              label="Aguardando pagamento"
-              value={formatMoneyBR(commissions?.summary?.awaitingPayment ?? 0)}
-              helper="Pedido ainda não pago"
-            />
-            <MobileStatCard
-              label="Aguardando repasse"
-              value={formatMoneyBR(commissions?.summary?.awaitingTransfer ?? 0)}
-              helper="Pago pelo cliente"
-            />
-            <MobileStatCard
-              label="Contas em aberto"
-              value={formatMoneyBR(receivablesStats.open)}
-              helper={formatMoneyBR(receivablesStats.overdue)}
-            />
-          </div>
-
           <MobileCard>
-            <MobileSectionTitle title="Atalhos financeiros" />
+            <MobileSectionTitle title="Minhas comissões" />
 
-            <div style={{ display: "grid", gap: 12 }}>
-              <Shortcut
-                href="/m/rep/finance/commissions"
-                title="Minhas comissões"
-                subtitle="Acompanhar comissão gerada, pendente e disponível"
-                icon={<CircleDollarSign size={18} />}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+                gap: 12,
+              }}
+            >
+              <MobileStatCard
+                label="Total gerado"
+                value={formatMoneyBR(commissions?.summary?.total ?? 0)}
+                helper="Comissões acumuladas"
               />
-              <Shortcut
-                href="/m/rep/finance/receivables"
-                title="Contas a receber"
-                subtitle="Ver cobranças em aberto, pagas e atrasadas"
-                icon={<Receipt size={18} />}
+              <MobileStatCard
+                label="Aguardando pagamento"
+                value={formatMoneyBR(commissions?.summary?.awaitingPayment ?? 0)}
+                helper="Pedido ainda não pago"
               />
-              <Shortcut
-                href="/m/rep/finance/transfers"
-                title="Repasses"
-                subtitle="Registrar e consultar repasses pelo celular"
-                icon={<Wallet size={18} />}
+              <MobileStatCard
+                label="Aguardando repasse"
+                value={formatMoneyBR(
+                  commissions?.summary?.awaitingTransfer ?? 0
+                )}
+                helper="Cliente já pagou"
+              />
+              <MobileStatCard
+                label="Disponível"
+                value={formatMoneyBR(commissions?.summary?.available ?? 0)}
+                helper="Pronto para repasse"
               />
             </div>
           </MobileCard>
 
           <MobileCard>
-            <MobileSectionTitle title="Resumo rápido" />
+            <MobileSectionTitle title="Contas a receber da região" />
 
-            <div style={{ display: "grid", gap: 10 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                  color: colors.text,
-                }}
-              >
-                <span>Em aberto</span>
-                <strong>{formatMoneyBR(receivablesStats.open)}</strong>
-              </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0,1fr))",
+                gap: 12,
+              }}
+            >
+              <MobileStatCard
+                label="Em aberto"
+                value={formatMoneyBR(receivableStats.open)}
+              />
+              <MobileStatCard
+                label="Em atraso"
+                value={formatMoneyBR(receivableStats.overdue)}
+              />
+              <MobileStatCard
+                label="Já pagas"
+                value={formatMoneyBR(receivableStats.paid)}
+              />
+            </div>
+          </MobileCard>
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                  color: colors.text,
-                }}
-              >
-                <span>Em atraso</span>
-                <strong>{formatMoneyBR(receivablesStats.overdue)}</strong>
-              </div>
+          <MobileCard>
+            <MobileSectionTitle title="Repasses" />
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                  color: colors.text,
-                }}
-              >
-                <span>Já pago</span>
-                <strong>{formatMoneyBR(receivablesStats.paid)}</strong>
-              </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+                gap: 12,
+              }}
+            >
+              <MobileStatCard
+                label="Pendentes"
+                value={formatMoneyBR(transferStats.pending)}
+                helper={`${transfers?.items?.length ?? 0} registros`}
+              />
+              <MobileStatCard
+                label="Realizados"
+                value={formatMoneyBR(transferStats.done)}
+                helper="Histórico de repasses"
+              />
+            </div>
+          </MobileCard>
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  fontSize: 14,
-                  color: colors.text,
-                }}
-              >
-                <span>Repasses pendentes</span>
-                <strong>{formatMoneyBR(transferStats.pending)}</strong>
-              </div>
+          <MobileCard>
+            <MobileSectionTitle title="Abrir detalhes" />
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <Shortcut
+                href="/m/rep/finance/commissions"
+                title="Minhas comissões"
+                subtitle="Ver comissão por pedido e status"
+                icon={<CircleDollarSign size={18} />}
+              />
+
+              <Shortcut
+                href="/m/rep/finance/receivables"
+                title="Contas a receber"
+                subtitle="Ver o que foi pago, aberto e atrasado"
+                icon={<Receipt size={18} />}
+              />
+
+              <Shortcut
+                href="/m/rep/finance/transfers"
+                title="Repasses"
+                subtitle="Registrar e consultar repasses"
+                icon={<Wallet size={18} />}
+              />
             </div>
           </MobileCard>
         </>

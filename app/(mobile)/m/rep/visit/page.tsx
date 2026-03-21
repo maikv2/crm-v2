@@ -1,16 +1,18 @@
 "use client";
 
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
-import RepVisitPage from "@/app/(crm)/rep/visit/page";
+import { MobileCard } from "@/app/components/mobile/mobile-shell";
 
-export default function MobileRepVisitPage() {
+export default function RepVisitPage() {
   return (
     <MobileRepPageFrame
       title="Registrar visita"
-      subtitle="Fluxo do representante"
+      subtitle="Agenda comercial"
       desktopHref="/rep/visit"
     >
-      <RepVisitPage />
+      <MobileCard style={{ padding: 16 }}>
+        Registro de visitas da região.
+      </MobileCard>
     </MobileRepPageFrame>
   );
 }

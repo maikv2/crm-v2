@@ -1,25 +1,16 @@
 "use client";
 
-import { Suspense } from "react";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
-import NewRepOrderPageContent from "@/app/(crm)/rep/orders/new/page-content";
-
-function MobileRepOrdersNewPageContent() {
-  return (
-    <MobileRepPageFrame
-      title="Novo pedido"
-      subtitle="Fluxo do representante"
-      desktopHref="/rep/orders/new"
-    >
-      <NewRepOrderPageContent />
-    </MobileRepPageFrame>
-  );
-}
+import MobileRepOrderForm from "@/app/(crm)/components/mobile/mobile-rep-order-form";
 
 export default function MobileRepOrdersNewPage() {
   return (
-    <Suspense fallback={<div style={{ padding: 16 }}>Carregando...</div>}>
-      <MobileRepOrdersNewPageContent />
-    </Suspense>
+    <MobileRepPageFrame
+      title="Novo pedido"
+      subtitle="Fluxo nativo mobile do representante"
+      desktopHref="/rep/orders/new"
+    >
+      <MobileRepOrderForm />
+    </MobileRepPageFrame>
   );
 }

@@ -20,20 +20,20 @@ import { useEffect, useRef, useState } from "react";
 
 function getPageTitle(pathname: string) {
   if (pathname.startsWith("/m/admin/clients")) return "Clientes";
-  if (pathname.startsWith("/m/admin")) return "Dashboard";
   if (pathname.startsWith("/m/admin/exhibitors")) return "Expositores";
-  if (pathname.startsWith("/m/admin/products")) return "Produtos";
   if (pathname.startsWith("/m/admin/orders")) return "Pedidos";
+  if (pathname.startsWith("/m/admin/finance/receivables")) return "Recebíveis";
+  if (pathname.startsWith("/m/admin/finance/transfers")) return "Transferências";
   if (pathname.startsWith("/m/admin/finance")) return "Financeiro";
-  if (pathname.startsWith("/m/admin/stock")) return "Estoque";
-  if (pathname.startsWith("/m/admin/sales")) return "Painel de Vendas";
   if (pathname.startsWith("/m/admin/regions")) return "Regiões";
-  if (pathname.startsWith("/m/admin/investors")) return "Investidores";
   if (pathname.startsWith("/m/admin/representatives")) return "Representantes";
-  if (pathname.startsWith("/m/admin/settings")) return "Configurações";
   if (pathname.startsWith("/m/admin/prospects")) return "Prospectos";
   if (pathname.startsWith("/m/admin/map")) return "Mapa";
   if (pathname.startsWith("/m/admin/alerts")) return "Alertas";
+  if (pathname.startsWith("/m/admin/sales")) return "Painel de Vendas";
+  if (pathname.startsWith("/m/admin/settings")) return "Configurações";
+  if (pathname.startsWith("/m/admin/cadastros")) return "Cadastros";
+  if (pathname === "/m/admin") return "Dashboard";
 
   if (pathname.startsWith("/m/rep/clients")) return "Clientes";
   if (pathname.startsWith("/m/rep/orders")) return "Pedidos";
@@ -41,19 +41,26 @@ function getPageTitle(pathname: string) {
   if (pathname.startsWith("/m/rep/commissions")) return "Comissões";
   if (pathname.startsWith("/m/rep/operations")) return "Operações";
   if (pathname.startsWith("/m/rep/visit")) return "Visitas";
-  if (pathname.startsWith("/m/rep")) return "Representante";
+  if (pathname === "/m/rep") return "Representante";
 
   if (pathname.startsWith("/m/investor/quotas")) return "Cotas";
   if (pathname.startsWith("/m/investor/distributions")) return "Distribuições";
   if (pathname.startsWith("/m/investor/portal")) return "Portal do Investidor";
-  if (pathname.startsWith("/m/investor")) return "Investidor";
+  if (pathname === "/m/investor") return "Investidor";
 
   if (pathname.startsWith("/clients")) return "Clientes";
   if (pathname.startsWith("/dashboard")) return "Dashboard";
   if (pathname.startsWith("/exhibitors")) return "Expositores";
   if (pathname.startsWith("/products")) return "Produtos";
   if (pathname.startsWith("/orders")) return "Pedidos";
+  if (pathname.startsWith("/finance/receivables")) return "Recebíveis";
+  if (pathname.startsWith("/finance/transfers")) return "Transferências";
+  if (pathname.startsWith("/finance/region-cash")) return "Caixa da Região";
+  if (pathname.startsWith("/finance/new")) return "Novo Lançamento";
   if (pathname.startsWith("/finance")) return "Financeiro";
+  if (pathname.startsWith("/stock/history")) return "Histórico de Estoque";
+  if (pathname.startsWith("/stock/transfer")) return "Transferência de Estoque";
+  if (pathname.startsWith("/stock/new")) return "Novo Estoque";
   if (pathname.startsWith("/stock")) return "Estoque";
   if (pathname.startsWith("/sales-dashboard")) return "Painel de Vendas";
   if (pathname.startsWith("/regions")) return "Regiões";
@@ -71,15 +78,17 @@ function getPageTitle(pathname: string) {
   if (pathname.startsWith("/rep/stock")) return "Estoque";
   if (pathname.startsWith("/rep/orders")) return "Pedidos";
   if (pathname.startsWith("/rep/finance")) return "Financeiro";
-  if (pathname.startsWith("/rep/commissions")) return "Comissões";
   if (pathname.startsWith("/rep/operations")) return "Operações";
+  if (pathname.startsWith("/rep/prospects")) return "Prospectos";
+  if (pathname.startsWith("/rep/map")) return "Mapa";
   if (pathname.startsWith("/rep/visit")) return "Visitas";
-  if (pathname.startsWith("/rep")) return "Representante";
+  if (pathname.startsWith("/rep/settlement")) return "Acerto";
+  if (pathname.startsWith("/rep/dashboard")) return "Dashboard";
+  if (pathname === "/rep") return "Representante";
 
   if (pathname.startsWith("/investor/quotas")) return "Cotas";
   if (pathname.startsWith("/investor/distributions")) return "Distribuições";
-  if (pathname.startsWith("/investor/portal")) return "Portal do Investidor";
-  if (pathname.startsWith("/investor")) return "Investidor";
+  if (pathname === "/investor") return "Investidor";
 
   return "V2 CRM";
 }
@@ -101,63 +110,131 @@ function isMobileRoute(pathname: string) {
 
 function desktopToMobile(pathname: string, user: LoggedUser | null) {
   if (user?.role === "REPRESENTATIVE") {
-    if (pathname.startsWith("/rep")) {
-      const rest = pathname.replace("/rep", "");
-      return `/m/rep${rest}`;
+    if (pathname === "/rep" || pathname === "/rep/dashboard" || pathname === "/rep/sales-dashboard") {
+      return "/m/rep";
     }
+
+    if (pathname.startsWith("/rep/clients")) return pathname.replace("/rep/clients", "/m/rep/clients");
+    if (pathname.startsWith("/rep/orders/new")) return pathname.replace("/rep/orders/new", "/m/rep/orders/new");
+    if (pathname.startsWith("/rep/orders")) return pathname.replace("/rep/orders", "/m/rep/orders");
+    if (pathname.startsWith("/rep/finance")) return pathname.replace("/rep/finance", "/m/rep/finance");
+    if (pathname.startsWith("/rep/operations")) return pathname.replace("/rep/operations", "/m/rep/operations");
+    if (pathname.startsWith("/rep/visit")) return pathname.replace("/rep/visit", "/m/rep/visit");
+
     return "/m/rep";
   }
 
   if (user?.role === "INVESTOR") {
-    if (pathname.startsWith("/investor")) {
-      const rest = pathname.replace("/investor", "");
-      return `/m/investor${rest}`;
+    if (pathname === "/investor") return "/m/investor";
+    if (pathname.startsWith("/investor/quotas")) {
+      return pathname.replace("/investor/quotas", "/m/investor/quotas");
     }
+    if (pathname.startsWith("/investor/distributions")) {
+      return pathname.replace("/investor/distributions", "/m/investor/distributions");
+    }
+
     return "/m/investor";
   }
 
-  if (pathname === "/" || pathname === "") return "/m/admin";
-  if (pathname.startsWith("/dashboard")) return "/m/admin";
-  if (pathname.startsWith("/sales-dashboard")) return "/m/admin/sales";
+  if (pathname === "/" || pathname === "/dashboard") return "/m/admin";
+  if (pathname.startsWith("/clients/new")) return pathname.replace("/clients/new", "/m/admin/clients/new");
   if (pathname.startsWith("/clients")) return pathname.replace("/clients", "/m/admin/clients");
+  if (pathname.startsWith("/orders/new")) return pathname.replace("/orders/new", "/m/admin/orders/new");
   if (pathname.startsWith("/orders")) return pathname.replace("/orders", "/m/admin/orders");
+  if (pathname.startsWith("/exhibitors/new")) return pathname.replace("/exhibitors/new", "/m/admin/exhibitors/new");
   if (pathname.startsWith("/exhibitors")) return pathname.replace("/exhibitors", "/m/admin/exhibitors");
+  if (pathname.startsWith("/finance/receivables")) {
+    return pathname.replace("/finance/receivables", "/m/admin/finance/receivables");
+  }
+  if (pathname.startsWith("/finance/transfers")) {
+    return pathname.replace("/finance/transfers", "/m/admin/finance/transfers");
+  }
   if (pathname.startsWith("/finance")) return pathname.replace("/finance", "/m/admin/finance");
+  if (pathname.startsWith("/sales-dashboard")) return pathname.replace("/sales-dashboard", "/m/admin/sales");
   if (pathname.startsWith("/regions")) return pathname.replace("/regions", "/m/admin/regions");
-  if (pathname.startsWith("/representatives")) return pathname.replace("/representatives", "/m/admin/representatives");
+  if (pathname.startsWith("/representatives")) {
+    return pathname.replace("/representatives", "/m/admin/representatives");
+  }
   if (pathname.startsWith("/prospects")) return pathname.replace("/prospects", "/m/admin/prospects");
   if (pathname.startsWith("/map")) return pathname.replace("/map", "/m/admin/map");
-  if (pathname.startsWith("/settings")) return pathname.replace("/settings", "/m/admin/settings");
   if (pathname.startsWith("/alerts")) return pathname.replace("/alerts", "/m/admin/alerts");
+  if (pathname.startsWith("/settings")) return "/m/admin/settings";
 
   return "/m/admin";
 }
 
 function mobileToDesktop(pathname: string, user: LoggedUser | null) {
-  if (pathname.startsWith("/m/rep")) {
-    const rest = pathname.replace("/m/rep", "");
-    return `/rep${rest}`;
-  }
+  if (pathname === "/m/rep") return "/rep";
+  if (pathname.startsWith("/m/rep/clients")) return pathname.replace("/m/rep/clients", "/rep/clients");
+  if (pathname.startsWith("/m/rep/orders/new")) return pathname.replace("/m/rep/orders/new", "/rep/orders/new");
+  if (pathname.startsWith("/m/rep/orders")) return pathname.replace("/m/rep/orders", "/rep/orders");
+  if (pathname.startsWith("/m/rep/finance")) return pathname.replace("/m/rep/finance", "/rep/finance");
+  if (pathname.startsWith("/m/rep/operations")) return pathname.replace("/m/rep/operations", "/rep/operations");
+  if (pathname.startsWith("/m/rep/visit")) return pathname.replace("/m/rep/visit", "/rep/visit");
 
-  if (pathname.startsWith("/m/investor")) {
-    const rest = pathname.replace("/m/investor", "");
-    return `/investor${rest}`;
+  if (pathname === "/m/investor") return "/investor";
+  if (pathname.startsWith("/m/investor/quotas")) {
+    return pathname.replace("/m/investor/quotas", "/investor/quotas");
+  }
+  if (pathname.startsWith("/m/investor/distributions")) {
+    return pathname.replace("/m/investor/distributions", "/investor/distributions");
+  }
+  if (pathname.startsWith("/m/investor/portal")) {
+    return "/investor";
   }
 
   if (pathname === "/m/admin") return "/dashboard";
-  if (pathname.startsWith("/m/admin/sales")) return pathname.replace("/m/admin/sales", "/sales-dashboard");
-  if (pathname.startsWith("/m/admin/clients")) return pathname.replace("/m/admin/clients", "/clients");
-  if (pathname.startsWith("/m/admin/orders")) return pathname.replace("/m/admin/orders", "/orders");
-  if (pathname.startsWith("/m/admin/exhibitors")) return pathname.replace("/m/admin/exhibitors", "/exhibitors");
-  if (pathname.startsWith("/m/admin/finance")) return pathname.replace("/m/admin/finance", "/finance");
-  if (pathname.startsWith("/m/admin/regions")) return pathname.replace("/m/admin/regions", "/regions");
+  if (pathname.startsWith("/m/admin/clients/new")) {
+    return pathname.replace("/m/admin/clients/new", "/clients/new");
+  }
+  if (pathname.startsWith("/m/admin/clients")) {
+    return pathname.replace("/m/admin/clients", "/clients");
+  }
+  if (pathname.startsWith("/m/admin/orders/new")) {
+    return pathname.replace("/m/admin/orders/new", "/orders/new");
+  }
+  if (pathname.startsWith("/m/admin/orders")) {
+    return pathname.replace("/m/admin/orders", "/orders");
+  }
+  if (pathname.startsWith("/m/admin/exhibitors/new")) {
+    return pathname.replace("/m/admin/exhibitors/new", "/exhibitors/new");
+  }
+  if (pathname.startsWith("/m/admin/exhibitors")) {
+    return pathname.replace("/m/admin/exhibitors", "/exhibitors");
+  }
+  if (pathname.startsWith("/m/admin/finance/receivables")) {
+    return pathname.replace("/m/admin/finance/receivables", "/finance/receivables");
+  }
+  if (pathname.startsWith("/m/admin/finance/transfers")) {
+    return pathname.replace("/m/admin/finance/transfers", "/finance/transfers");
+  }
+  if (pathname.startsWith("/m/admin/finance")) {
+    return pathname.replace("/m/admin/finance", "/finance");
+  }
+  if (pathname.startsWith("/m/admin/sales")) {
+    return pathname.replace("/m/admin/sales", "/sales-dashboard");
+  }
+  if (pathname.startsWith("/m/admin/regions")) {
+    return pathname.replace("/m/admin/regions", "/regions");
+  }
   if (pathname.startsWith("/m/admin/representatives")) {
     return pathname.replace("/m/admin/representatives", "/representatives");
   }
-  if (pathname.startsWith("/m/admin/prospects")) return pathname.replace("/m/admin/prospects", "/prospects");
-  if (pathname.startsWith("/m/admin/map")) return pathname.replace("/m/admin/map", "/map");
-  if (pathname.startsWith("/m/admin/settings")) return pathname.replace("/m/admin/settings", "/settings");
-  if (pathname.startsWith("/m/admin/alerts")) return pathname.replace("/m/admin/alerts", "/alerts");
+  if (pathname.startsWith("/m/admin/prospects")) {
+    return pathname.replace("/m/admin/prospects", "/prospects");
+  }
+  if (pathname.startsWith("/m/admin/map")) {
+    return pathname.replace("/m/admin/map", "/map");
+  }
+  if (pathname.startsWith("/m/admin/alerts")) {
+    return pathname.replace("/m/admin/alerts", "/alerts");
+  }
+  if (pathname.startsWith("/m/admin/settings")) {
+    return "/settings";
+  }
+  if (pathname.startsWith("/m/admin/cadastros")) {
+    return "/dashboard";
+  }
 
   if (user?.role === "REPRESENTATIVE") return "/rep";
   if (user?.role === "INVESTOR") return "/investor";
@@ -188,7 +265,9 @@ export default function Header() {
 
     async function loadUser() {
       try {
-        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+        });
 
         if (!res.ok) {
           if (active) setUser(null);
@@ -233,7 +312,11 @@ export default function Header() {
   async function handleLogout() {
     try {
       setLoggingOut(true);
-      await fetch("/api/auth/logout", { method: "POST" });
+
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+
       router.push("/login");
       router.refresh();
     } catch (error) {
@@ -244,7 +327,9 @@ export default function Header() {
   }
 
   function handleToggleMobile() {
-    const nextRoute = mobile ? mobileToDesktop(pathname, user) : desktopToMobile(pathname, user);
+    const nextRoute = mobile
+      ? mobileToDesktop(pathname, user)
+      : desktopToMobile(pathname, user);
 
     try {
       localStorage.setItem("preferred_view_mode", mobile ? "desktop" : "mobile");

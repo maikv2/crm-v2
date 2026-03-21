@@ -5,6 +5,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
+function resolveDefaultRouteByRole(role: string, prefersMobile: boolean) {
+  if (role === "ADMIN") {
+    return prefersMobile ? "/m/admin" : "/dashboard";
+  }
+
+  if (role === "REPRESENTATIVE") {
+    return prefersMobile ? "/m/rep" : "/rep";
+  }
+
+  if (role === "INVESTOR") {
+    return prefersMobile ? "/m/investor" : "/investor";
+  }
+
+  return prefersMobile ? "/m/admin" : "/dashboard";
+}
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -18,6 +34,10 @@ function LoginPageContent() {
     if (!value.startsWith("/")) return null;
 
     return value;
+  }, [searchParams]);
+
+  const forceMobileParam = useMemo(() => {
+    return searchParams.get("m") === "1";
   }, [searchParams]);
 
   const pageBg = theme.isDark ? "#081225" : theme.pageBg;
@@ -60,15 +80,23 @@ function LoginPageContent() {
         return;
       }
 
-      if (json.role === "ADMIN") {
-        router.push("/dashboard");
-      } else if (json.role === "REPRESENTATIVE") {
-        router.push("/rep");
-      } else if (json.role === "INVESTOR") {
-        router.push("/investor");
-      } else {
-        router.push("/dashboard");
+      let prefersMobile = forceMobileParam;
+
+      try {
+        const savedMode = localStorage.getItem("v2_view_mode");
+
+        if (savedMode === "mobile") {
+          prefersMobile = true;
+        } else if (savedMode === "desktop") {
+          prefersMobile = false;
+        } else if (window.matchMedia("(max-width: 900px)").matches) {
+          prefersMobile = true;
+        }
+      } catch (err) {
+        console.error(err);
       }
+
+      router.push(resolveDefaultRouteByRole(json.role, prefersMobile));
     } catch (err: any) {
       setError(err?.message || "Erro ao realizar login.");
     } finally {

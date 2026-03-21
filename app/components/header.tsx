@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Bell,
   Moon,
   Search,
   Settings,
@@ -12,6 +11,7 @@ import {
   Shield,
   KeyRound,
   Users,
+  Smartphone,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "../providers/theme-provider";
@@ -19,6 +19,30 @@ import { getThemeColors } from "../../lib/theme";
 import { useEffect, useRef, useState } from "react";
 
 function getPageTitle(pathname: string) {
+  if (pathname.startsWith("/mobile/admin/clients")) return "Clientes";
+  if (pathname.startsWith("/mobile/admin/dashboard")) return "Dashboard";
+  if (pathname.startsWith("/mobile/admin/exhibitors")) return "Expositores";
+  if (pathname.startsWith("/mobile/admin/products")) return "Produtos";
+  if (pathname.startsWith("/mobile/admin/orders")) return "Pedidos";
+  if (pathname.startsWith("/mobile/admin/finance")) return "Financeiro";
+  if (pathname.startsWith("/mobile/admin/stock")) return "Estoque";
+  if (pathname.startsWith("/mobile/admin/sales-dashboard")) return "Painel de Vendas";
+  if (pathname.startsWith("/mobile/admin/regions")) return "Regiões";
+  if (pathname.startsWith("/mobile/admin/investors")) return "Investidores";
+  if (pathname.startsWith("/mobile/admin/representatives")) return "Representantes";
+  if (pathname.startsWith("/mobile/admin/settings")) return "Configurações";
+
+  if (pathname.startsWith("/mobile/rep/sales-dashboard")) return "Painel de Vendas";
+  if (pathname.startsWith("/mobile/rep/agenda")) return "Agenda";
+  if (pathname.startsWith("/mobile/rep/clients")) return "Clientes";
+  if (pathname.startsWith("/mobile/rep/exhibitors")) return "Expositores";
+  if (pathname.startsWith("/mobile/rep/stock")) return "Estoque";
+  if (pathname.startsWith("/mobile/rep/orders")) return "Pedidos";
+  if (pathname.startsWith("/mobile/rep/finance")) return "Financeiro";
+  if (pathname.startsWith("/mobile/rep")) return "Representante";
+
+  if (pathname.startsWith("/mobile/investor")) return "Investidor";
+
   if (pathname.startsWith("/clients")) return "Clientes";
   if (pathname.startsWith("/dashboard")) return "Dashboard";
   if (pathname.startsWith("/exhibitors")) return "Expositores";
@@ -39,6 +63,8 @@ function getPageTitle(pathname: string) {
   if (pathname.startsWith("/rep/orders")) return "Pedidos";
   if (pathname.startsWith("/rep/finance")) return "Financeiro";
   if (pathname.startsWith("/rep")) return "Representante";
+  if (pathname.startsWith("/investor")) return "Investidor";
+
   return "V2 CRM";
 }
 
@@ -48,6 +74,70 @@ type LoggedUser = {
   email: string;
   role: string;
 };
+
+function getDesktopBasePath(user: LoggedUser | null) {
+  if (user?.role === "REPRESENTATIVE") return "/rep";
+  if (user?.role === "INVESTOR") return "/investor";
+  return "";
+}
+
+function getMobileBasePath(user: LoggedUser | null) {
+  if (user?.role === "REPRESENTATIVE") return "/mobile/rep";
+  if (user?.role === "INVESTOR") return "/mobile/investor";
+  return "/mobile/admin";
+}
+
+function getToggleRoute(pathname: string, user: LoggedUser | null) {
+  const mobileBase = getMobileBasePath(user);
+  const desktopBase = getDesktopBasePath(user);
+
+  const isMobileRoute =
+    pathname.startsWith("/mobile/admin") ||
+    pathname.startsWith("/mobile/rep") ||
+    pathname.startsWith("/mobile/investor");
+
+  if (isMobileRoute) {
+    if (pathname.startsWith("/mobile/admin")) {
+      const rest = pathname.replace("/mobile/admin", "") || "/dashboard";
+      return `${desktopBase}${rest}`;
+    }
+
+    if (pathname.startsWith("/mobile/rep")) {
+      const rest = pathname.replace("/mobile/rep", "") || "";
+      return `${desktopBase}${rest || ""}`;
+    }
+
+    if (pathname.startsWith("/mobile/investor")) {
+      const rest = pathname.replace("/mobile/investor", "") || "";
+      return `${desktopBase}${rest || ""}`;
+    }
+  }
+
+  if (user?.role === "REPRESENTATIVE") {
+    if (pathname.startsWith("/rep")) {
+      const rest = pathname.replace("/rep", "") || "";
+      return `${mobileBase}${rest || ""}`;
+    }
+
+    return mobileBase;
+  }
+
+  if (user?.role === "INVESTOR") {
+    if (pathname.startsWith("/investor")) {
+      const rest = pathname.replace("/investor", "") || "";
+      return `${mobileBase}${rest || ""}`;
+    }
+
+    return mobileBase;
+  }
+
+  if (pathname.startsWith("/rep") || pathname.startsWith("/investor")) {
+    return mobileBase;
+  }
+
+  const rest = pathname || "/dashboard";
+  return `${mobileBase}${rest === "/" ? "/dashboard" : rest}`;
+}
 
 export default function Header() {
   const pathname = usePathname();
@@ -66,6 +156,10 @@ export default function Header() {
   const title = getPageTitle(pathname);
   const isRepresentative = user?.role === "REPRESENTATIVE";
   const isAdmin = user?.role === "ADMIN";
+  const isMobileRoute =
+    pathname.startsWith("/mobile/admin") ||
+    pathname.startsWith("/mobile/rep") ||
+    pathname.startsWith("/mobile/investor");
 
   useEffect(() => {
     let active = true;
@@ -131,6 +225,18 @@ export default function Header() {
     } finally {
       setLoggingOut(false);
     }
+  }
+
+  function handleToggleMobile() {
+    const nextRoute = getToggleRoute(pathname, user);
+
+    try {
+      localStorage.setItem("preferred_view_mode", isMobileRoute ? "desktop" : "mobile");
+    } catch (error) {
+      console.error(error);
+    }
+
+    router.push(nextRoute);
   }
 
   const userInitials = user?.name
@@ -355,32 +461,27 @@ export default function Header() {
 
         <button
           type="button"
+          onClick={handleToggleMobile}
+          title={isMobileRoute ? "Voltar para modo normal" : "Abrir modo mobile"}
           style={{
-            width: 40,
             height: 40,
+            minWidth: 108,
+            padding: "0 12px",
             borderRadius: 12,
             border: `1px solid ${colors.border}`,
             background: colors.cardBg,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            gap: 8,
             cursor: "pointer",
-            color: "#f59e0b",
-            position: "relative",
+            color: isMobileRoute ? "#2563eb" : colors.text,
+            fontWeight: 700,
+            fontSize: 13,
           }}
         >
-          <Bell size={16} />
-          <span
-            style={{
-              position: "absolute",
-              top: 9,
-              right: 9,
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "#ef4444",
-            }}
-          />
+          <Smartphone size={16} />
+          {isMobileRoute ? "Normal" : "Mobile"}
         </button>
 
         {isAdmin ? (

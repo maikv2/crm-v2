@@ -2,18 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  CircleDollarSign,
-  Coins,
-  HandCoins,
-  PieChart,
-} from "lucide-react";
+import { CircleDollarSign, Coins, HandCoins, PieChart } from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileShell, {
   MobileCard,
   MobileInfoRow,
   MobileSectionTitle,
-  MobileStatCard,
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
 import { investorMobileNavItems } from "@/app/components/mobile/mobile-investor-shared";
@@ -77,56 +71,53 @@ export default function MobileInvestorPage() {
   const colors = getThemeColors(theme);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<InvestorPortalResponse | null>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadData() {
-      try {
+  async function loadData(showRefreshing = false) {
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
         setLoading(true);
-        setError(null);
-
-        const res = await fetch("/api/investor-auth/me", {
-          cache: "no-store",
-        });
-
-        const json = await res.json().catch(() => null);
-
-        if (res.status === 401) {
-          router.push("/investor/login");
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error(json?.error || "Erro ao carregar investidor mobile.");
-        }
-
-        if (active) {
-          setData(json);
-        }
-      } catch (err) {
-        console.error(err);
-        if (active) {
-          setError(
-            err instanceof Error ? err.message : "Erro ao carregar investidor mobile."
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
       }
+
+      setError(null);
+
+      const res = await fetch("/api/investor-auth/me", {
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (res.status === 401) {
+        router.push("/investor/login");
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Erro ao carregar investidor mobile.");
+      }
+
+      setData(json);
+    } catch (err) {
+      console.error(err);
+      setError(
+        err instanceof Error ? err.message : "Erro ao carregar investidor mobile."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  }
 
+  useEffect(() => {
     loadData();
-
-    return () => {
-      active = false;
-    };
-  }, [router]);
+  }, []);
 
   const latestDistributions = useMemo(() => {
-    return (data?.distributions ?? []).slice(0, 6);
+    return (data?.distributions ?? []).slice(0, 5);
   }, [data]);
 
   const groupedShares = useMemo(() => {
@@ -149,7 +140,9 @@ export default function MobileInvestorPage() {
       map.set(regionName, current);
     }
 
-    return Array.from(map.values()).sort((a, b) => b.totalCents - a.totalCents);
+    return Array.from(map.values()).sort((a, b) =>
+      a.regionName.localeCompare(b.regionName, "pt-BR")
+    );
   }, [data]);
 
   return (
@@ -160,6 +153,29 @@ export default function MobileInvestorPage() {
       showBrand
       brandHref="/m/investor"
     >
+      <MobileSectionTitle
+        title="Resumo"
+        action={
+          <button
+            onClick={() => loadData(true)}
+            style={{
+              height: 34,
+              padding: "0 12px",
+              borderRadius: 10,
+              border: `1px solid ${colors.border}`,
+              background: colors.card,
+              color: colors.text,
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {refreshing ? "Atualizando..." : "Atualizar"}
+          </button>
+        }
+      />
+
       {loading ? (
         <MobileCard>Carregando...</MobileCard>
       ) : error ? (
@@ -173,43 +189,81 @@ export default function MobileInvestorPage() {
                 : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
             }}
           >
-            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 900,
+                marginBottom: 8,
+                lineHeight: 1.15,
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
+              }}
+            >
               {data.investor.name}
             </div>
-            <div style={{ fontSize: 13, opacity: 0.9 }}>
+
+            <div
+              style={{
+                fontSize: 13,
+                opacity: 0.9,
+                lineHeight: 1.35,
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
+              }}
+            >
               {data.investor.email || "investidor"}
             </div>
+
+            {data.investor.phone ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 12,
+                  opacity: 0.8,
+                  lineHeight: 1.35,
+                  wordBreak: "break-word",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {data.investor.phone}
+              </div>
+            ) : null}
           </MobileCard>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-              gap: 12,
-            }}
-          >
-            <MobileStatCard
-              label="Cotas ativas"
-              value={String(data.summary.activeQuotaCount)}
+          <MobileCard>
+            <MobileSectionTitle title="Indicadores" />
+
+            <MobileInfoRow
+              title="Cotas ativas"
+              right={String(data.summary.activeQuotaCount ?? 0)}
             />
-            <MobileStatCard
-              label="Regiões"
-              value={String(data.summary.totalRegions)}
+
+            <MobileInfoRow
+              title="Regiões"
+              right={String(data.summary.totalRegions ?? 0)}
             />
-            <MobileStatCard
-              label="Investido"
-              value={formatMoneyBR(data.summary.totalInvestedCents)}
+
+            <MobileInfoRow
+              title="Total investido"
+              right={formatMoneyBR(data.summary.totalInvestedCents ?? 0)}
             />
-            <MobileStatCard
-              label="Pendente"
-              value={formatMoneyBR(data.summary.pendingDistributionCents)}
+
+            <MobileInfoRow
+              title="Total recebido"
+              right={formatMoneyBR(data.summary.totalDistributedCents ?? 0)}
             />
-          </div>
+
+            <MobileInfoRow
+              title="Pendente"
+              right={formatMoneyBR(data.summary.pendingDistributionCents ?? 0)}
+            />
+          </MobileCard>
 
           <MobileCard>
             <MobileSectionTitle title="Ações rápidas" />
+
             <div style={{ display: "grid", gap: 10 }}>
-              <Link href="/m/investor/quotas">
+              <Link href="/m/investor/quotas" style={{ textDecoration: "none" }}>
                 <div
                   style={{
                     borderRadius: 16,
@@ -219,14 +273,26 @@ export default function MobileInvestorPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
+                    minWidth: 0,
                   }}
                 >
                   <Coins size={18} />
-                  <div style={{ fontSize: 14, fontWeight: 800 }}>Minhas cotas</div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    Minhas cotas
+                  </div>
                 </div>
               </Link>
 
-              <Link href="/m/investor/distributions">
+              <Link
+                href="/m/investor/distributions"
+                style={{ textDecoration: "none" }}
+              >
                 <div
                   style={{
                     borderRadius: 16,
@@ -236,16 +302,23 @@ export default function MobileInvestorPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
+                    minWidth: 0,
                   }}
                 >
                   <CircleDollarSign size={18} />
-                  <div style={{ fontSize: 14, fontWeight: 800 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      wordBreak: "break-word",
+                    }}
+                  >
                     Distribuições
                   </div>
                 </div>
               </Link>
 
-              <Link href="/m/investor/portal">
+              <Link href="/m/investor/portal" style={{ textDecoration: "none" }}>
                 <div
                   style={{
                     borderRadius: 16,
@@ -255,10 +328,19 @@ export default function MobileInvestorPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
+                    minWidth: 0,
                   }}
                 >
                   <PieChart size={18} />
-                  <div style={{ fontSize: 14, fontWeight: 800 }}>Portal completo</div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    Portal completo
+                  </div>
                 </div>
               </Link>
             </div>
@@ -266,20 +348,26 @@ export default function MobileInvestorPage() {
 
           <MobileCard>
             <MobileSectionTitle title="Distribuições recentes" />
+
             {latestDistributions.length === 0 ? (
-              <div style={{ fontSize: 13, color: colors.subtext }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: colors.subtext,
+                  lineHeight: 1.4,
+                }}
+              >
                 Nenhuma distribuição registrada.
               </div>
             ) : (
               latestDistributions.map((item) => (
                 <MobileInfoRow
                   key={item.id}
-                  title={`${item.region?.name || "Região"} • ${String(item.month).padStart(
-                    2,
-                    "0"
-                  )}/${item.year}`}
+                  title={`${item.region?.name || "Região"} • ${String(
+                    item.month
+                  ).padStart(2, "0")}/${item.year}`}
                   subtitle={`${item.quotaCount} cotas • ${item.status}`}
-                  right={formatMoneyBR(item.totalDistributionCents)}
+                  right={formatMoneyBR(item.totalDistributionCents ?? 0)}
                   href="/m/investor/distributions"
                 />
               ))
@@ -288,8 +376,15 @@ export default function MobileInvestorPage() {
 
           <MobileCard>
             <MobileSectionTitle title="Minha posição por região" />
+
             {groupedShares.length === 0 ? (
-              <div style={{ fontSize: 13, color: colors.subtext }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: colors.subtext,
+                  lineHeight: 1.4,
+                }}
+              >
                 Nenhuma cota ativa encontrada.
               </div>
             ) : (
@@ -305,7 +400,7 @@ export default function MobileInvestorPage() {
             )}
           </MobileCard>
 
-          <Link href="/m/investor/portal">
+          <Link href="/m/investor/portal" style={{ textDecoration: "none" }}>
             <MobileCard
               style={{
                 background: colors.isDark ? "#111827" : "#eef4ff",
@@ -317,14 +412,28 @@ export default function MobileInvestorPage() {
                   alignItems: "center",
                   gap: 10,
                   marginBottom: 6,
+                  minWidth: 0,
                 }}
               >
                 <HandCoins size={18} />
-                <div style={{ fontSize: 15, fontWeight: 900 }}>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 900,
+                    wordBreak: "break-word",
+                  }}
+                >
                   Abrir portal completo do investidor
                 </div>
               </div>
-              <div style={{ fontSize: 13, color: colors.subtext }}>
+
+              <div
+                style={{
+                  fontSize: 13,
+                  color: colors.subtext,
+                  lineHeight: 1.4,
+                }}
+              >
                 Para acompanhar mais detalhes por região.
               </div>
             </MobileCard>

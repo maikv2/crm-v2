@@ -5,107 +5,135 @@ import Link from "next/link";
 import {
   ChevronRight,
   MapPin,
-  MessageCircle,
   Phone,
-  User2,
+  Plus,
+  Search,
+  ShoppingBag,
+  Store,
+  Target,
   Users,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
-import MobileAppear from "@/app/components/mobile/mobile-appear";
-import MobileSkeletonCard from "@/app/components/mobile/mobile-skeleton-card";
 import {
   MobileCard,
   MobileSectionTitle,
-  MobileStatCard,
-  formatDateBR,
 } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
 type ClientItem = {
   id: string;
-  name: string;
+  name?: string | null;
+  fantasyName?: string | null;
   city?: string | null;
-  district?: string | null;
   phone?: string | null;
-  whatsapp?: string | null;
-  lastVisitAt?: string | null;
-  active?: boolean;
-  regionId?: string | null;
-  region?: {
-    id: string;
-    name: string;
-  } | null;
+  neighborhood?: string | null;
+  active?: boolean | null;
 };
 
-type AuthMeResponse = {
-  user?: {
-    role?: string;
-    regionId?: string | null;
-  } | null;
-};
+type ClientsResponse =
+  | ClientItem[]
+  | {
+      clients?: ClientItem[];
+      items?: ClientItem[];
+    };
 
-function toWhatsapp(phone?: string | null) {
-  const digits = String(phone ?? "").replace(/\D/g, "");
-  if (!digits) return "";
-  return digits.startsWith("55") ? digits : `55${digits}`;
+function resolveClients(data: ClientsResponse | null): ClientItem[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.clients)) return data.clients;
+  if (Array.isArray(data.items)) return data.items;
+  return [];
+}
+
+function QuickAction({
+  href,
+  title,
+  icon,
+}: {
+  href: string;
+  title: string;
+  icon: React.ReactNode;
+}) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
+
+  return (
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <div
+        style={{
+          minWidth: 108,
+          padding: "12px 14px",
+          borderRadius: 14,
+          border: `1px solid ${colors.border}`,
+          background: colors.cardBg,
+          color: colors.text,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          boxShadow: colors.isDark
+            ? "0 8px 24px rgba(2,6,23,0.24)"
+            : "0 8px 20px rgba(15,23,42,0.06)",
+        }}
+      >
+        <div
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 12,
+            background: colors.isDark ? "#111827" : "#e8f0ff",
+            color: colors.primary,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {icon}
+        </div>
+
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 800,
+            lineHeight: 1.2,
+          }}
+        >
+          {title}
+        </div>
+      </div>
+    </Link>
+  );
 }
 
 export default function MobileRepClientsPage() {
-  const router = useRouter();
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [clients, setClients] = useState<ClientItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [clients, setClients] = useState<ClientItem[]>([]);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let active = true;
 
-    async function loadClients() {
+    async function load() {
       try {
         setLoading(true);
         setError(null);
 
-        const authRes = await fetch("/api/auth/me", { cache: "no-store" });
-        const authJson = (await authRes.json().catch(() => null)) as
-          | AuthMeResponse
-          | null;
+        const res = await fetch("/api/rep/clients", {
+          cache: "no-store",
+        });
 
-        if (authRes.status === 401) {
-          router.push("/login?redirect=/m/rep/clients");
-          return;
-        }
-
-        if (authJson?.user?.role !== "REPRESENTATIVE") {
-          router.push("/m/rep");
-          return;
-        }
-
-        const regionId = authJson?.user?.regionId ?? null;
-
-        const res = await fetch("/api/clients", { cache: "no-store" });
         const json = await res.json().catch(() => null);
 
         if (!res.ok) {
           throw new Error(json?.error || "Erro ao carregar clientes.");
         }
 
-        const items = Array.isArray(json)
-          ? json
-          : Array.isArray(json?.items)
-          ? json.items
-          : [];
-
-        const filteredByRegion = items.filter(
-          (item: ClientItem) => !regionId || item.regionId === regionId
-        );
-
         if (active) {
-          setClients(filteredByRegion);
+          setClients(resolveClients(json));
         }
       } catch (err) {
         console.error(err);
@@ -119,343 +147,282 @@ export default function MobileRepClientsPage() {
       }
     }
 
-    loadClients();
+    load();
 
     return () => {
       active = false;
     };
-  }, [router]);
+  }, []);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  const filteredClients = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return clients;
 
-    return clients.filter((item) => {
-      if (!q) return true;
+    return clients.filter((client) => {
+      const haystack = [
+        client.name,
+        client.fantasyName,
+        client.city,
+        client.phone,
+        client.neighborhood,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
 
-      return (
-        String(item.name ?? "").toLowerCase().includes(q) ||
-        String(item.city ?? "").toLowerCase().includes(q) ||
-        String(item.district ?? "").toLowerCase().includes(q) ||
-        String(item.region?.name ?? "").toLowerCase().includes(q)
-      );
+      return haystack.includes(q);
     });
-  }, [clients, search]);
-
-  const summary = useMemo(() => {
-    return filtered.reduce(
-      (acc, item) => {
-        acc.total += 1;
-        if (item.active === false) acc.inactive += 1;
-        else acc.active += 1;
-        return acc;
-      },
-      {
-        total: 0,
-        active: 0,
-        inactive: 0,
-      }
-    );
-  }, [filtered]);
+  }, [clients, query]);
 
   return (
     <MobileRepPageFrame
       title="Clientes"
-      subtitle="Clientes da sua região"
+      subtitle="Carteira de clientes da região"
       desktopHref="/rep/clients"
     >
-      <MobileAppear>
-        <MobileCard>
+      <MobileCard style={{ padding: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            border: `1px solid ${colors.border}`,
+            borderRadius: 14,
+            padding: "12px 14px",
+            background: colors.cardBg,
+          }}
+        >
+          <Search size={16} color={colors.subtext} />
           <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome, cidade, bairro ou região"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar cliente, cidade ou telefone"
             style={{
-              width: "100%",
-              height: 46,
-              borderRadius: 14,
-              border: `1px solid ${colors.border}`,
-              background: colors.inputBg,
-              color: colors.text,
-              padding: "0 14px",
+              border: "none",
               outline: "none",
+              background: "transparent",
+              color: colors.text,
+              width: "100%",
               fontSize: 14,
             }}
           />
-        </MobileCard>
-      </MobileAppear>
+        </div>
+      </MobileCard>
 
-      <MobileAppear delay={50}>
+      <MobileCard>
+        <MobileSectionTitle title="Ações rápidas" />
+
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+            display: "flex",
             gap: 12,
+            overflowX: "auto",
+            paddingBottom: 4,
           }}
         >
-          <MobileStatCard
-            label="Clientes visíveis"
-            value={String(summary.total)}
-            helper="Resultado do filtro atual"
+          <QuickAction
+            href="/clients/new"
+            title="Novo cliente"
+            icon={<Plus size={18} />}
           />
-          <MobileStatCard
-            label="Ativos"
-            value={String(summary.active)}
-            helper={`${summary.inactive} inativos`}
+          <QuickAction
+            href="/m/rep/orders/new"
+            title="Novo pedido"
+            icon={<ShoppingBag size={18} />}
+          />
+          <QuickAction
+            href="/rep/exhibitors"
+            title="Expositores"
+            icon={<Store size={18} />}
+          />
+          <QuickAction
+            href="/rep/prospects"
+            title="Prospectos"
+            icon={<Target size={18} />}
           />
         </div>
-      </MobileAppear>
+      </MobileCard>
 
-      <MobileAppear delay={90}>
-        <MobileCard
+      <MobileCard>
+        <div
           style={{
-            background: colors.isDark
-              ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
-              : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 12,
           }}
         >
-          <MobileSectionTitle title="Visão rápida da região" />
-          <div style={{ display: "grid", gap: 10 }}>
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                background: colors.isDark ? "rgba(255,255,255,0.06)" : "#ffffff",
-                border: `1px solid ${
-                  colors.isDark ? "rgba(255,255,255,0.08)" : "#bfdbfe"
-                }`,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 14,
-                  background: colors.isDark ? "#111f39" : "#e8f0ff",
-                  color: colors.primary,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <Users size={18} />
-              </div>
-
-              <div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: colors.subtext,
-                    marginBottom: 2,
-                  }}
-                >
-                  Operação comercial
-                </div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 900,
-                    color: colors.text,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  Consulta rápida com ligação e WhatsApp direto na base da sua região
-                </div>
-              </div>
-            </div>
+          <MobileSectionTitle title="Resumo" />
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: colors.subtext,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {filteredClients.length} cliente
+            {filteredClients.length === 1 ? "" : "s"}
           </div>
-        </MobileCard>
-      </MobileAppear>
+        </div>
 
-      {loading ? (
-        <MobileAppear delay={120}>
+        {loading ? (
+          <div
+            style={{
+              fontSize: 14,
+              color: colors.subtext,
+            }}
+          >
+            Carregando clientes...
+          </div>
+        ) : error ? (
+          <div
+            style={{
+              fontSize: 14,
+              color: "#dc2626",
+            }}
+          >
+            {error}
+          </div>
+        ) : filteredClients.length === 0 ? (
+          <div
+            style={{
+              fontSize: 14,
+              color: colors.subtext,
+            }}
+          >
+            Nenhum cliente encontrado.
+          </div>
+        ) : (
           <div style={{ display: "grid", gap: 12 }}>
-            <MobileSkeletonCard />
-            <MobileSkeletonCard />
-            <MobileSkeletonCard />
+            {filteredClients.map((client) => {
+              const displayName =
+                client.fantasyName?.trim() || client.name?.trim() || "Cliente";
+
+              return (
+                <Link
+                  key={client.id}
+                  href={`/rep/clients/${client.id}`}
+                  style={{ textDecoration: "none" }}
+                >
+                  <div
+                    style={{
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 16,
+                      padding: 14,
+                      background: colors.cardBg,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            marginBottom: 6,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 12,
+                              background: colors.isDark ? "#111827" : "#e8f0ff",
+                              color: colors.primary,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Users size={16} />
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 15,
+                              fontWeight: 900,
+                              color: colors.text,
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            {displayName}
+                          </div>
+                        </div>
+
+                        {client.name &&
+                        client.fantasyName &&
+                        client.name !== client.fantasyName ? (
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: colors.subtext,
+                              marginBottom: 8,
+                            }}
+                          >
+                            Razão social: {client.name}
+                          </div>
+                        ) : null}
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 6,
+                            fontSize: 12,
+                            color: colors.subtext,
+                          }}
+                        >
+                          {client.city ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                            >
+                              <MapPin size={13} />
+                              <span>
+                                {client.city}
+                                {client.neighborhood
+                                  ? ` • ${client.neighborhood}`
+                                  : ""}
+                              </span>
+                            </div>
+                          ) : null}
+
+                          {client.phone ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                            >
+                              <Phone size={13} />
+                              <span>{client.phone}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <ChevronRight size={16} color={colors.subtext} />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
-        </MobileAppear>
-      ) : error ? (
-        <MobileCard>{error}</MobileCard>
-      ) : filtered.length === 0 ? (
-        <MobileCard>Nenhum cliente encontrado.</MobileCard>
-      ) : (
-        filtered.map((client, index) => {
-          const whatsapp = toWhatsapp(client.whatsapp || client.phone);
-
-          return (
-            <MobileAppear key={client.id} delay={Math.min(index * 35, 180)}>
-              <MobileCard style={{ padding: 14 }}>
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 16,
-                          fontWeight: 900,
-                          color: colors.text,
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        {client.name}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: 4,
-                          fontSize: 12,
-                          color: colors.subtext,
-                        }}
-                      >
-                        {client.region?.name || "Sem região"}
-                      </div>
-                    </div>
-
-                    <span
-                      style={{
-                        borderRadius: 999,
-                        padding: "6px 10px",
-                        fontSize: 11,
-                        fontWeight: 800,
-                        background:
-                          client.active === false
-                            ? colors.isDark
-                              ? "#2a1313"
-                              : "#fee2e2"
-                            : colors.isDark
-                            ? "#0f2a17"
-                            : "#dcfce7",
-                        color: client.active === false ? "#ef4444" : "#16a34a",
-                      }}
-                    >
-                      {client.active === false ? "Inativo" : "Ativo"}
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 8,
-                      fontSize: 12,
-                      color: colors.subtext,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <MapPin size={14} />
-                      {[client.city, client.district].filter(Boolean).join(" • ") ||
-                        "Sem localização"}
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <User2 size={14} />
-                      Última visita: {formatDateBR(client.lastVisitAt)}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0,1fr))",
-                      gap: 8,
-                    }}
-                  >
-                    <Link href="/m/rep/clients" style={{ textDecoration: "none" }}>
-                      <div
-                        style={{
-                          minHeight: 42,
-                          borderRadius: 12,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.cardBg,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: colors.text,
-                        }}
-                      >
-                        <ChevronRight size={14} />
-                        Abrir
-                      </div>
-                    </Link>
-
-                    <a
-                      href={client.phone ? `tel:${client.phone}` : "#"}
-                      style={{
-                        pointerEvents: client.phone ? "auto" : "none",
-                        textDecoration: "none",
-                      }}
-                    >
-                      <div
-                        style={{
-                          minHeight: 42,
-                          borderRadius: 12,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.cardBg,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: colors.text,
-                          opacity: client.phone ? 1 : 0.5,
-                        }}
-                      >
-                        <Phone size={14} />
-                        Ligar
-                      </div>
-                    </a>
-
-                    <a
-                      href={whatsapp ? `https://wa.me/${whatsapp}` : "#"}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        pointerEvents: whatsapp ? "auto" : "none",
-                        textDecoration: "none",
-                      }}
-                    >
-                      <div
-                        style={{
-                          minHeight: 42,
-                          borderRadius: 12,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.cardBg,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: colors.text,
-                          opacity: whatsapp ? 1 : 0.5,
-                        }}
-                      >
-                        <MessageCircle size={14} />
-                        Whats
-                      </div>
-                    </a>
-                  </div>
-                </div>
-              </MobileCard>
-            </MobileAppear>
-          );
-        })
-      )}
+        )}
+      </MobileCard>
     </MobileRepPageFrame>
   );
 }

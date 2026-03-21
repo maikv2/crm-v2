@@ -28,9 +28,7 @@ function isProtectedCrmRoute(pathname: string) {
     pathname === "/m/admin" ||
     pathname.startsWith("/m/admin/") ||
     pathname === "/m/rep" ||
-    pathname.startsWith("/m/rep/") ||
-    pathname === "/m/investor" ||
-    pathname.startsWith("/m/investor/")
+    pathname.startsWith("/m/rep/")
   );
 }
 
@@ -43,11 +41,20 @@ function isProtectedPortalRoute(pathname: string) {
   );
 }
 
+function isProtectedInvestorRoute(pathname: string) {
+  return (
+    pathname === "/investor" ||
+    pathname.startsWith("/investor/") ||
+    pathname === "/m/investor" ||
+    pathname.startsWith("/m/investor/")
+  );
+}
+
 export function proxy(req: NextRequest) {
   const crmSession = req.cookies.get("crm_session")?.value;
   const portalSession = req.cookies.get("portal_session")?.value;
   const investorSession = req.cookies.get("investor_session")?.value;
-  const { pathname } = req.nextUrl;
+  const { pathname, searchParams } = req.nextUrl;
 
   const isLoginPage = pathname === "/login";
   const isPortalLoginPage = pathname === "/portal/login";
@@ -55,11 +62,9 @@ export function proxy(req: NextRequest) {
 
   const isCrmProtected = isProtectedCrmRoute(pathname);
   const isPortalProtected = isProtectedPortalRoute(pathname);
-  const isInvestorProtected =
-    pathname === "/investor" ||
-    pathname.startsWith("/investor/");
+  const isInvestorProtected = isProtectedInvestorRoute(pathname);
 
-  if (isCrmProtected && !crmSession && !investorSession) {
+  if (isCrmProtected && !crmSession) {
     const url = new URL("/login", req.url);
     url.searchParams.set("redirect", pathname);
     if (pathname.startsWith("/m/")) url.searchParams.set("m", "1");
@@ -78,6 +83,7 @@ export function proxy(req: NextRequest) {
     const url = new URL("/login", req.url);
     url.searchParams.set("access", "INVESTOR");
     url.searchParams.set("redirect", pathname);
+    if (pathname.startsWith("/m/")) url.searchParams.set("m", "1");
     return NextResponse.redirect(url);
   }
 
@@ -89,7 +95,7 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL("/investor", req.url));
   }
 
-  if (isLoginPage && crmSession && !req.nextUrl.searchParams.get("access")) {
+  if (isLoginPage && crmSession && !searchParams.get("access")) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
@@ -101,22 +107,42 @@ export const config = {
     "/login",
     "/portal/login",
     "/investor/login",
+
+    "/portal",
     "/portal/:path*",
+    "/investor",
     "/investor/:path*",
+
+    "/dashboard",
     "/dashboard/:path*",
+    "/clients",
     "/clients/:path*",
+    "/orders",
     "/orders/:path*",
+    "/finance",
     "/finance/:path*",
+    "/rep",
     "/rep/:path*",
+    "/products",
     "/products/:path*",
+    "/regions",
     "/regions/:path*",
+    "/stock",
     "/stock/:path*",
+    "/exhibitors",
     "/exhibitors/:path*",
+    "/investors",
     "/investors/:path*",
+    "/sales-dashboard",
     "/sales-dashboard/:path*",
+
+    "/m/admin",
     "/m/admin/:path*",
+    "/m/rep",
     "/m/rep/:path*",
+    "/m/client",
     "/m/client/:path*",
+    "/m/investor",
     "/m/investor/:path*",
   ],
 };

@@ -5,20 +5,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-function resolveDefaultRouteByRole(role: string) {
-  if (role === "ADMIN") {
-    return "/dashboard";
-  }
+type AccessType = "CRM" | "CLIENT" | "INVESTOR";
 
-  if (role === "REPRESENTATIVE") {
-    return "/rep";
-  }
+function resolveCrmRouteByRole(role: string, mobile: boolean) {
+  if (role === "ADMIN") return mobile ? "/m/admin" : "/dashboard";
+  if (role === "REPRESENTATIVE") return mobile ? "/m/rep" : "/rep";
+  if (role === "INVESTOR") return mobile ? "/m/investor" : "/investor";
+  return mobile ? "/m/admin" : "/dashboard";
+}
 
-  if (role === "INVESTOR") {
-    return "/investor";
-  }
-
-  return "/dashboard";
+function normalizeAccess(value: string | null): AccessType {
+  const raw = String(value || "").toUpperCase().trim();
+  if (raw === "CLIENT") return "CLIENT";
+  if (raw === "INVESTOR") return "INVESTOR";
+  return "CRM";
 }
 
 function LoginPageContent() {
@@ -27,25 +27,51 @@ function LoginPageContent() {
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
 
-  const redirect = useMemo(() => {
-    const value = searchParams.get("redirect")?.trim();
+  const mobile = useMemo(() => searchParams.get("m") === "1", [searchParams]);
 
+  const redirectParam = useMemo(() => {
+    const value = searchParams.get("redirect")?.trim();
     if (!value) return null;
     if (!value.startsWith("/")) return null;
-
     return value;
   }, [searchParams]);
+
+  const initialAccess = useMemo(
+    () => normalizeAccess(searchParams.get("access")),
+    [searchParams]
+  );
+
+  const [access, setAccess] = useState<AccessType>(initialAccess);
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const pageBg = theme.isDark ? "#081225" : theme.pageBg;
   const cardBg = theme.isDark ? "#0f172a" : theme.cardBg;
   const border = theme.isDark ? "#1e293b" : theme.border;
   const muted = theme.isDark ? "#94a3b8" : "#64748b";
+  const subtle = theme.isDark ? "#111827" : "#f8fafc";
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const identifierLabel =
+    access === "CLIENT" ? "Usuário do cliente" : "E-mail";
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const identifierPlaceholder =
+    access === "CLIENT" ? "Digite o nome/usuário do cliente" : "Digite seu e-mail";
+
+  const title =
+    access === "CRM"
+      ? "CRM V2"
+      : access === "CLIENT"
+      ? "Portal do Cliente"
+      : "Portal do Investidor";
+
+  const subtitle =
+    access === "CRM"
+      ? "Acesse sua conta para continuar."
+      : access === "CLIENT"
+      ? "Entre para acessar o portal do cliente."
+      : "Entre para acessar o portal do investidor.";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,13 +80,61 @@ function LoginPageContent() {
       setLoading(true);
       setError(null);
 
-      const res = await fetch("/api/auth/login", {
+      if (access === "CRM") {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: identifier,
+            password,
+          }),
+        });
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Erro ao realizar login.");
+        }
+
+        const role = String(json?.user?.role ?? "");
+
+        if (redirectParam) {
+          router.push(redirectParam);
+          router.refresh();
+          return;
+        }
+
+        router.push(resolveCrmRouteByRole(role, mobile));
+        router.refresh();
+        return;
+      }
+
+      if (access === "CLIENT") {
+        const res = await fetch("/api/portal-auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: identifier,
+            password,
+          }),
+        });
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Erro ao realizar login.");
+        }
+
+        router.push(redirectParam || (mobile ? "/m/client" : "/portal/dashboard"));
+        router.refresh();
+        return;
+      }
+
+      const res = await fetch("/api/investor-auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
+          username: identifier,
           password,
         }),
       });
@@ -68,21 +142,13 @@ function LoginPageContent() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(json?.error || "Erro ao realizar login.");
+        throw new Error(json?.error || "Erro ao entrar.");
       }
 
-      const role = String(json?.user?.role ?? "");
-
-      if (redirect) {
-        router.push(redirect);
-        router.refresh();
-        return;
-      }
-
-      router.push(resolveDefaultRouteByRole(role));
+      router.push(redirectParam || (mobile ? "/m/investor" : "/investor"));
       router.refresh();
-    } catch (err: any) {
-      setError(err?.message || "Erro ao realizar login.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao realizar login.");
     } finally {
       setLoading(false);
     }
@@ -97,6 +163,40 @@ function LoginPageContent() {
     color: theme.text,
     outline: "none",
   };
+
+  function AccessButton({
+    value,
+    label,
+  }: {
+    value: AccessType;
+    label: string;
+  }) {
+    const active = access === value;
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setAccess(value);
+          setError(null);
+          setIdentifier("");
+          setPassword("");
+        }}
+        style={{
+          height: 40,
+          borderRadius: 12,
+          border: `1px solid ${active ? "#2563eb" : border}`,
+          background: active ? "#2563eb" : subtle,
+          color: active ? "#ffffff" : theme.text,
+          fontWeight: 800,
+          fontSize: 13,
+          cursor: "pointer",
+        }}
+      >
+        {label}
+      </button>
+    );
+  }
 
   return (
     <div
@@ -114,7 +214,7 @@ function LoginPageContent() {
         onSubmit={handleSubmit}
         style={{
           width: "100%",
-          maxWidth: 420,
+          maxWidth: 460,
           border: `1px solid ${border}`,
           borderRadius: 18,
           padding: 28,
@@ -124,56 +224,62 @@ function LoginPageContent() {
             : "0 8px 24px rgba(15,23,42,0.06)",
         }}
       >
-        <div style={{ marginBottom: 22 }}>
-          <div
-            style={{
-              fontSize: 26,
-              fontWeight: 900,
-              marginBottom: 6,
-            }}
-          >
-            CRM V2
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 26, fontWeight: 900, marginBottom: 6 }}>
+            {title}
           </div>
 
-          <div
-            style={{
-              fontSize: 14,
-              color: muted,
-              lineHeight: 1.55,
-            }}
-          >
-            Acesse sua conta para continuar.
+          <div style={{ fontSize: 14, color: muted, lineHeight: 1.55 }}>
+            {subtitle}
           </div>
         </div>
 
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 10,
+            marginBottom: 18,
+          }}
+        >
+          <AccessButton value="CRM" label="CRM" />
+          <AccessButton value="CLIENT" label="Cliente" />
+          <AccessButton value="INVESTOR" label="Investidor" />
+        </div>
+
+        {mobile ? (
+          <div
+            style={{
+              marginBottom: 16,
+              borderRadius: 12,
+              padding: 10,
+              border: `1px solid ${border}`,
+              background: subtle,
+              color: theme.primary,
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            Versão mobile ativa
+          </div>
+        ) : null}
+
         <div style={{ display: "grid", gap: 14 }}>
           <div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                marginBottom: 8,
-              }}
-            >
-              E-mail
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+              {identifierLabel}
             </div>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Digite seu e-mail"
+              type={access === "CLIENT" ? "text" : "email"}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder={identifierPlaceholder}
               style={inputStyle}
             />
           </div>
 
           <div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                marginBottom: 8,
-              }}
-            >
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
               Senha
             </div>
             <input

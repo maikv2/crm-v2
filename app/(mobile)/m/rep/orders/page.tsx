@@ -346,7 +346,7 @@ export default function RepOrdersMobile() {
         ) : (
           filtered.map((order, index) => (
             <MobileAppear key={order.id} delay={Math.min(index * 35, 180)}>
-              <Link href="/rep/orders" style={{ textDecoration: "none" }}>
+              <Link href="/m/rep/orders" style={{ textDecoration: "none" }}>
                 <MobileCard style={{ padding: 14 }}>
                   <div style={{ display: "grid", gap: 12 }}>
                     <div

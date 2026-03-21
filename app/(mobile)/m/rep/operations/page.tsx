@@ -163,7 +163,7 @@ export default function RepOperationsMobile() {
           />
 
           <Shortcut
-            href="/rep"
+            href="/m/rep"
             icon={<Wrench size={18} />}
             title="Abrir painel completo"
             description="Acessar a área completa do representante no desktop."

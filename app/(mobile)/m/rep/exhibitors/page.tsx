@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import {
   MobileCard,
@@ -124,7 +124,6 @@ export default function MobileRepExhibitorsPage() {
                   subtitle={`${item.client?.name ?? "Sem cliente"} • Próxima visita ${formatDateBR(
                     item.nextVisitAt
                   )} • ${item.status ?? "Sem status"}`}
-                  href={item.client?.id ? `/rep/clients/${item.client.id}` : undefined}
                 />
               ))
             )}

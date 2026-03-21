@@ -35,14 +35,6 @@ type ReceivablesResponse = {
     amountCents?: number | null;
     dueDate?: string | null;
     status?: string | null;
-    client?: {
-      id: string;
-      name?: string | null;
-    } | null;
-    order?: {
-      id: string;
-      number?: number | null;
-    } | null;
   }>;
 };
 
@@ -50,9 +42,7 @@ type TransfersResponse = {
   items?: Array<{
     id: string;
     amountCents?: number | null;
-    transferredAt?: string | null;
     status?: string | null;
-    notes?: string | null;
   }>;
 };
 
@@ -128,13 +118,9 @@ function Shortcut({
   );
 }
 
-export default function MobileRepFinancePage() {
-  const { theme } = useTheme();
-  const colors = getThemeColors(theme);
-
+export default function RepFinancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [commissions, setCommissions] = useState<CommissionsResponse | null>(
     null
   );
@@ -181,12 +167,9 @@ export default function MobileRepFinancePage() {
           setTransfers(transfersJson);
         }
       } catch (err) {
-        console.error(err);
         if (active) {
           setError(
-            err instanceof Error
-              ? err.message
-              : "Erro ao carregar financeiro."
+            err instanceof Error ? err.message : "Erro ao carregar financeiro."
           );
         }
       } finally {
@@ -201,9 +184,8 @@ export default function MobileRepFinancePage() {
     };
   }, []);
 
-  const receivableStats = useMemo(() => {
+  const receivablesSummary = useMemo(() => {
     const now = new Date();
-
     return (receivables?.items ?? []).reduce(
       (acc, item) => {
         const value = item.amountCents ?? 0;
@@ -214,24 +196,20 @@ export default function MobileRepFinancePage() {
 
         if (isPaid) acc.paid += value;
         else acc.open += value;
-
         if (overdue) acc.overdue += value;
-
         return acc;
       },
       { open: 0, overdue: 0, paid: 0 }
     );
   }, [receivables]);
 
-  const transferStats = useMemo(() => {
+  const transfersSummary = useMemo(() => {
     return (transfers?.items ?? []).reduce(
       (acc, item) => {
         const value = item.amountCents ?? 0;
         const status = String(item.status ?? "").toUpperCase();
-
         if (status.includes("PENDING")) acc.pending += value;
         else acc.done += value;
-
         return acc;
       },
       { pending: 0, done: 0 }
@@ -252,7 +230,6 @@ export default function MobileRepFinancePage() {
         <>
           <MobileCard>
             <MobileSectionTitle title="Minhas comissões" />
-
             <div
               style={{
                 display: "grid",
@@ -263,31 +240,26 @@ export default function MobileRepFinancePage() {
               <MobileStatCard
                 label="Total gerado"
                 value={formatMoneyBR(commissions?.summary?.total ?? 0)}
-                helper="Comissões acumuladas"
               />
               <MobileStatCard
                 label="Aguardando pagamento"
                 value={formatMoneyBR(commissions?.summary?.awaitingPayment ?? 0)}
-                helper="Pedido ainda não pago"
               />
               <MobileStatCard
                 label="Aguardando repasse"
                 value={formatMoneyBR(
                   commissions?.summary?.awaitingTransfer ?? 0
                 )}
-                helper="Cliente já pagou"
               />
               <MobileStatCard
                 label="Disponível"
                 value={formatMoneyBR(commissions?.summary?.available ?? 0)}
-                helper="Pronto para repasse"
               />
             </div>
           </MobileCard>
 
           <MobileCard>
             <MobileSectionTitle title="Contas a receber da região" />
-
             <div
               style={{
                 display: "grid",
@@ -297,22 +269,21 @@ export default function MobileRepFinancePage() {
             >
               <MobileStatCard
                 label="Em aberto"
-                value={formatMoneyBR(receivableStats.open)}
+                value={formatMoneyBR(receivablesSummary.open)}
               />
               <MobileStatCard
                 label="Em atraso"
-                value={formatMoneyBR(receivableStats.overdue)}
+                value={formatMoneyBR(receivablesSummary.overdue)}
               />
               <MobileStatCard
                 label="Já pagas"
-                value={formatMoneyBR(receivableStats.paid)}
+                value={formatMoneyBR(receivablesSummary.paid)}
               />
             </div>
           </MobileCard>
 
           <MobileCard>
             <MobileSectionTitle title="Repasses" />
-
             <div
               style={{
                 display: "grid",
@@ -322,20 +293,17 @@ export default function MobileRepFinancePage() {
             >
               <MobileStatCard
                 label="Pendentes"
-                value={formatMoneyBR(transferStats.pending)}
-                helper={`${transfers?.items?.length ?? 0} registros`}
+                value={formatMoneyBR(transfersSummary.pending)}
               />
               <MobileStatCard
                 label="Realizados"
-                value={formatMoneyBR(transferStats.done)}
-                helper="Histórico de repasses"
+                value={formatMoneyBR(transfersSummary.done)}
               />
             </div>
           </MobileCard>
 
           <MobileCard>
             <MobileSectionTitle title="Abrir detalhes" />
-
             <div style={{ display: "grid", gap: 12 }}>
               <Shortcut
                 href="/m/rep/finance/commissions"
@@ -343,14 +311,12 @@ export default function MobileRepFinancePage() {
                 subtitle="Ver comissão por pedido e status"
                 icon={<CircleDollarSign size={18} />}
               />
-
               <Shortcut
                 href="/m/rep/finance/receivables"
                 title="Contas a receber"
                 subtitle="Ver o que foi pago, aberto e atrasado"
                 icon={<Receipt size={18} />}
               />
-
               <Shortcut
                 href="/m/rep/finance/transfers"
                 title="Repasses"

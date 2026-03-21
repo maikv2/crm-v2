@@ -73,6 +73,7 @@ export default function RepFinanceReceivablesPage() {
 
   const summary = useMemo(() => {
     const now = new Date();
+
     return (data?.items ?? []).reduce(
       (acc, item) => {
         const value = item.amountCents ?? 0;
@@ -83,6 +84,7 @@ export default function RepFinanceReceivablesPage() {
 
         if (isPaid) acc.paid += value;
         else acc.open += value;
+
         if (overdue) acc.overdue += value;
 
         return acc;
@@ -95,7 +97,7 @@ export default function RepFinanceReceivablesPage() {
     <MobileRepPageFrame
       title="Contas a receber"
       subtitle="Cobranças da região"
-      desktopHref="/rep/finance"
+      desktopHref="/rep/finance/receivables"
     >
       {loading ? (
         <MobileCard>Carregando contas...</MobileCard>

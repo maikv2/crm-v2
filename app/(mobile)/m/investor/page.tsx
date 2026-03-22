@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   BadgeDollarSign,
-  Building2,
   ChevronRight,
   Layers3,
-  PieChart,
+  LayoutDashboard,
+  Smartphone,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileInvestorPageFrame from "@/app/components/mobile/mobile-investor-page-frame";
@@ -20,24 +20,61 @@ import {
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-type InvestorMeResponse = {
-  investor?: {
-    id: string;
-    name?: string | null;
-    email?: string | null;
-  } | null;
-};
-
 type ShareItem = {
   id: string;
   quotaNumber: number;
   amountCents: number;
+  investedAt: string;
+  paidBackAt?: string | null;
+  regionId: string;
+  region?: {
+    id: string;
+    name: string;
+    quotaValueCents: number;
+    maxQuotaCount: number;
+  } | null;
 };
 
 type DistributionItem = {
   id: string;
+  regionId: string;
+  month: number;
+  year: number;
+  quotaCount: number;
+  valuePerQuotaCents: number;
   totalDistributionCents: number;
+  paidAt?: string | null;
+  status: string;
+  region?: {
+    id: string;
+    name: string;
+  } | null;
 };
+
+type InvestorMeResponse = {
+  investor: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    document: string | null;
+    notes: string | null;
+  };
+  summary: {
+    activeQuotaCount: number;
+    totalRegions: number;
+    totalInvestedCents: number;
+    totalDistributedCents: number;
+    pendingDistributionCents: number;
+  };
+  shares: ShareItem[];
+  distributions: DistributionItem[];
+};
+
+function formatMonthYear(month?: number, year?: number) {
+  if (!month || !year) return "-";
+  return `${String(month).padStart(2, "0")}/${year}`;
+}
 
 function Shortcut({
   href,
@@ -136,7 +173,15 @@ function RowValue({
       }}
     >
       <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
-      <div style={{ fontSize: 13, color: colors.subtext }}>{value}</div>
+      <div
+        style={{
+          fontSize: 13,
+          color: colors.subtext,
+          textAlign: "right",
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -145,95 +190,81 @@ export default function MobileInvestorDashboardPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<InvestorMeResponse | null>(null);
 
-  const [investorName, setInvestorName] = useState("Investidor");
-  const [shares, setShares] = useState<ShareItem[]>([]);
-  const [distributions, setDistributions] = useState<DistributionItem[]>([]);
+  async function load(showRefreshing = false) {
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      setError(null);
+
+      const res = await fetch("/api/investor-auth/me", {
+        cache: "no-store",
+      });
+
+      if (res.status === 401) {
+        router.push("/investor/login");
+        return;
+      }
+
+      const json = (await res.json().catch(() => null)) as InvestorMeResponse | null;
+
+      if (!res.ok) {
+        throw new Error(
+          (json as any)?.error || "Erro ao carregar painel do investidor."
+        );
+      }
+
+      setData(json);
+    } catch (err) {
+      console.error(err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Erro ao carregar painel do investidor."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const [meRes, sharesRes, distributionsRes] = await Promise.all([
-          fetch("/api/investor-auth/me", { cache: "no-store" }),
-          fetch("/api/investor/shares", { cache: "no-store" }),
-          fetch("/api/investor/distributions", { cache: "no-store" }),
-        ]);
-
-        if (meRes.status === 401 || sharesRes.status === 401 || distributionsRes.status === 401) {
-          router.push("/investor/login");
-          return;
-        }
-
-        const meJson = (await meRes.json().catch(() => null)) as InvestorMeResponse | null;
-        const sharesJson = await sharesRes.json().catch(() => null);
-        const distributionsJson = await distributionsRes.json().catch(() => null);
-
-        if (!sharesRes.ok) {
-          throw new Error(sharesJson?.error || "Erro ao carregar cotas.");
-        }
-
-        if (!distributionsRes.ok) {
-          throw new Error(distributionsJson?.error || "Erro ao carregar distribuições.");
-        }
-
-        if (active) {
-          setInvestorName(meJson?.investor?.name?.trim() || "Investidor");
-          setShares(Array.isArray(sharesJson?.shares) ? sharesJson.shares : []);
-          setDistributions(
-            Array.isArray(distributionsJson?.distributions)
-              ? distributionsJson.distributions
-              : []
-          );
-        }
-      } catch (err) {
-        console.error(err);
-        if (active) {
-          setError(
-            err instanceof Error ? err.message : "Erro ao carregar painel do investidor."
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
     load();
+  }, []);
 
-    return () => {
-      active = false;
-    };
-  }, [router]);
+  const investorName = data?.investor?.name?.trim() || "Investidor";
+  const summary = data?.summary;
+  const shares = data?.shares ?? [];
+  const distributions = data?.distributions ?? [];
 
-  const investedCents = useMemo(() => {
-    return shares.reduce((acc, share) => acc + (share.amountCents ?? 0), 0);
+  const latestShares = useMemo(() => {
+    return [...shares].sort((a, b) => a.quotaNumber - b.quotaNumber).slice(0, 4);
   }, [shares]);
 
-  const totalDistributionsCents = useMemo(() => {
-    return distributions.reduce(
-      (acc, item) => acc + (item.totalDistributionCents ?? 0),
-      0
-    );
+  const latestDistributions = useMemo(() => {
+    return [...distributions]
+      .sort((a, b) => {
+        if ((b.year ?? 0) !== (a.year ?? 0)) return (b.year ?? 0) - (a.year ?? 0);
+        return (b.month ?? 0) - (a.month ?? 0);
+      })
+      .slice(0, 3);
   }, [distributions]);
-
-  const averageQuotaCents = useMemo(() => {
-    if (!shares.length) return 0;
-    return Math.round(investedCents / shares.length);
-  }, [investedCents, shares]);
 
   return (
     <MobileInvestorPageFrame
-      title="Bem-vindo"
-      subtitle={investorName}
+      title="Painel do investidor"
+      subtitle={`Bem-vindo, ${investorName}`}
       desktopHref="/investor"
     >
       {loading ? (
-        <MobileCard>Carregando dashboard...</MobileCard>
+        <MobileCard>Carregando painel...</MobileCard>
       ) : error ? (
         <MobileCard>{error}</MobileCard>
       ) : (
@@ -251,12 +282,13 @@ export default function MobileInvestorDashboardPage() {
                 marginBottom: 8,
               }}
             >
-              {formatMoneyBR(investedCents)}
+              {formatMoneyBR(summary?.totalInvestedCents ?? 0)}
             </div>
 
-            <div style={{ fontSize: 13, opacity: 0.75 }}>
-              {shares.length} cotas ativas • {formatMoneyBR(totalDistributionsCents)} em
-              distribuições
+            <div style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.45 }}>
+              {summary?.activeQuotaCount ?? 0} cota(s) ativa(s) •{" "}
+              {summary?.totalRegions ?? 0} região(ões) •{" "}
+              {formatMoneyBR(summary?.pendingDistributionCents ?? 0)} pendente(s)
             </div>
           </MobileCard>
 
@@ -269,52 +301,71 @@ export default function MobileInvestorDashboardPage() {
           >
             <MobileStatCard
               label="Cotas"
-              value={String(shares.length)}
-              helper="Total em carteira"
+              value={String(summary?.activeQuotaCount ?? 0)}
+              helper="Ativas"
             />
 
             <MobileStatCard
-              label="Distribuições"
-              value={formatMoneyBR(totalDistributionsCents)}
-              helper="Total recebido"
+              label="Distribuído"
+              value={formatMoneyBR(summary?.totalDistributedCents ?? 0)}
+              helper="Total pago"
             />
 
             <MobileStatCard
-              label="Média por cota"
-              value={formatMoneyBR(averageQuotaCents)}
-              helper="Valor investido"
+              label="Regiões"
+              value={String(summary?.totalRegions ?? 0)}
+              helper="Participações"
             />
 
             <MobileStatCard
-              label="Últimas posições"
-              value={String(Math.min(shares.length, 4))}
-              helper="Resumo abaixo"
+              label="Pendente"
+              value={formatMoneyBR(summary?.pendingDistributionCents ?? 0)}
+              helper="A receber"
             />
           </div>
 
           <MobileCard>
-            <MobileSectionTitle title="Atalhos principais" />
+            <MobileSectionTitle
+              title="Atalhos principais"
+              action={
+                <button
+                  onClick={() => load(true)}
+                  style={{
+                    height: 34,
+                    padding: "0 12px",
+                    borderRadius: 10,
+                    border: "1px solid #dbe3ef",
+                    background: "#ffffff",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {refreshing ? "Atualizando..." : "Atualizar"}
+                </button>
+              }
+            />
 
             <div style={{ display: "grid", gap: 12 }}>
               <Shortcut
                 href="/m/investor/quotas"
                 title="Minhas cotas"
-                subtitle="Ver todas as cotas e os valores investidos"
+                subtitle="Ver cotas, regiões vinculadas e valores investidos"
                 icon={<Layers3 size={18} />}
               />
 
               <Shortcut
                 href="/m/investor/distributions"
                 title="Distribuições"
-                subtitle="Consultar histórico e valores recebidos"
+                subtitle="Consultar histórico de repasses e status de pagamento"
                 icon={<BadgeDollarSign size={18} />}
               />
 
               <Shortcut
-                href="/m/investor/portal"
-                title="Portal completo"
-                subtitle="Abrir visão detalhada com resultados das regiões"
-                icon={<Building2 size={18} />}
+                href="/investor"
+                title="Abrir desktop"
+                subtitle="Voltar para a versão desktop do painel do investidor"
+                icon={<Smartphone size={18} />}
               />
             </div>
           </MobileCard>
@@ -322,15 +373,34 @@ export default function MobileInvestorDashboardPage() {
           <MobileCard>
             <MobileSectionTitle title="Resumo das cotas" />
 
-            {shares.length === 0 ? (
+            {latestShares.length === 0 ? (
               <div style={{ fontSize: 13 }}>Nenhuma cota encontrada.</div>
             ) : (
-              shares.slice(0, 4).map((share, index) => (
+              latestShares.map((share, index) => (
                 <RowValue
                   key={share.id}
                   title={`Cota #${share.quotaNumber}`}
-                  value={formatMoneyBR(share.amountCents)}
-                  last={index === Math.min(shares.length, 4) - 1}
+                  value={share.region?.name || formatMoneyBR(share.amountCents ?? 0)}
+                  last={index === latestShares.length - 1}
+                />
+              ))
+            )}
+          </MobileCard>
+
+          <MobileCard>
+            <MobileSectionTitle title="Últimas distribuições" />
+
+            {latestDistributions.length === 0 ? (
+              <div style={{ fontSize: 13 }}>Nenhuma distribuição encontrada.</div>
+            ) : (
+              latestDistributions.map((item, index) => (
+                <RowValue
+                  key={item.id}
+                  title={`${formatMonthYear(item.month, item.year)} • ${
+                    item.region?.name || "Região"
+                  }`}
+                  value={formatMoneyBR(item.totalDistributionCents ?? 0)}
+                  last={index === latestDistributions.length - 1}
                 />
               ))
             )}
@@ -339,10 +409,10 @@ export default function MobileInvestorDashboardPage() {
           <MobileCard>
             <MobileSectionTitle title="Visão geral" />
             <Shortcut
-              href="/m/investor/portal"
-              title="Abrir visão consolidada"
-              subtitle="Acompanhar patrimônio, regiões e projeções"
-              icon={<PieChart size={18} />}
+              href="/investor"
+              title="Painel completo"
+              subtitle="Abrir o dashboard desktop com visão consolidada do investidor"
+              icon={<LayoutDashboard size={18} />}
             />
           </MobileCard>
         </>

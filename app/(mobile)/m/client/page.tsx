@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ClipboardList,
-  Home,
   Package,
   ShoppingCart,
   ToolCase,
@@ -132,7 +131,13 @@ export default function MobileClientPage() {
     const exhibitors = data?.client?.exhibitors ?? [];
     const activeExhibitors = exhibitors.filter((item) => item.status === "ACTIVE");
     const totalProducts = exhibitors.reduce((sum, exhibitor) => {
-      return sum + (exhibitor.products?.length ?? 0);
+      return (
+        sum +
+        (exhibitor.products?.reduce(
+          (productSum, productItem) => productSum + Number(productItem.quantity || 0),
+          0
+        ) ?? 0)
+      );
     }, 0);
     const nextVisits = exhibitors.filter((item) => item.nextVisitAt).length;
 
@@ -191,7 +196,7 @@ export default function MobileClientPage() {
               value={String(summary.activeExhibitorsCount)}
             />
             <MobileStatCard
-              label="Produtos"
+              label="Itens no expositor"
               value={String(summary.totalProducts)}
             />
             <MobileStatCard
@@ -203,7 +208,7 @@ export default function MobileClientPage() {
           <MobileCard>
             <MobileSectionTitle title="Ações rápidas" />
             <div style={{ display: "grid", gap: 10 }}>
-              <Link href="/m/client/order-request">
+              <Link href="/m/client/order-request" style={{ textDecoration: "none" }}>
                 <div
                   style={{
                     borderRadius: 16,
@@ -220,7 +225,7 @@ export default function MobileClientPage() {
                 </div>
               </Link>
 
-              <Link href="/m/client/visit">
+              <Link href="/m/client/visit" style={{ textDecoration: "none" }}>
                 <div
                   style={{
                     borderRadius: 16,
@@ -237,7 +242,7 @@ export default function MobileClientPage() {
                 </div>
               </Link>
 
-              <Link href="/m/client/maintenance">
+              <Link href="/m/client/maintenance" style={{ textDecoration: "none" }}>
                 <div
                   style={{
                     borderRadius: 16,
@@ -256,7 +261,7 @@ export default function MobileClientPage() {
                 </div>
               </Link>
 
-              <Link href="/m/client/orders">
+              <Link href="/m/client/orders" style={{ textDecoration: "none" }}>
                 <div
                   style={{
                     borderRadius: 16,
@@ -282,22 +287,29 @@ export default function MobileClientPage() {
                 Nenhum expositor encontrado.
               </div>
             ) : (
-              data.client.exhibitors.map((item) => (
-                <MobileInfoRow
-                  key={item.id}
-                  title={item.name || item.code || "Expositor"}
-                  subtitle={`Instalado em ${formatDateBR(item.installedAt)} • próxima visita ${formatDateBR(
-                    item.nextVisitAt
-                  )}`}
-                  right={
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <Package size={14} />
-                      {item.products?.length ?? 0}
-                    </span>
-                  }
-                  href="/portal/dashboard"
-                />
-              ))
+              data.client.exhibitors.map((item) => {
+                const totalQty = item.products?.reduce(
+                  (sum, productItem) => sum + Number(productItem.quantity || 0),
+                  0
+                );
+
+                return (
+                  <MobileInfoRow
+                    key={item.id}
+                    title={item.name || item.code || "Expositor"}
+                    subtitle={`Instalado em ${formatDateBR(item.installedAt)} • próxima visita ${formatDateBR(
+                      item.nextVisitAt
+                    )}`}
+                    right={
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <Package size={14} />
+                        {totalQty}
+                      </span>
+                    }
+                    href={`/m/client/exhibitors/${item.id}`}
+                  />
+                );
+              })
             )}
           </MobileCard>
         </>

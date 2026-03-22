@@ -7,13 +7,6 @@ import { getThemeColors } from "@/lib/theme";
 
 type AccessType = "CRM" | "CLIENT" | "INVESTOR";
 
-function resolveCrmRouteByRole(role: string, mobile: boolean) {
-  if (role === "ADMIN") return mobile ? "/m/admin" : "/dashboard";
-  if (role === "REPRESENTATIVE") return mobile ? "/m/rep" : "/rep";
-  if (role === "INVESTOR") return mobile ? "/m/investor" : "/investor";
-  return mobile ? "/m/admin" : "/dashboard";
-}
-
 function normalizeAccess(value: string | null): AccessType {
   const raw = String(value || "").toUpperCase().trim();
   if (raw === "CLIENT") return "CLIENT";
@@ -26,8 +19,6 @@ function LoginPageContent() {
   const searchParams = useSearchParams();
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
-
-  const mobile = useMemo(() => searchParams.get("m") === "1", [searchParams]);
 
   const redirectParam = useMemo(() => {
     const value = searchParams.get("redirect")?.trim();
@@ -54,9 +45,7 @@ function LoginPageContent() {
   const subtle = theme.isDark ? "#111827" : "#f8fafc";
 
   const identifierLabel =
-    access === "CLIENT" || access === "INVESTOR"
-      ? "Usuário"
-      : "E-mail";
+    access === "CLIENT" || access === "INVESTOR" ? "Usuário" : "E-mail";
 
   const identifierPlaceholder =
     access === "CLIENT"
@@ -102,15 +91,7 @@ function LoginPageContent() {
           throw new Error(json?.error || "Erro ao realizar login.");
         }
 
-        const role = String(json?.user?.role ?? "");
-
-        if (redirectParam) {
-          router.push(redirectParam);
-          router.refresh();
-          return;
-        }
-
-        router.push(resolveCrmRouteByRole(role, mobile));
+        router.push(redirectParam || "/choose/crm");
         router.refresh();
         return;
       }
@@ -252,23 +233,6 @@ function LoginPageContent() {
           <AccessButton value="CLIENT" label="Cliente" />
           <AccessButton value="INVESTOR" label="Investidor" />
         </div>
-
-        {mobile ? (
-          <div
-            style={{
-              marginBottom: 16,
-              borderRadius: 12,
-              padding: 10,
-              border: `1px solid ${border}`,
-              background: subtle,
-              color: theme.primary,
-              fontSize: 12,
-              fontWeight: 800,
-            }}
-          >
-            Versão mobile ativa
-          </div>
-        ) : null}
 
         <div style={{ display: "grid", gap: 14 }}>
           <div>

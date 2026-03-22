@@ -6,13 +6,11 @@ import { LogOut, Moon, Smartphone, Sun, User2 } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-type PortalClientResponse = {
-  client?: {
+type InvestorMeResponse = {
+  investor?: {
     id: string;
     name: string;
-    code: string;
-    city?: string | null;
-    district?: string | null;
+    email: string | null;
   } | null;
 };
 
@@ -120,23 +118,23 @@ export default function PortalLayout({
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
-  const [clientName, setClientName] = useState("Cliente");
+  const [investorName, setInvestorName] = useState("Investidor");
   const [loadingUser, setLoadingUser] = useState(true);
 
-  const isLoginPage = pathname === "/portal/login";
-  const isPortalChoicePage = pathname === "/portal";
+  const isLoginPage = pathname === "/investor/login";
+  const isChoicePage = pathname === "/investor";
 
   useEffect(() => {
     let active = true;
 
-    async function loadClient() {
+    async function loadMe() {
       if (isLoginPage) {
         setLoadingUser(false);
         return;
       }
 
       try {
-        const res = await fetch("/api/portal-auth/me", {
+        const res = await fetch("/api/investor-auth/me", {
           cache: "no-store",
         });
 
@@ -145,10 +143,10 @@ export default function PortalLayout({
           return;
         }
 
-        const json = (await res.json().catch(() => null)) as PortalClientResponse | null;
+        const json = (await res.json().catch(() => null)) as InvestorMeResponse | null;
 
         if (active) {
-          setClientName(json?.client?.name?.trim() || "Cliente");
+          setInvestorName(json?.investor?.name?.trim() || "Investidor");
         }
       } catch {
       } finally {
@@ -156,7 +154,7 @@ export default function PortalLayout({
       }
     }
 
-    loadClient();
+    loadMe();
 
     return () => {
       active = false;
@@ -165,17 +163,17 @@ export default function PortalLayout({
 
   async function handleLogout() {
     try {
-      await fetch("/api/portal-auth/logout", {
+      await fetch("/api/investor-auth/logout", {
         method: "POST",
       });
     } catch {
     } finally {
-      router.push("/portal/login");
+      router.push("/investor/login");
       router.refresh();
     }
   }
 
-  if (isLoginPage || isPortalChoicePage) {
+  if (isLoginPage || isChoicePage) {
     return <>{children}</>;
   }
 
@@ -237,7 +235,7 @@ export default function PortalLayout({
                 lineHeight: 1.1,
               }}
             >
-              Portal do Cliente
+              Portal do Investidor
             </div>
             <div
               style={{
@@ -250,7 +248,7 @@ export default function PortalLayout({
                 maxWidth: 360,
               }}
             >
-              {loadingUser ? "Carregando..." : `Bem-vindo, ${clientName}`}
+              {loadingUser ? "Carregando..." : `Bem-vindo, ${investorName}`}
             </div>
           </div>
         </div>
@@ -266,27 +264,17 @@ export default function PortalLayout({
         >
           <HeaderButton
             label="Painel"
-            onClick={() => router.push("/portal/dashboard")}
+            onClick={() => router.push("/investor/dashboard")}
           />
 
           <HeaderButton
-            label="Pedidos"
-            onClick={() => router.push("/portal/orders")}
+            label="Minhas Cotas"
+            onClick={() => router.push("/investor/quotas")}
           />
 
           <HeaderButton
-            label="Novo Pedido"
-            onClick={() => router.push("/portal/order-request")}
-          />
-
-          <HeaderButton
-            label="Visita"
-            onClick={() => router.push("/portal/visit")}
-          />
-
-          <HeaderButton
-            label="Manutenção"
-            onClick={() => router.push("/portal/maintenance")}
+            label="Distribuições"
+            onClick={() => router.push("/investor/distributions")}
           />
 
           <IconHeaderButton />
@@ -295,7 +283,7 @@ export default function PortalLayout({
             label="Mobile"
             icon={<Smartphone size={16} />}
             primary
-            onClick={() => router.push("/m/client")}
+            onClick={() => router.push("/m/investor")}
           />
 
           <div
@@ -315,7 +303,7 @@ export default function PortalLayout({
             }}
           >
             <User2 size={16} />
-            {clientName}
+            {investorName}
           </div>
 
           <HeaderButton

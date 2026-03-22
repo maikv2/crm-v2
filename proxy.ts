@@ -28,7 +28,9 @@ function isProtectedCrmRoute(pathname: string) {
     pathname === "/m/admin" ||
     pathname.startsWith("/m/admin/") ||
     pathname === "/m/rep" ||
-    pathname.startsWith("/m/rep/")
+    pathname.startsWith("/m/rep/") ||
+    pathname === "/choose/crm" ||
+    pathname.startsWith("/choose/crm/")
   );
 }
 
@@ -96,7 +98,7 @@ export function proxy(req: NextRequest) {
   }
 
   if (isLoginPage && crmSession && !searchParams.get("access")) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    return NextResponse.redirect(new URL("/choose/crm", req.url));
   }
 
   return NextResponse.next();
@@ -112,6 +114,9 @@ export const config = {
     "/portal/:path*",
     "/investor",
     "/investor/:path*",
+
+    "/choose/crm",
+    "/choose/crm/:path*",
 
     "/dashboard",
     "/dashboard/:path*",

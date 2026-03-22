@@ -6,13 +6,28 @@ import { Laptop, Moon, Smartphone, Sun } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-type InvestorMeResponse = {
-  investor?: {
+type MeResponse = {
+  user?: {
     id: string;
-    name: string;
-    email: string | null;
+    name?: string | null;
+    email?: string | null;
+    role?: string | null;
   } | null;
 };
+
+function resolveDesktop(role?: string | null) {
+  if (role === "ADMIN") return "/dashboard";
+  if (role === "REPRESENTATIVE") return "/rep";
+  if (role === "INVESTOR") return "/investor";
+  return "/dashboard";
+}
+
+function resolveMobile(role?: string | null) {
+  if (role === "ADMIN") return "/m/admin";
+  if (role === "REPRESENTATIVE") return "/m/rep";
+  if (role === "INVESTOR") return "/m/investor";
+  return "/m/admin";
+}
 
 function OptionButton({
   title,
@@ -110,46 +125,48 @@ function OptionButton({
   );
 }
 
-export default function InvestorChoicePage() {
+export default function ChooseCrmPage() {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const colors = getThemeColors(theme);
 
   const [loading, setLoading] = useState(true);
-  const [investorName, setInvestorName] = useState("Investidor");
+  const [name, setName] = useState("Usuário");
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
 
-    async function loadInvestor() {
+    async function loadUser() {
       try {
-        const res = await fetch("/api/investor-auth/me", {
+        const res = await fetch("/api/auth/me", {
           cache: "no-store",
         });
 
         if (res.status === 401) {
-          router.push("/investor/login");
+          router.push("/login");
           return;
         }
 
         if (!res.ok) {
-          router.push("/investor/login");
+          router.push("/login");
           return;
         }
 
-        const json = (await res.json().catch(() => null)) as InvestorMeResponse | null;
+        const json = (await res.json().catch(() => null)) as MeResponse | null;
 
         if (active) {
-          setInvestorName(json?.investor?.name?.trim() || "Investidor");
+          setName(json?.user?.name?.trim() || json?.user?.email || "Usuário");
+          setRole(json?.user?.role || null);
         }
       } catch {
-        router.push("/investor/login");
+        router.push("/login");
       } finally {
         if (active) setLoading(false);
       }
     }
 
-    loadInvestor();
+    loadUser();
 
     return () => {
       active = false;
@@ -169,7 +186,7 @@ export default function InvestorChoicePage() {
           fontWeight: 800,
         }}
       >
-        Carregando portal...
+        Carregando CRM...
       </div>
     );
   }
@@ -239,7 +256,7 @@ export default function InvestorChoicePage() {
                 lineHeight: 1.45,
               }}
             >
-              {investorName}
+              {name}
             </div>
           </div>
 
@@ -272,7 +289,7 @@ export default function InvestorChoicePage() {
             marginBottom: 18,
           }}
         >
-          Escolha como deseja acessar o portal.
+          Escolha como deseja acessar o sistema.
         </div>
 
         <div
@@ -283,17 +300,17 @@ export default function InvestorChoicePage() {
         >
           <OptionButton
             title="Versão desktop"
-            subtitle="Abrir o painel completo do investidor."
+            subtitle="Abrir a interface completa do CRM."
             icon={<Laptop size={20} />}
             primary
-            onClick={() => router.push("/investor/dashboard")}
+            onClick={() => router.push(resolveDesktop(role))}
           />
 
           <OptionButton
             title="Versão mobile"
-            subtitle="Abrir a experiência otimizada para celular."
+            subtitle="Abrir a interface otimizada para celular."
             icon={<Smartphone size={20} />}
-            onClick={() => router.push("/m/investor")}
+            onClick={() => router.push(resolveMobile(role))}
           />
         </div>
       </div>

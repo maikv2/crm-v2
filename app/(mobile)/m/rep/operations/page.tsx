@@ -7,18 +7,20 @@ import {
   CircleDollarSign,
   Map,
   Package,
+  Route,
   Store,
   Target,
   UserPlus,
   Users,
 } from "lucide-react";
+import { useTheme } from "@/app/providers/theme-provider";
+import { getThemeColors } from "@/lib/theme";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import {
   MobileCard,
   MobileSectionTitle,
 } from "@/app/components/mobile/mobile-shell";
-import { useTheme } from "@/app/providers/theme-provider";
-import { getThemeColors } from "@/lib/theme";
+import type { ReactNode } from "react";
 
 function ActionCard({
   href,
@@ -29,7 +31,7 @@ function ActionCard({
   href: string;
   title: string;
   subtitle: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }) {
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
@@ -160,8 +162,15 @@ export default function MobileRepOperationsPage() {
           <ActionCard
             href="/m/rep/map"
             title="Mapa"
-            subtitle="Abrir clientes e prospectos com rota"
+            subtitle="Abrir o mapa comercial com clientes e prospectos geolocalizados"
             icon={<Map size={18} />}
+          />
+
+          <ActionCard
+            href="/m/rep/routes"
+            title="Rotas"
+            subtitle="Abrir navegação e traçar rota até clientes e prospectos"
+            icon={<Route size={18} />}
           />
 
           <ActionCard

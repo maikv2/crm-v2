@@ -1,20 +1,95 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, ChevronRight, Package } from "lucide-react";
-
+import { useEffect, useMemo, useState } from "react";
 import MobilePageFrame from "@/app/components/mobile/mobile-page-frame";
 import {
   MobileCard,
+  MobileInfoRow,
   MobileSectionTitle,
+  MobileStatCard,
+  formatDateBR,
 } from "@/app/components/mobile/mobile-shell";
 
-import { useTheme } from "@/app/providers/theme-provider";
-import { getThemeColors } from "@/lib/theme";
+type ExhibitorItem = {
+  id: string;
+  code?: string | null;
+  name?: string | null;
+  model?: string | null;
+  status?: string | null;
+  type?: string | null;
+  installedAt?: string | null;
+  nextVisitAt?: string | null;
+  lastVisitAt?: string | null;
+  client?: {
+    id: string;
+    name?: string | null;
+  } | null;
+  region?: {
+    id: string;
+    name?: string | null;
+  } | null;
+};
 
 export default function AdminMobileExhibitorsPage() {
-  const { theme } = useTheme();
-  const colors = getThemeColors(theme);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] = useState<ExhibitorItem[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch("/api/exhibitors", {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Erro ao carregar expositores.");
+        }
+
+        if (active) {
+          setItems(Array.isArray(json) ? json : []);
+        }
+      } catch (err) {
+        if (active) {
+          setError(
+            err instanceof Error ? err.message : "Erro ao carregar expositores."
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const summary = useMemo(() => {
+    return items.reduce(
+      (acc, item) => {
+        acc.total += 1;
+
+        if (String(item.status ?? "").toUpperCase() === "ACTIVE") {
+          acc.active += 1;
+        } else {
+          acc.other += 1;
+        }
+
+        return acc;
+      },
+      { total: 0, active: 0, other: 0 }
+    );
+  }, [items]);
 
   return (
     <MobilePageFrame
@@ -22,96 +97,129 @@ export default function AdminMobileExhibitorsPage() {
       subtitle="Gestão mobile dos expositores"
       desktopHref="/exhibitors"
     >
-      <MobileCard
-        style={{
-          background: colors.isDark
-            ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
-            : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
-        }}
-      >
-        <MobileSectionTitle title="Controle de expositores" />
-
-        <div
-          style={{
-            fontSize: 13,
-            color: colors.subtext,
-            lineHeight: 1.6,
-          }}
-        >
-          Acompanhe expositores instalados, manutenção e histórico de uso
-          diretamente pelo mobile.
-        </div>
-      </MobileCard>
-
-      <Link href="/exhibitors" style={{ textDecoration: "none" }}>
-        <MobileCard
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <Building2 size={18} color={colors.primary} />
-
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 900,
-                color: colors.text,
-              }}
-            >
-              Ver expositores
-            </div>
-
-            <div
-              style={{
-                fontSize: 12,
-                color: colors.subtext,
-              }}
-            >
-              Lista completa da operação
-            </div>
+      {loading ? (
+        <MobileCard>Carregando expositores...</MobileCard>
+      ) : error ? (
+        <MobileCard>{error}</MobileCard>
+      ) : (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0,1fr))",
+              gap: 12,
+            }}
+          >
+            <MobileStatCard label="Total" value={String(summary.total)} />
+            <MobileStatCard label="Ativos" value={String(summary.active)} />
+            <MobileStatCard label="Outros" value={String(summary.other)} />
           </div>
 
-          <ChevronRight size={16} color={colors.subtext} />
-        </MobileCard>
-      </Link>
+          <Link href="/m/admin/exhibitors/new" style={{ textDecoration: "none" }}>
+            <MobileCard>
+              <div style={{ fontSize: 14, fontWeight: 900 }}>Novo expositor</div>
+              <div style={{ fontSize: 12, marginTop: 6 }}>
+                Abrir cadastro mobile de expositor
+              </div>
+            </MobileCard>
+          </Link>
 
-      <Link href="/m/admin/exhibitors/new" style={{ textDecoration: "none" }}>
-        <MobileCard
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <Package size={18} color={colors.primary} />
+          <MobileCard>
+            <MobileSectionTitle title="Lista de expositores" />
 
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 900,
-                color: colors.text,
-              }}
-            >
-              Novo expositor
-            </div>
+            {items.length === 0 ? (
+              <div style={{ fontSize: 13 }}>Nenhum expositor encontrado.</div>
+            ) : (
+              items.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    padding: "12px 0",
+                    borderBottom: "1px solid rgba(148,163,184,0.18)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {item.code || "-"} • {item.name || "Expositor"}
+                      </div>
 
-            <div
-              style={{
-                fontSize: 12,
-                color: colors.subtext,
-              }}
-            >
-              Registrar novo equipamento
-            </div>
-          </div>
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 12,
+                          opacity: 0.8,
+                        }}
+                      >
+                        {item.client?.name || "Sem cliente"} •{" "}
+                        {item.region?.name || "Sem região"}
+                      </div>
+                    </div>
 
-          <ChevronRight size={16} color={colors.subtext} />
-        </MobileCard>
-      </Link>
+                    <span
+                      style={{
+                        borderRadius: 999,
+                        padding: "6px 10px",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        background:
+                          String(item.status ?? "").toUpperCase() === "ACTIVE"
+                            ? "rgba(34,197,94,0.14)"
+                            : "rgba(59,130,246,0.14)",
+                        color:
+                          String(item.status ?? "").toUpperCase() === "ACTIVE"
+                            ? "#16a34a"
+                            : "#2563eb",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.status || "Sem status"}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <MobileInfoRow
+                      title="Modelo e tipo"
+                      subtitle={item.model || "Sem modelo informado"}
+                      right={item.type || "-"}
+                    />
+                    <MobileInfoRow
+                      title="Instalação"
+                      subtitle={`Instalado em ${formatDateBR(item.installedAt)}`}
+                      right={`Próx. ${formatDateBR(item.nextVisitAt)}`}
+                    />
+                    <MobileInfoRow
+                      title="Última visita"
+                      subtitle={`Último atendimento ${formatDateBR(
+                        item.lastVisitAt
+                      )}`}
+                      right="Operação"
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </MobileCard>
+        </>
+      )}
     </MobilePageFrame>
   );
 }

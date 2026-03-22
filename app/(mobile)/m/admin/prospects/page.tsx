@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { MapPin, Target, UserPlus } from "lucide-react";
-import { useRouter } from "next/navigation";
 import MobileAdminListPage from "@/app/components/mobile/mobile-admin-list-page";
 import { MobileCard } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
@@ -16,14 +13,19 @@ type ProspectItem = {
   district?: string | null;
   status?: string | null;
   phone?: string | null;
+  contactName?: string | null;
   region?: {
     id: string;
     name: string;
   } | null;
+  representative?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
 };
 
 export default function MobileAdminProspectsPage() {
-  const router = useRouter();
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
@@ -40,19 +42,6 @@ export default function MobileAdminProspectsPage() {
         setLoading(true);
         setError(null);
 
-        const authRes = await fetch("/api/auth/me", { cache: "no-store" });
-        const authJson = await authRes.json().catch(() => null);
-
-        if (authRes.status === 401) {
-          router.push("/login?redirect=/m/admin/prospects");
-          return;
-        }
-
-        if (authJson?.user?.role !== "ADMIN") {
-          router.push("/m/admin");
-          return;
-        }
-
         const res = await fetch("/api/prospects", { cache: "no-store" });
         const json = await res.json().catch(() => null);
 
@@ -60,19 +49,14 @@ export default function MobileAdminProspectsPage() {
           throw new Error(json?.error || "Erro ao carregar prospectos.");
         }
 
-        const prospects = Array.isArray(json)
-          ? json
-          : Array.isArray(json?.items)
-          ? json.items
-          : [];
-
         if (active) {
-          setItems(prospects);
+          setItems(Array.isArray(json) ? json : []);
         }
       } catch (err) {
-        console.error(err);
         if (active) {
-          setError(err instanceof Error ? err.message : "Erro ao carregar prospectos.");
+          setError(
+            err instanceof Error ? err.message : "Erro ao carregar prospectos."
+          );
         }
       } finally {
         if (active) setLoading(false);
@@ -84,7 +68,7 @@ export default function MobileAdminProspectsPage() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -96,10 +80,29 @@ export default function MobileAdminProspectsPage() {
         String(item.name ?? "").toLowerCase().includes(q) ||
         String(item.city ?? "").toLowerCase().includes(q) ||
         String(item.district ?? "").toLowerCase().includes(q) ||
-        String(item.region?.name ?? "").toLowerCase().includes(q)
+        String(item.region?.name ?? "").toLowerCase().includes(q) ||
+        String(item.representative?.name ?? "").toLowerCase().includes(q)
       );
     });
   }, [items, search]);
+
+  function statusColor(status?: string | null) {
+    const value = String(status ?? "").toUpperCase();
+
+    if (value === "CONVERTED") return "#16a34a";
+    if (value === "RETURN") return "#7c3aed";
+    if (value === "NO_RETURN") return "#dc2626";
+    return "#b45309";
+  }
+
+  function statusBg(status?: string | null) {
+    const value = String(status ?? "").toUpperCase();
+
+    if (value === "CONVERTED") return "rgba(34,197,94,0.14)";
+    if (value === "RETURN") return "rgba(124,58,237,0.14)";
+    if (value === "NO_RETURN") return "rgba(239,68,68,0.14)";
+    return "rgba(245,158,11,0.14)";
+  }
 
   return (
     <MobileAdminListPage
@@ -109,8 +112,8 @@ export default function MobileAdminProspectsPage() {
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder="Buscar por nome, cidade, bairro ou região"
-      createHref="/prospects"
-      createLabel="Abrir área de prospectos"
+      createHref="/m/admin/prospects/new"
+      createLabel="Novo prospecto"
     >
       {loading ? (
         <MobileCard>Carregando prospectos...</MobileCard>
@@ -120,78 +123,83 @@ export default function MobileAdminProspectsPage() {
         <MobileCard>Nenhum prospecto encontrado.</MobileCard>
       ) : (
         filtered.map((item) => (
-          <Link key={item.id} href="/prospects">
-            <MobileCard style={{ padding: 14 }}>
-              <div style={{ display: "grid", gap: 10 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 15,
-                        fontWeight: 900,
-                        color: colors.text,
-                      }}
-                    >
-                      {item.name || "Prospecto"}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontSize: 12,
-                        color: colors.subtext,
-                      }}
-                    >
-                      {item.region?.name || "Sem região"}
-                    </div>
-                  </div>
-
-                  <span
+          <MobileCard key={item.id} style={{ padding: 14 }}>
+            <div style={{ display: "grid", gap: 10 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
                     style={{
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      background: colors.isDark ? "#111f39" : "#e8f0ff",
-                      color: colors.primary,
+                      fontSize: 15,
+                      fontWeight: 900,
+                      color: colors.text,
                     }}
                   >
-                    {item.status || "Pendente"}
-                  </span>
+                    {item.name || "Prospecto"}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: colors.subtext,
+                    }}
+                  >
+                    {item.region?.name || "Sem região"}
+                  </div>
                 </div>
 
-                <div
+                <span
                   style={{
-                    display: "grid",
-                    gap: 6,
-                    fontSize: 12,
-                    color: colors.subtext,
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    background: statusBg(item.status),
+                    color: statusColor(item.status),
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <MapPin size={14} />
-                    {[item.city, item.district].filter(Boolean).join(" • ") || "Sem localização"}
-                  </div>
+                  {item.status || "Pendente"}
+                </span>
+              </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <Target size={14} />
-                    Oportunidade em acompanhamento
-                  </div>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 6,
+                  fontSize: 12,
+                  color: colors.subtext,
+                }}
+              >
+                <div>
+                  {[item.city, item.district].filter(Boolean).join(" • ") ||
+                    "Sem localização"}
+                </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <UserPlus size={14} />
-                    Toque para abrir a área completa
-                  </div>
+                <div>
+                  {item.contactName
+                    ? `Contato: ${item.contactName}`
+                    : "Contato não informado"}
+                </div>
+
+                <div>
+                  {item.phone ? `Telefone: ${item.phone}` : "Telefone não informado"}
+                </div>
+
+                <div>
+                  {item.representative?.name
+                    ? `Representante: ${item.representative.name}`
+                    : "Sem representante"}
                 </div>
               </div>
-            </MobileCard>
-          </Link>
+            </div>
+          </MobileCard>
         ))
       )}
     </MobileAdminListPage>

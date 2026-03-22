@@ -20,20 +20,6 @@ function LoginPageContent() {
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
 
-  const redirectParam = useMemo(() => {
-    const value = searchParams.get("redirect")?.trim();
-    if (!value) return null;
-    if (!value.startsWith("/")) return null;
-
-    const blockedRedirects = ["/login", "/portal/login", "/investor/login"];
-
-    if (blockedRedirects.includes(value)) {
-      return null;
-    }
-
-    return value;
-  }, [searchParams]);
-
   const initialAccess = useMemo(
     () => normalizeAccess(searchParams.get("access")),
     [searchParams]
@@ -58,22 +44,22 @@ function LoginPageContent() {
     access === "CLIENT"
       ? "Digite o nome/usuário do cliente"
       : access === "INVESTOR"
-        ? "Digite o usuário do investidor"
-        : "Digite seu e-mail";
+      ? "Digite o usuário do investidor"
+      : "Digite seu e-mail";
 
   const title =
     access === "CRM"
       ? "CRM V2"
       : access === "CLIENT"
-        ? "Portal do Cliente"
-        : "Portal do Investidor";
+      ? "Portal do Cliente"
+      : "Portal do Investidor";
 
   const subtitle =
     access === "CRM"
       ? "Acesse sua conta para continuar."
       : access === "CLIENT"
-        ? "Entre para acessar o portal do cliente."
-        : "Entre para acessar o portal do investidor.";
+      ? "Entre para acessar o portal do cliente."
+      : "Entre para acessar o portal do investidor.";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -82,64 +68,27 @@ function LoginPageContent() {
       setLoading(true);
       setError(null);
 
-      if (access === "CRM") {
-        const res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: identifier,
-            password,
-          }),
-        });
-
-        const json = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          throw new Error(json?.error || "Erro ao realizar login.");
-        }
-
-        router.push(redirectParam || "/choose/crm");
-        router.refresh();
-        return;
-      }
-
-      if (access === "CLIENT") {
-        const res = await fetch("/api/portal-auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: identifier,
-            password,
-          }),
-        });
-
-        const json = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          throw new Error(json?.error || "Erro ao realizar login.");
-        }
-
-        router.push(redirectParam || "/portal");
-        router.refresh();
-        return;
-      }
-
-      const res = await fetch("/api/investor-auth/login", {
+      const res = await fetch("/api/session/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          username: identifier,
+          identifier,
           password,
         }),
       });
 
-      const json = await res.json().catch(() => null);
+      const json = await res.json();
 
       if (!res.ok) {
-        throw new Error(json?.error || "Erro ao entrar.");
+        throw new Error(json?.error || "Erro ao realizar login.");
       }
 
-      router.push(redirectParam || "/investor");
+      // pequeno delay para garantir persistência do cookie
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      router.replace(json.destination);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao realizar login.");

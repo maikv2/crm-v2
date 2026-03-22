@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { RefreshCw, ShoppingCart, ToolCase, Wrench } from "lucide-react";
+import { useTheme } from "@/app/providers/theme-provider";
+import { getThemeColors } from "@/lib/theme";
 
 type ExhibitorProduct = {
   id: string;
@@ -103,14 +106,22 @@ function maintenanceTypeLabel(value?: string | null) {
   }
 }
 
-function ActionButton({
+type ThemeShape = ReturnType<typeof getThemeColors>;
+
+function PageButton({
   label,
+  icon,
+  theme,
   onClick,
-  primary = false,
+  primary,
+  disabled,
 }: {
   label: string;
+  icon?: React.ReactNode;
+  theme: ThemeShape;
   onClick?: () => void;
   primary?: boolean;
+  disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
 
@@ -119,53 +130,63 @@ function ActionButton({
       ? "#1d4ed8"
       : "#2563eb"
     : hover
-    ? "#2563eb"
-    : "#ffffff";
+      ? "#2563eb"
+      : theme.isDark
+        ? "#0f172a"
+        : "#ffffff";
 
-  const color = hover || primary ? "#ffffff" : "#111827";
+  const color = primary ? "#ffffff" : hover ? "#ffffff" : theme.text;
+  const border = primary ? "none" : `1px solid ${theme.border}`;
 
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        height: 40,
+        height: 42,
         padding: "0 14px",
         borderRadius: 12,
-        border: primary ? "1px solid #2563eb" : "1px solid #e5e7eb",
+        border,
         background,
         color,
         fontWeight: 800,
         fontSize: 13,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         whiteSpace: "nowrap",
         transition: "all 0.15s ease",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        opacity: disabled ? 0.7 : 1,
       }}
     >
+      {icon}
       {label}
     </button>
   );
 }
 
-function Block({
+function Section({
   title,
-  children,
   subtitle,
+  children,
+  theme,
 }: {
   title: string;
-  children: React.ReactNode;
   subtitle?: string;
+  children: React.ReactNode;
+  theme: ThemeShape;
 }) {
   return (
     <div
       style={{
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
+        background: theme.isDark ? "#0f172a" : "#ffffff",
+        border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
         borderRadius: 18,
         padding: 22,
-        boxShadow: "0 8px 24px rgba(15,23,42,0.06)",
       }}
     >
       <div style={{ marginBottom: 16 }}>
@@ -173,7 +194,7 @@ function Block({
           style={{
             fontSize: 18,
             fontWeight: 800,
-            color: "#111827",
+            color: theme.text,
           }}
         >
           {title}
@@ -184,7 +205,7 @@ function Block({
             style={{
               marginTop: 6,
               fontSize: 13,
-              color: "#64748b",
+              color: theme.isDark ? "#94a3b8" : "#64748b",
               lineHeight: 1.5,
             }}
           >
@@ -201,22 +222,26 @@ function Block({
 function SmallCard({
   title,
   value,
+  theme,
+  accent,
 }: {
   title: string;
   value: string;
+  theme: ThemeShape;
+  accent?: string;
 }) {
   return (
     <div
       style={{
-        border: "1px solid #e5e7eb",
+        border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
         borderRadius: 16,
         padding: 18,
-        background: "#ffffff",
+        background: theme.isDark ? "#111827" : "#ffffff",
       }}
     >
       <div
         style={{
-          color: "#64748b",
+          color: theme.isDark ? "#94a3b8" : "#64748b",
           fontSize: 13,
         }}
       >
@@ -228,7 +253,7 @@ function SmallCard({
           fontSize: 24,
           fontWeight: 900,
           marginTop: 8,
-          color: "#111827",
+          color: accent || theme.text,
         }}
       >
         {value}
@@ -239,61 +264,79 @@ function SmallCard({
 
 export default function PortalDashboardPage() {
   const router = useRouter();
+  const { theme: mode } = useTheme();
+  const theme = getThemeColors(mode);
+
+  const pageBg = theme.isDark ? "#081225" : "#f3f6fb";
+  const muted = theme.isDark ? "#94a3b8" : "#64748b";
+
   const [client, setClient] = useState<PortalClient | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadClient(showRefreshing = false) {
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      setError(null);
+
+      const res = await fetch("/api/portal-auth/me", {
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        router.push("/portal/login");
+        return;
+      }
+
+      const json = await res.json();
+      setClient(json?.client ?? null);
+    } catch (error) {
+      console.error(error);
+      setError("Não foi possível carregar o portal.");
+      router.push("/portal/login");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
-    let active = true;
-
-    async function loadClient() {
-      try {
-        const res = await fetch("/api/portal-auth/me", {
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          router.push("/portal/login");
-          return;
-        }
-
-        const json = await res.json();
-
-        if (active) {
-          setClient(json?.client ?? null);
-        }
-      } catch (error) {
-        console.error(error);
-        router.push("/portal/login");
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    }
-
     loadClient();
-
-    return () => {
-      active = false;
-    };
   }, [router]);
 
-  async function handleLogout() {
-    await fetch("/api/portal-auth/logout", {
-      method: "POST",
-    });
+  const summary = useMemo(() => {
+    const exhibitors = client?.exhibitors ?? [];
+    const activeExhibitors = exhibitors.filter((item) => item.status === "ACTIVE");
+    const totalProducts = exhibitors.reduce((sum, exhibitor) => {
+      return sum + (exhibitor.products?.length ?? 0);
+    }, 0);
+    const nextVisits = exhibitors.filter((item) => item.nextVisitAt).length;
+    const maintenances = exhibitors.reduce((sum, exhibitor) => {
+      return sum + (exhibitor.maintenances?.length ?? 0);
+    }, 0);
 
-    router.push("/portal/login");
-    router.refresh();
-  }
+    return {
+      exhibitorsCount: exhibitors.length,
+      activeExhibitorsCount: activeExhibitors.length,
+      totalProducts,
+      nextVisits,
+      maintenances,
+    };
+  }, [client]);
 
   if (loading) {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: "#f3f6fb",
-          color: "#111827",
+          minHeight: "calc(100vh - 74px)",
+          background: pageBg,
+          color: theme.text,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -308,13 +351,13 @@ export default function PortalDashboardPage() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background: "#f3f6fb",
-        color: "#111827",
+        minHeight: "calc(100vh - 74px)",
+        background: pageBg,
+        color: theme.text,
         padding: 24,
       }}
     >
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto" }}>
         <div
           style={{
             display: "flex",
@@ -330,18 +373,8 @@ export default function PortalDashboardPage() {
               style={{
                 fontSize: 14,
                 fontWeight: 700,
-                color: "#64748b",
+                color: muted,
                 marginBottom: 10,
-              }}
-            >
-              🏠 / Portal do Cliente / Dashboard
-            </div>
-
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                color: "#111827",
               }}
             >
               Portal do Cliente
@@ -349,33 +382,71 @@ export default function PortalDashboardPage() {
 
             <div
               style={{
-                marginTop: 6,
-                fontSize: 13,
-                color: "#64748b",
+                fontSize: 30,
+                fontWeight: 900,
+                color: theme.text,
               }}
             >
-              Olá, <b style={{ color: "#111827" }}>{client?.name ?? "Cliente"}</b>. Aqui
+              Dashboard do Cliente
+            </div>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 13,
+                color: muted,
+              }}
+            >
+              Olá, <b style={{ color: theme.text }}>{client?.name ?? "Cliente"}</b>. Aqui
               você acompanha suas informações e solicitações.
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <ActionButton
+            <PageButton
+              label={refreshing ? "Atualizando..." : "Atualizar"}
+              icon={<RefreshCw size={16} />}
+              theme={theme}
+              onClick={() => loadClient(true)}
+              disabled={refreshing}
+            />
+            <PageButton
               label="Solicitar visita"
+              icon={<ToolCase size={16} />}
               primary
+              theme={theme}
               onClick={() => router.push("/portal/visit")}
             />
-            <ActionButton
+            <PageButton
               label="Solicitar pedido"
+              icon={<ShoppingCart size={16} />}
+              theme={theme}
               onClick={() => router.push("/portal/order-request")}
             />
-            <ActionButton
+            <PageButton
               label="Solicitar manutenção"
+              icon={<Wrench size={16} />}
+              theme={theme}
               onClick={() => router.push("/portal/maintenance")}
             />
-            <ActionButton label="Sair" onClick={handleLogout} />
           </div>
         </div>
+
+        {error ? (
+          <div
+            style={{
+              marginBottom: 18,
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ef4444",
+              color: "#ef4444",
+              background: theme.isDark ? "#0f172a" : "#ffffff",
+              fontWeight: 700,
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -385,15 +456,55 @@ export default function PortalDashboardPage() {
             marginBottom: 20,
           }}
         >
-          <SmallCard title="Código do cliente" value={client?.code ?? "-"} />
-          <SmallCard title="Cidade" value={client?.city ?? "-"} />
-          <SmallCard title="Bairro" value={client?.district ?? "-"} />
+          <SmallCard title="Código do cliente" value={client?.code ?? "-"} theme={theme} />
+          <SmallCard title="Cidade" value={client?.city ?? "-"} theme={theme} />
+          <SmallCard title="Bairro" value={client?.district ?? "-"} theme={theme} />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+            gap: 14,
+            marginBottom: 20,
+          }}
+        >
+          <SmallCard
+            title="Expositores"
+            value={String(summary.exhibitorsCount)}
+            theme={theme}
+          />
+          <SmallCard
+            title="Ativos"
+            value={String(summary.activeExhibitorsCount)}
+            theme={theme}
+            accent="#22c55e"
+          />
+          <SmallCard
+            title="Produtos"
+            value={String(summary.totalProducts)}
+            theme={theme}
+            accent="#2563eb"
+          />
+          <SmallCard
+            title="Próximas visitas"
+            value={String(summary.nextVisits)}
+            theme={theme}
+            accent="#f59e0b"
+          />
+          <SmallCard
+            title="Manutenções"
+            value={String(summary.maintenances)}
+            theme={theme}
+            accent="#8b5cf6"
+          />
         </div>
 
         <div style={{ marginBottom: 20 }}>
-          <Block
+          <Section
             title="Acesso rápido"
             subtitle="Escolha uma área para continuar seu atendimento no portal."
+            theme={theme}
           >
             <div
               style={{
@@ -406,11 +517,11 @@ export default function PortalDashboardPage() {
                 type="button"
                 onClick={() => router.push("/portal/order-request")}
                 style={{
-                  border: "1px solid #e5e7eb",
+                  border: `1px solid ${theme.border}`,
                   borderRadius: 16,
                   padding: 20,
-                  background: "#ffffff",
-                  color: "#111827",
+                  background: theme.isDark ? "#111827" : "#ffffff",
+                  color: theme.text,
                   cursor: "pointer",
                   textAlign: "left",
                 }}
@@ -428,7 +539,7 @@ export default function PortalDashboardPage() {
                   style={{
                     fontSize: 13,
                     lineHeight: 1.55,
-                    color: "#64748b",
+                    color: muted,
                   }}
                 >
                   Monte uma solicitação de pedido para envio ao representante.
@@ -439,11 +550,11 @@ export default function PortalDashboardPage() {
                 type="button"
                 onClick={() => router.push("/portal/orders")}
                 style={{
-                  border: "1px solid #e5e7eb",
+                  border: `1px solid ${theme.border}`,
                   borderRadius: 16,
                   padding: 20,
-                  background: "#ffffff",
-                  color: "#111827",
+                  background: theme.isDark ? "#111827" : "#ffffff",
+                  color: theme.text,
                   cursor: "pointer",
                   textAlign: "left",
                 }}
@@ -461,7 +572,7 @@ export default function PortalDashboardPage() {
                   style={{
                     fontSize: 13,
                     lineHeight: 1.55,
-                    color: "#64748b",
+                    color: muted,
                   }}
                 >
                   Acompanhe o histórico dos seus pedidos e valores.
@@ -470,13 +581,13 @@ export default function PortalDashboardPage() {
 
               <button
                 type="button"
-                onClick={() => router.push("/portal/boletos")}
+                onClick={() => router.push("/portal/visit")}
                 style={{
-                  border: "1px solid #e5e7eb",
+                  border: `1px solid ${theme.border}`,
                   borderRadius: 16,
                   padding: 20,
-                  background: "#ffffff",
-                  color: "#111827",
+                  background: theme.isDark ? "#111827" : "#ffffff",
+                  color: theme.text,
                   cursor: "pointer",
                   textAlign: "left",
                 }}
@@ -488,28 +599,28 @@ export default function PortalDashboardPage() {
                     marginBottom: 8,
                   }}
                 >
-                  Boletos
+                  Solicitar visita
                 </div>
                 <div
                   style={{
                     fontSize: 13,
                     lineHeight: 1.55,
-                    color: "#64748b",
+                    color: muted,
                   }}
                 >
-                  Consulte os títulos e acompanhe seus recebimentos.
+                  Peça uma visita para reposição, organização ou acompanhamento.
                 </div>
               </button>
 
               <button
                 type="button"
-                onClick={() => router.push("/portal/notas-fiscais")}
+                onClick={() => router.push("/portal/maintenance")}
                 style={{
-                  border: "1px solid #e5e7eb",
+                  border: `1px solid ${theme.border}`,
                   borderRadius: 16,
                   padding: 20,
-                  background: "#ffffff",
-                  color: "#111827",
+                  background: theme.isDark ? "#111827" : "#ffffff",
+                  color: theme.text,
                   cursor: "pointer",
                   textAlign: "left",
                 }}
@@ -521,34 +632,35 @@ export default function PortalDashboardPage() {
                     marginBottom: 8,
                   }}
                 >
-                  Notas fiscais
+                  Manutenção
                 </div>
                 <div
                   style={{
                     fontSize: 13,
                     lineHeight: 1.55,
-                    color: "#64748b",
+                    color: muted,
                   }}
                 >
-                  Visualize documentos vinculados ao seu atendimento.
+                  Solicite correção, troca, coleta ou manutenção do expositor.
                 </div>
               </button>
             </div>
-          </Block>
+          </Section>
         </div>
 
-        <Block
+        <Section
           title="Informações do expositor"
-          subtitle="Aqui você visualiza os expositores vinculados ao seu cadastro, os produtos instalados e o histórico de manutenção."
+          subtitle="Visualize expositores vinculados, produtos instalados e histórico de manutenção."
+          theme={theme}
         >
           {!client?.exhibitors?.length ? (
             <div
               style={{
                 padding: 18,
                 borderRadius: 14,
-                border: "1px solid #e5e7eb",
-                background: "#f8fafc",
-                color: "#64748b",
+                border: `1px solid ${theme.border}`,
+                background: theme.isDark ? "#111827" : "#f8fafc",
+                color: muted,
                 fontSize: 14,
               }}
             >
@@ -560,10 +672,10 @@ export default function PortalDashboardPage() {
                 <div
                   key={exhibitor.id}
                   style={{
-                    border: "1px solid #e5e7eb",
+                    border: `1px solid ${theme.border}`,
                     borderRadius: 16,
                     padding: 18,
-                    background: "#f8fafc",
+                    background: theme.isDark ? "#111827" : "#f8fafc",
                   }}
                 >
                   <div
@@ -581,7 +693,7 @@ export default function PortalDashboardPage() {
                         style={{
                           fontSize: 18,
                           fontWeight: 900,
-                          color: "#111827",
+                          color: theme.text,
                         }}
                       >
                         {exhibitor.name || exhibitor.code || "Expositor"}
@@ -591,7 +703,7 @@ export default function PortalDashboardPage() {
                         style={{
                           marginTop: 4,
                           fontSize: 13,
-                          color: "#64748b",
+                          color: muted,
                         }}
                       >
                         Tipo: {exhibitorTypeLabel(exhibitor.type)} • Status:{" "}
@@ -603,9 +715,9 @@ export default function PortalDashboardPage() {
                       style={{
                         padding: "6px 10px",
                         borderRadius: 999,
-                        border: "1px solid #dbe3ef",
-                        background: "#ffffff",
-                        color: "#2563eb",
+                        border: `1px solid ${theme.border}`,
+                        background: theme.isDark ? "#0f172a" : "#ffffff",
+                        color: theme.primary,
                         fontSize: 12,
                         fontWeight: 800,
                       }}
@@ -623,20 +735,20 @@ export default function PortalDashboardPage() {
                   >
                     <div
                       style={{
-                        border: "1px solid #e5e7eb",
+                        border: `1px solid ${theme.border}`,
                         borderRadius: 14,
-                        background: "#ffffff",
+                        background: theme.isDark ? "#0f172a" : "#ffffff",
                         overflow: "hidden",
                       }}
                     >
                       <div
                         style={{
                           padding: "12px 14px",
-                          borderBottom: "1px solid #e5e7eb",
+                          borderBottom: `1px solid ${theme.border}`,
                           fontSize: 14,
                           fontWeight: 800,
-                          color: "#111827",
-                          background: "#f8fafc",
+                          color: theme.text,
+                          background: theme.isDark ? "#111827" : "#f8fafc",
                         }}
                       >
                         Produtos no expositor
@@ -646,7 +758,7 @@ export default function PortalDashboardPage() {
                         <div
                           style={{
                             padding: 14,
-                            color: "#64748b",
+                            color: muted,
                             fontSize: 14,
                           }}
                         >
@@ -662,7 +774,7 @@ export default function PortalDashboardPage() {
                                 gridTemplateColumns: "minmax(0, 1fr) 110px",
                                 gap: 12,
                                 padding: 14,
-                                borderTop: "1px solid #f1f5f9",
+                                borderTop: `1px solid ${theme.isDark ? "#1f2937" : "#f1f5f9"}`,
                                 alignItems: "center",
                               }}
                             >
@@ -671,7 +783,7 @@ export default function PortalDashboardPage() {
                                   style={{
                                     fontSize: 14,
                                     fontWeight: 800,
-                                    color: "#111827",
+                                    color: theme.text,
                                   }}
                                 >
                                   {item.product.name}
@@ -681,7 +793,7 @@ export default function PortalDashboardPage() {
                                   style={{
                                     marginTop: 4,
                                     fontSize: 12,
-                                    color: "#64748b",
+                                    color: muted,
                                   }}
                                 >
                                   SKU: {item.product.sku || "-"}
@@ -692,7 +804,7 @@ export default function PortalDashboardPage() {
                                 <div
                                   style={{
                                     fontSize: 12,
-                                    color: "#64748b",
+                                    color: muted,
                                     marginBottom: 4,
                                   }}
                                 >
@@ -702,7 +814,7 @@ export default function PortalDashboardPage() {
                                   style={{
                                     fontSize: 14,
                                     fontWeight: 700,
-                                    color: "#111827",
+                                    color: theme.text,
                                   }}
                                 >
                                   {item.quantity}
@@ -716,20 +828,20 @@ export default function PortalDashboardPage() {
 
                     <div
                       style={{
-                        border: "1px solid #e5e7eb",
+                        border: `1px solid ${theme.border}`,
                         borderRadius: 14,
-                        background: "#ffffff",
+                        background: theme.isDark ? "#0f172a" : "#ffffff",
                         overflow: "hidden",
                       }}
                     >
                       <div
                         style={{
                           padding: "12px 14px",
-                          borderBottom: "1px solid #e5e7eb",
+                          borderBottom: `1px solid ${theme.border}`,
                           fontSize: 14,
                           fontWeight: 800,
-                          color: "#111827",
-                          background: "#f8fafc",
+                          color: theme.text,
+                          background: theme.isDark ? "#111827" : "#f8fafc",
                         }}
                       >
                         Histórico de manutenção
@@ -739,7 +851,7 @@ export default function PortalDashboardPage() {
                         <div
                           style={{
                             padding: 14,
-                            color: "#64748b",
+                            color: muted,
                             fontSize: 14,
                           }}
                         >
@@ -752,14 +864,14 @@ export default function PortalDashboardPage() {
                               key={maintenance.id}
                               style={{
                                 padding: 14,
-                                borderTop: "1px solid #f1f5f9",
+                                borderTop: `1px solid ${theme.isDark ? "#1f2937" : "#f1f5f9"}`,
                               }}
                             >
                               <div
                                 style={{
                                   fontSize: 14,
                                   fontWeight: 800,
-                                  color: "#111827",
+                                  color: theme.text,
                                   marginBottom: 4,
                                 }}
                               >
@@ -771,7 +883,7 @@ export default function PortalDashboardPage() {
                                 <div
                                   style={{
                                     fontSize: 13,
-                                    color: "#111827",
+                                    color: theme.text,
                                     lineHeight: 1.55,
                                     marginBottom: 4,
                                   }}
@@ -784,7 +896,7 @@ export default function PortalDashboardPage() {
                                 <div
                                   style={{
                                     fontSize: 13,
-                                    color: "#111827",
+                                    color: theme.text,
                                     lineHeight: 1.55,
                                     marginBottom: 4,
                                   }}
@@ -797,7 +909,7 @@ export default function PortalDashboardPage() {
                                 <div
                                   style={{
                                     fontSize: 13,
-                                    color: "#64748b",
+                                    color: muted,
                                     lineHeight: 1.55,
                                   }}
                                 >
@@ -814,7 +926,7 @@ export default function PortalDashboardPage() {
               ))}
             </div>
           )}
-        </Block>
+        </Section>
       </div>
     </div>
   );

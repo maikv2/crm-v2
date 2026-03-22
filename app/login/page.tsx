@@ -1,6 +1,12 @@
 "use client";
 
-import { Suspense, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import {
+  Suspense,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
@@ -12,6 +18,33 @@ function normalizeAccess(value: string | null): AccessType {
   if (raw === "CLIENT") return "CLIENT";
   if (raw === "INVESTOR") return "INVESTOR";
   return "CRM";
+}
+
+function getLoginEndpoint(access: AccessType) {
+  if (access === "CLIENT") return "/api/portal-auth/login";
+  if (access === "INVESTOR") return "/api/investor-auth/login";
+  return "/api/auth/login";
+}
+
+function buildPayload(access: AccessType, identifier: string, password: string) {
+  if (access === "CLIENT" || access === "INVESTOR") {
+    return {
+      username: identifier,
+      password,
+    };
+  }
+
+  return {
+    access: "CRM",
+    identifier,
+    password,
+  };
+}
+
+function getDefaultDestination(access: AccessType) {
+  if (access === "CLIENT") return "/portal";
+  if (access === "INVESTOR") return "/investor";
+  return "/choose/crm";
 }
 
 function LoginPageContent() {
@@ -31,6 +64,7 @@ function LoginPageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const redirectParam = searchParams.get("redirect");
   const pageBg = theme.isDark ? "#081225" : theme.pageBg;
   const cardBg = theme.isDark ? "#0f172a" : theme.cardBg;
   const border = theme.isDark ? "#1e293b" : theme.border;
@@ -42,24 +76,24 @@ function LoginPageContent() {
 
   const identifierPlaceholder =
     access === "CLIENT"
-      ? "Digite o nome/usuário do cliente"
+      ? "Digite o usuário do cliente"
       : access === "INVESTOR"
-      ? "Digite o usuário do investidor"
-      : "Digite seu e-mail";
+        ? "Digite o e-mail do investidor"
+        : "Digite seu e-mail";
 
   const title =
     access === "CRM"
       ? "CRM V2"
       : access === "CLIENT"
-      ? "Portal do Cliente"
-      : "Portal do Investidor";
+        ? "Portal do Cliente"
+        : "Portal do Investidor";
 
   const subtitle =
     access === "CRM"
       ? "Acesse sua conta para continuar."
       : access === "CLIENT"
-      ? "Entre para acessar o portal do cliente."
-      : "Entre para acessar o portal do investidor.";
+        ? "Entre para acessar o portal do cliente."
+        : "Entre para acessar o portal do investidor.";
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -68,16 +102,15 @@ function LoginPageContent() {
       setLoading(true);
       setError(null);
 
-      const res = await fetch("/api/session/login", {
+      const endpoint = getLoginEndpoint(access);
+      const payload = buildPayload(access, identifier, password);
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          access,
-          identifier,
-          password,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json().catch(() => null);
@@ -86,16 +119,12 @@ function LoginPageContent() {
         throw new Error(json?.error || "Erro ao realizar login.");
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 80));
-
       const destination =
-        typeof json?.destination === "string" && json.destination.trim()
+        typeof json?.destination === "string" && json.destination.startsWith("/")
           ? json.destination
-          : access === "CRM"
-            ? "/choose/crm"
-            : access === "CLIENT"
-              ? "/portal"
-              : "/investor";
+          : typeof redirectParam === "string" && redirectParam.startsWith("/")
+            ? redirectParam
+            : getDefaultDestination(access);
 
       router.replace(destination);
       router.refresh();
@@ -136,8 +165,6 @@ function LoginPageContent() {
 
           const params = new URLSearchParams(searchParams.toString());
           params.set("access", value);
-          params.delete("redirect");
-
           router.replace(`/login?${params.toString()}`);
         }}
         style={{

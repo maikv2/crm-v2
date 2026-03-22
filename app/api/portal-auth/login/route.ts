@@ -3,118 +3,43 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
-function expiredCookie(name: string) {
-  return {
-    name,
-    value: "",
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    expires: new Date(0),
-  };
-}
+export async function POST(request: Request) {
+  const body = await request.json();
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
+  const username = String(body.username || "").trim();
+  const password = String(body.password || "");
 
-    const username = String(body?.username ?? "").trim();
-    const password = String(body?.password ?? "").trim();
+  const client = await prisma.client.findFirst({
+    where: {
+      portalEnabled: true,
+      OR: [
+        { code: username },
+        { email: username },
+      ],
+    },
+  });
 
-    if (!username || !password) {
-      return NextResponse.json(
-        { error: "Informe usuário e senha." },
-        { status: 400 }
-      );
-    }
-
-    const client = await prisma.client.findFirst({
-      where: {
-        OR: [
-          {
-            tradeName: {
-              equals: username,
-              mode: "insensitive",
-            },
-          },
-          {
-            name: {
-              equals: username,
-              mode: "insensitive",
-            },
-          },
-        ],
-      },
-      select: {
-        id: true,
-        name: true,
-        tradeName: true,
-        code: true,
-        portalEnabled: true,
-        portalPasswordHash: true,
-      },
-    });
-
-    if (!client) {
-      return NextResponse.json(
-        { error: "Usuário não encontrado." },
-        { status: 401 }
-      );
-    }
-
-    if (!client.portalEnabled) {
-      return NextResponse.json(
-        { error: "Portal ainda não liberado para este cliente." },
-        { status: 403 }
-      );
-    }
-
-    const passwordHash = String(client.portalPasswordHash ?? "");
-
-    if (!passwordHash) {
-      return NextResponse.json(
-        { error: "Cliente sem senha cadastrada." },
-        { status: 401 }
-      );
-    }
-
-    const valid = await bcrypt.compare(password, passwordHash);
-
-    if (!valid) {
-      return NextResponse.json(
-        { error: "Usuário ou senha inválidos." },
-        { status: 401 }
-      );
-    }
-
-    const cookieStore = await cookies();
-
-    cookieStore.set(expiredCookie("crm_session"));
-    cookieStore.set(expiredCookie("investor_session"));
-    cookieStore.set(expiredCookie("portal_session"));
-
-    cookieStore.set({
-      name: "portal_session",
-      value: client.id,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      clientId: client.id,
-      name: client.tradeName || client.name,
-    });
-  } catch (error) {
-    console.error("PORTAL LOGIN ERROR:", error);
-
-    return NextResponse.json(
-      { error: "Erro interno de autenticação do portal." },
-      { status: 500 }
-    );
+  if (!client || !client.portalPasswordHash) {
+    return NextResponse.json({ error: "Usuário inválido" }, { status: 401 });
   }
+
+  const valid = await bcrypt.compare(password, client.portalPasswordHash);
+
+  if (!valid) {
+    return NextResponse.json({ error: "Senha inválida" }, { status: 401 });
+  }
+
+  const cookieStore = await cookies();
+
+  cookieStore.set({
+    name: "portal_session",
+    value: client.id,
+    httpOnly: true,
+    path: "/",
+  });
+
+  return NextResponse.json({
+    ok: true,
+    destination: "/portal",
+  });
 }

@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/login",
     name: "CRM V2",
     short_name: "V2",
     description: "Sistema CRM V2",

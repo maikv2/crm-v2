@@ -1,7 +1,5 @@
-export const runtime = "nodejs";
-
 import { redirect } from "next/navigation";
 
-export default function Home() {
+export default function HomePage() {
   redirect("/login");
 }

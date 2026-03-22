@@ -7,7 +7,11 @@ export const size = {
 
 export const contentType = "image/png";
 
-export default function AppleIcon() {
+export default async function AppleIcon() {
+  const logo = await fetch(
+    new URL("../public/logo_branca.svg", import.meta.url)
+  ).then((res) => res.arrayBuffer());
+
   return new ImageResponse(
     (
       <div
@@ -17,15 +21,18 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #60a5fa 100%)",
-          color: "#ffffff",
-          borderRadius: 40,
-          fontSize: 54,
-          fontWeight: 800,
-          letterSpacing: -2,
+          background: "#2563eb",
         }}
       >
-        CRM
+        <img
+          src={`data:image/svg+xml;base64,${Buffer.from(logo).toString(
+            "base64"
+          )}`}
+          style={{
+            width: 110,
+            height: 110,
+          }}
+        />
       </div>
     ),
     {

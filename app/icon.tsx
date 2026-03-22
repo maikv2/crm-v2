@@ -7,14 +7,10 @@ export const size = {
 
 export const contentType = "image/png";
 
-export default function Icon({
-  params,
-}: {
-  params: { size?: string };
-}) {
-  const requestedSize = Number(params?.size ?? 512);
-  const safeSize =
-    requestedSize === 192 || requestedSize === 512 ? requestedSize : 512;
+export default async function Icon() {
+  const logo = await fetch(
+    new URL("../public/logo_branca.svg", import.meta.url)
+  ).then((res) => res.arrayBuffer());
 
   return new ImageResponse(
     (
@@ -25,20 +21,23 @@ export default function Icon({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #60a5fa 100%)",
-          color: "#ffffff",
-          borderRadius: safeSize * 0.22,
-          fontSize: safeSize * 0.24,
-          fontWeight: 800,
-          letterSpacing: -2,
+          background: "#2563eb",
         }}
       >
-        CRM
+        <img
+          src={`data:image/svg+xml;base64,${Buffer.from(logo).toString(
+            "base64"
+          )}`}
+          style={{
+            width: 300,
+            height: 300,
+          }}
+        />
       </div>
     ),
     {
-      width: safeSize,
-      height: safeSize,
+      width: 512,
+      height: 512,
     }
   );
 }

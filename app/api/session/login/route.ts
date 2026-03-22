@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     const identifierRaw = normalize(body?.identifier);
     const password = normalize(body?.password);
-    const mobile = Boolean(body?.mobile);
+    const mobile = body?.mobile === true ? true : body?.mobile === false ? false : null;
 
     if (!identifierRaw || !password) {
       return NextResponse.json(
@@ -82,13 +82,11 @@ export async function POST(request: Request) {
             kind: "crm",
             role: user.role,
             destination:
-              user.role === "ADMIN"
-                ? mobile
+              mobile === true
+                ? user.role === "ADMIN"
                   ? "/m/admin"
-                  : "/dashboard"
-                : mobile
-                ? "/m/rep"
-                : "/rep",
+                  : "/m/rep"
+                : "/choose/crm",
             user: {
               id: user.id,
               name: user.name,
@@ -110,7 +108,7 @@ export async function POST(request: Request) {
             ok: true,
             kind: "investor",
             role: user.role,
-            destination: mobile ? "/m/investor" : "/investor",
+            destination: mobile === true ? "/m/investor" : "/investor",
             user: {
               id: user.id,
               name: user.name,
@@ -190,7 +188,7 @@ export async function POST(request: Request) {
         ok: true,
         kind: "portal",
         role: "CLIENT",
-        destination: mobile ? "/m/client" : "/portal/dashboard",
+        destination: mobile === true ? "/m/client" : "/portal",
         user: {
           id: client.id,
           name: client.tradeName || client.name,

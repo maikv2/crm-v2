@@ -3,6 +3,18 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
+function expiredCookie(name: string) {
+  return {
+    name,
+    value: "",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    expires: new Date(0),
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -58,15 +70,19 @@ export async function POST(req: Request) {
 
     const cookieStore = await cookies();
 
-cookieStore.set({
-  name: "investor_session",
-  value: user.id,
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax",
-  path: "/",
-  maxAge: 60 * 60 * 24 * 7,
-});
+    cookieStore.set(expiredCookie("crm_session"));
+    cookieStore.set(expiredCookie("portal_session"));
+    cookieStore.set(expiredCookie("investor_session"));
+
+    cookieStore.set({
+      name: "investor_session",
+      value: user.id,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
 
     return NextResponse.json({
       ok: true,

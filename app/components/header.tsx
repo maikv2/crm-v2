@@ -109,7 +109,8 @@ function isMobileRoute(pathname: string) {
   return (
     startsWithSegment(pathname, "/m/admin") ||
     startsWithSegment(pathname, "/m/rep") ||
-    startsWithSegment(pathname, "/m/investor")
+    startsWithSegment(pathname, "/m/investor") ||
+    startsWithSegment(pathname, "/m/client")
   );
 }
 
@@ -126,10 +127,21 @@ function desktopToMobile(pathname: string, user: LoggedUser | null) {
     if (startsWithSegment(pathname, "/rep/clients")) return "/m/rep/clients";
     if (pathname === "/rep/orders/new") return "/m/rep/orders/new";
     if (startsWithSegment(pathname, "/rep/orders")) return "/m/rep/orders";
-    if (startsWithSegment(pathname, "/rep/finance/commissions")) return "/m/rep/commissions";
+    if (startsWithSegment(pathname, "/rep/finance/commissions")) {
+      return "/m/rep/finance/commissions";
+    }
+    if (startsWithSegment(pathname, "/rep/finance/receivables")) {
+      return "/m/rep/finance/receivables";
+    }
+    if (startsWithSegment(pathname, "/rep/finance/transfers")) {
+      return "/m/rep/finance/transfers";
+    }
     if (startsWithSegment(pathname, "/rep/finance")) return "/m/rep/finance";
     if (startsWithSegment(pathname, "/rep/operations")) return "/m/rep/operations";
     if (startsWithSegment(pathname, "/rep/visit")) return "/m/rep/visit";
+    if (startsWithSegment(pathname, "/rep/exhibitors")) return "/m/rep/exhibitors";
+    if (startsWithSegment(pathname, "/rep/prospects")) return "/m/rep/prospects";
+    if (startsWithSegment(pathname, "/rep/map")) return "/m/rep/map";
 
     return "/m/rep";
   }
@@ -179,10 +191,21 @@ function mobileToDesktop(pathname: string, user: LoggedUser | null) {
   if (startsWithSegment(pathname, "/m/rep/clients")) return "/rep/clients";
   if (pathname === "/m/rep/orders/new") return "/rep/orders/new";
   if (startsWithSegment(pathname, "/m/rep/orders")) return "/rep/orders";
-  if (startsWithSegment(pathname, "/m/rep/commissions")) return "/rep/finance/commissions";
+  if (startsWithSegment(pathname, "/m/rep/finance/commissions")) {
+    return "/rep/finance/commissions";
+  }
+  if (startsWithSegment(pathname, "/m/rep/finance/receivables")) {
+    return "/rep/finance/receivables";
+  }
+  if (startsWithSegment(pathname, "/m/rep/finance/transfers")) {
+    return "/rep/finance/transfers";
+  }
   if (startsWithSegment(pathname, "/m/rep/finance")) return "/rep/finance";
   if (startsWithSegment(pathname, "/m/rep/operations")) return "/rep/operations";
   if (startsWithSegment(pathname, "/m/rep/visit")) return "/rep/visit";
+  if (startsWithSegment(pathname, "/m/rep/exhibitors")) return "/rep/exhibitors";
+  if (startsWithSegment(pathname, "/m/rep/prospects")) return "/rep/prospects";
+  if (startsWithSegment(pathname, "/m/rep/map")) return "/rep/map";
 
   if (pathname === "/m/investor") return "/investor";
   if (startsWithSegment(pathname, "/m/investor/quotas")) return "/investor/quotas";
@@ -341,6 +364,10 @@ export default function Header() {
     : "AD";
 
   const userLabel = user?.name || "Admin";
+
+  if (mobile) {
+    return null;
+  }
 
   return (
     <header

@@ -64,6 +64,18 @@ function isProtectedCrmRoute(pathname: string) {
     pathname.startsWith("/exhibitors/") ||
     pathname === "/sales-dashboard" ||
     pathname.startsWith("/sales-dashboard/") ||
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/") ||
+    pathname === "/prospects" ||
+    pathname.startsWith("/prospects/") ||
+    pathname === "/map" ||
+    pathname.startsWith("/map/") ||
+    pathname === "/alerts" ||
+    pathname.startsWith("/alerts/") ||
+    pathname === "/investors" ||
+    pathname.startsWith("/investors/") ||
+    pathname === "/representatives" ||
+    pathname.startsWith("/representatives/") ||
     isCrmChoiceRoute(pathname) ||
     isCrmMobileRoute(pathname)
   );
@@ -100,22 +112,15 @@ function buildLoginUrl(
 export function proxy(req: NextRequest) {
   const { pathname, searchParams } = req.nextUrl;
 
-  /**
-   * ROTAS PÚBLICAS
-   */
   if (isPublicRoute(pathname)) {
     if (pathname !== "/login") {
       return NextResponse.next();
     }
 
-    const access = searchParams.get("access");
+    const access = String(searchParams.get("access") || "").toUpperCase();
     const crmSession = hasCrmSession(req);
     const portalSession = hasPortalSession(req);
     const investorSession = hasInvestorSession(req);
-
-    /**
-     * PRIORIDADE ABSOLUTA
-     */
 
     if (access === "CLIENT") {
       if (portalSession) {
@@ -137,10 +142,6 @@ export function proxy(req: NextRequest) {
       return NextResponse.next();
     }
 
-    /**
-     * CRM SEMPRE PASSA PELA TELA DE ESCOLHA
-     */
-
     if (access === "CRM") {
       if (crmSession) {
         const url = req.nextUrl.clone();
@@ -150,10 +151,6 @@ export function proxy(req: NextRequest) {
       }
       return NextResponse.next();
     }
-
-    /**
-     * Sem access na URL
-     */
 
     if (portalSession) {
       const url = req.nextUrl.clone();
@@ -179,67 +176,52 @@ export function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  /**
-   * CLIENTE
-   */
-
   if (isPortalRoute(pathname) || isPortalMobileRoute(pathname)) {
     if (!hasPortalSession(req)) {
       return NextResponse.redirect(buildLoginUrl(req, "CLIENT"));
     }
-
     return NextResponse.next();
   }
-
-  /**
-   * INVESTIDOR
-   */
 
   if (isInvestorRoute(pathname) || isInvestorMobileRoute(pathname)) {
     if (!hasInvestorSession(req)) {
       return NextResponse.redirect(buildLoginUrl(req, "INVESTOR"));
     }
-
     return NextResponse.next();
   }
-
-  /**
-   * CRM
-   */
 
   if (isProtectedCrmRoute(pathname)) {
     if (!hasCrmSession(req)) {
       return NextResponse.redirect(buildLoginUrl(req, "CRM"));
     }
-
     return NextResponse.next();
   }
-
-  /**
-   * RAIZ
-   */
 
   if (pathname === "/") {
     if (hasPortalSession(req)) {
       const url = req.nextUrl.clone();
       url.pathname = "/portal";
+      url.search = "";
       return NextResponse.redirect(url);
     }
 
     if (hasInvestorSession(req)) {
       const url = req.nextUrl.clone();
       url.pathname = "/investor";
+      url.search = "";
       return NextResponse.redirect(url);
     }
 
     if (hasCrmSession(req)) {
       const url = req.nextUrl.clone();
       url.pathname = "/choose/crm";
+      url.search = "";
       return NextResponse.redirect(url);
     }
 
     const url = req.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

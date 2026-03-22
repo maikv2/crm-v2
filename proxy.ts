@@ -1,6 +1,45 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+function hasCrmSession(req: NextRequest) {
+  return Boolean(req.cookies.get("crm_session")?.value);
+}
+
+function hasPortalSession(req: NextRequest) {
+  return Boolean(req.cookies.get("portal_session")?.value);
+}
+
+function hasInvestorSession(req: NextRequest) {
+  return Boolean(req.cookies.get("investor_session")?.value);
+}
+
+function isCrmChoiceRoute(pathname: string) {
+  return pathname === "/choose/crm" || pathname.startsWith("/choose/crm/");
+}
+
+function isCrmMobileRoute(pathname: string) {
+  return pathname === "/m/admin" ||
+    pathname.startsWith("/m/admin/") ||
+    pathname === "/m/rep" ||
+    pathname.startsWith("/m/rep/");
+}
+
+function isPortalRoute(pathname: string) {
+  return pathname === "/portal" || pathname.startsWith("/portal/");
+}
+
+function isPortalMobileRoute(pathname: string) {
+  return pathname === "/m/client" || pathname.startsWith("/m/client/");
+}
+
+function isInvestorRoute(pathname: string) {
+  return pathname === "/investor" || pathname.startsWith("/investor/");
+}
+
+function isInvestorMobileRoute(pathname: string) {
+  return pathname === "/m/investor" || pathname.startsWith("/m/investor/");
+}
+
 function isProtectedCrmRoute(pathname: string) {
   return (
     pathname === "/dashboard" ||
@@ -21,133 +60,183 @@ function isProtectedCrmRoute(pathname: string) {
     pathname.startsWith("/stock/") ||
     pathname === "/exhibitors" ||
     pathname.startsWith("/exhibitors/") ||
-    pathname === "/investors" ||
-    pathname.startsWith("/investors/") ||
     pathname === "/sales-dashboard" ||
     pathname.startsWith("/sales-dashboard/") ||
-    pathname === "/m/admin" ||
-    pathname.startsWith("/m/admin/") ||
-    pathname === "/m/rep" ||
-    pathname.startsWith("/m/rep/") ||
-    pathname === "/choose/crm" ||
-    pathname.startsWith("/choose/crm/")
+    isCrmChoiceRoute(pathname) ||
+    isCrmMobileRoute(pathname)
   );
 }
 
-function isProtectedPortalRoute(pathname: string) {
+function isPublicRoute(pathname: string) {
   return (
-    pathname === "/portal" ||
-    pathname.startsWith("/portal/") ||
-    pathname === "/m/client" ||
-    pathname.startsWith("/m/client/")
+    pathname === "/login" ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/_next/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/site.webmanifest" ||
+    pathname.startsWith("/icons/") ||
+    pathname.startsWith("/images/") ||
+    pathname.startsWith("/assets/")
   );
 }
 
-function isProtectedInvestorRoute(pathname: string) {
-  return (
-    pathname === "/investor" ||
-    pathname.startsWith("/investor/") ||
-    pathname === "/m/investor" ||
-    pathname.startsWith("/m/investor/")
-  );
+function buildLoginUrl(req: NextRequest, access?: "CRM" | "CLIENT" | "INVESTOR") {
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+
+  if (access) {
+    url.searchParams.set("access", access);
+  }
+
+  return url;
 }
 
 export function proxy(req: NextRequest) {
-  const crmSession = req.cookies.get("crm_session")?.value;
-  const portalSession = req.cookies.get("portal_session")?.value;
-  const investorSession = req.cookies.get("investor_session")?.value;
   const { pathname, searchParams } = req.nextUrl;
 
-  const isLoginPage = pathname === "/login";
-  const isPortalLoginPage = pathname === "/portal/login";
-  const isInvestorLoginPage = pathname === "/investor/login";
+  if (isPublicRoute(pathname)) {
+    if (pathname !== "/login") {
+      return NextResponse.next();
+    }
 
-  const isCrmProtected = isProtectedCrmRoute(pathname);
-  const isPortalProtected = isProtectedPortalRoute(pathname);
-  const isInvestorProtected = isProtectedInvestorRoute(pathname);
+    const access = searchParams.get("access");
+    const crmSession = hasCrmSession(req);
+    const portalSession = hasPortalSession(req);
+    const investorSession = hasInvestorSession(req);
 
-  if (isCrmProtected && !crmSession) {
-    const url = new URL("/login", req.url);
-    url.searchParams.set("redirect", pathname);
-    if (pathname.startsWith("/m/")) url.searchParams.set("m", "1");
+    /**
+     * PRIORIDADE ABSOLUTA:
+     * 1) access param
+     * 2) portal_session
+     * 3) investor_session
+     * 4) crm_session
+     */
+
+    if (access === "CLIENT") {
+      if (portalSession) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/portal";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+      return NextResponse.next();
+    }
+
+    if (access === "INVESTOR") {
+      if (investorSession) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/investor";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+      return NextResponse.next();
+    }
+
+    if (access === "CRM") {
+      if (crmSession) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/choose/crm";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+      return NextResponse.next();
+    }
+
+    /**
+     * Sem access na URL:
+     * respeita prioridade de sessões não-CRM primeiro
+     */
+    if (portalSession) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/portal";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (investorSession) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/investor";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (crmSession) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/choose/crm";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    return NextResponse.next();
+  }
+
+  /**
+   * ROTAS DO CLIENTE
+   * Nunca podem ser "roubadas" por crm_session
+   */
+  if (isPortalRoute(pathname) || isPortalMobileRoute(pathname)) {
+    if (!hasPortalSession(req)) {
+      return NextResponse.redirect(buildLoginUrl(req, "CLIENT"));
+    }
+    return NextResponse.next();
+  }
+
+  /**
+   * ROTAS DO INVESTIDOR
+   * Nunca podem ser "roubadas" por crm_session
+   */
+  if (isInvestorRoute(pathname) || isInvestorMobileRoute(pathname)) {
+    if (!hasInvestorSession(req)) {
+      return NextResponse.redirect(buildLoginUrl(req, "INVESTOR"));
+    }
+    return NextResponse.next();
+  }
+
+  /**
+   * ROTAS DO CRM
+   */
+  if (isProtectedCrmRoute(pathname)) {
+    if (!hasCrmSession(req)) {
+      return NextResponse.redirect(buildLoginUrl(req, "CRM"));
+    }
+    return NextResponse.next();
+  }
+
+  /**
+   * Raiz do sistema
+   */
+  if (pathname === "/") {
+    if (hasPortalSession(req)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/portal";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (hasInvestorSession(req)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/investor";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (hasCrmSession(req)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/choose/crm";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = "";
     return NextResponse.redirect(url);
-  }
-
-  if (isPortalProtected && !portalSession) {
-    const url = new URL("/login", req.url);
-    url.searchParams.set("access", "CLIENT");
-    url.searchParams.set("redirect", pathname);
-    if (pathname.startsWith("/m/")) url.searchParams.set("m", "1");
-    return NextResponse.redirect(url);
-  }
-
-  if (isInvestorProtected && !investorSession) {
-    const url = new URL("/login", req.url);
-    url.searchParams.set("access", "INVESTOR");
-    url.searchParams.set("redirect", pathname);
-    if (pathname.startsWith("/m/")) url.searchParams.set("m", "1");
-    return NextResponse.redirect(url);
-  }
-
-  if (isPortalLoginPage && portalSession) {
-    return NextResponse.redirect(new URL("/portal", req.url));
-  }
-
-  if (isInvestorLoginPage && investorSession) {
-    return NextResponse.redirect(new URL("/investor", req.url));
-  }
-
-  if (isLoginPage && crmSession && !searchParams.get("access")) {
-    return NextResponse.redirect(new URL("/choose/crm", req.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/login",
-    "/portal/login",
-    "/investor/login",
-
-    "/portal",
-    "/portal/:path*",
-    "/investor",
-    "/investor/:path*",
-
-    "/choose/crm",
-    "/choose/crm/:path*",
-
-    "/dashboard",
-    "/dashboard/:path*",
-    "/clients",
-    "/clients/:path*",
-    "/orders",
-    "/orders/:path*",
-    "/finance",
-    "/finance/:path*",
-    "/rep",
-    "/rep/:path*",
-    "/products",
-    "/products/:path*",
-    "/regions",
-    "/regions/:path*",
-    "/stock",
-    "/stock/:path*",
-    "/exhibitors",
-    "/exhibitors/:path*",
-    "/investors",
-    "/investors/:path*",
-    "/sales-dashboard",
-    "/sales-dashboard/:path*",
-
-    "/m/admin",
-    "/m/admin/:path*",
-    "/m/rep",
-    "/m/rep/:path*",
-    "/m/client",
-    "/m/client/:path*",
-    "/m/investor",
-    "/m/investor/:path*",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

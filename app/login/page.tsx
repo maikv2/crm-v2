@@ -54,24 +54,30 @@ function LoginPageContent() {
   const subtle = theme.isDark ? "#111827" : "#f8fafc";
 
   const identifierLabel =
-    access === "CLIENT" ? "Usuário do cliente" : "E-mail";
+    access === "CLIENT" || access === "INVESTOR"
+      ? "Usuário"
+      : "E-mail";
 
   const identifierPlaceholder =
-    access === "CLIENT" ? "Digite o nome/usuário do cliente" : "Digite seu e-mail";
+    access === "CLIENT"
+      ? "Digite o nome/usuário do cliente"
+      : access === "INVESTOR"
+        ? "Digite o usuário do investidor"
+        : "Digite seu e-mail";
 
   const title =
     access === "CRM"
       ? "CRM V2"
       : access === "CLIENT"
-      ? "Portal do Cliente"
-      : "Portal do Investidor";
+        ? "Portal do Cliente"
+        : "Portal do Investidor";
 
   const subtitle =
     access === "CRM"
       ? "Acesse sua conta para continuar."
       : access === "CLIENT"
-      ? "Entre para acessar o portal do cliente."
-      : "Entre para acessar o portal do investidor.";
+        ? "Entre para acessar o portal do cliente."
+        : "Entre para acessar o portal do investidor.";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -125,7 +131,7 @@ function LoginPageContent() {
           throw new Error(json?.error || "Erro ao realizar login.");
         }
 
-        router.push(redirectParam || (mobile ? "/m/client" : "/portal/dashboard"));
+        router.push(redirectParam || "/portal");
         router.refresh();
         return;
       }
@@ -145,7 +151,7 @@ function LoginPageContent() {
         throw new Error(json?.error || "Erro ao entrar.");
       }
 
-      router.push(redirectParam || (mobile ? "/m/investor" : "/investor"));
+      router.push(redirectParam || "/investor");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao realizar login.");
@@ -270,7 +276,7 @@ function LoginPageContent() {
               {identifierLabel}
             </div>
             <input
-              type={access === "CLIENT" ? "text" : "email"}
+              type={access === "CRM" ? "email" : "text"}
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder={identifierPlaceholder}

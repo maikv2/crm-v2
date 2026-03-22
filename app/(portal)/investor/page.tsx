@@ -2,16 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowRight,
-  BadgeDollarSign,
-  Layers3,
-  LogOut,
-  Moon,
-  RefreshCw,
-  Smartphone,
-  Sun,
-} from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -135,41 +126,20 @@ type DailyRegionsResponse = {
 
 type ThemeShape = ReturnType<typeof getThemeColors>;
 
-function ActionButton({
+function PageButton({
   label,
   icon,
   theme,
   onClick,
-  primary,
-  danger,
   disabled,
 }: {
   label: string;
   icon?: React.ReactNode;
   theme: ThemeShape;
   onClick?: () => void;
-  primary?: boolean;
-  danger?: boolean;
   disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
-
-  const background = danger
-    ? hover
-      ? "#dc2626"
-      : "#ef4444"
-    : primary
-      ? hover
-        ? "#1d4ed8"
-        : "#2563eb"
-      : hover
-        ? "#2563eb"
-        : theme.isDark
-          ? "#0f172a"
-          : theme.cardBg;
-
-  const color = danger || primary ? "#ffffff" : hover ? "#ffffff" : theme.text;
-  const border = danger || primary ? "none" : `1px solid ${theme.border}`;
 
   return (
     <button
@@ -182,9 +152,9 @@ function ActionButton({
         height: 42,
         padding: "0 14px",
         borderRadius: 12,
-        border,
-        background,
-        color,
+        border: `1px solid ${theme.border}`,
+        background: hover ? "#2563eb" : theme.isDark ? "#0f172a" : "#ffffff",
+        color: hover ? "#ffffff" : theme.text,
         fontWeight: 800,
         fontSize: 13,
         cursor: disabled ? "not-allowed" : "pointer",
@@ -198,43 +168,6 @@ function ActionButton({
     >
       {icon}
       {label}
-    </button>
-  );
-}
-
-function IconActionButton({
-  icon,
-  theme,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  theme: ThemeShape;
-  onClick?: () => void;
-}) {
-  const [hover, setHover] = useState(false);
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        width: 42,
-        height: 42,
-        borderRadius: 12,
-        border: `1px solid ${theme.border}`,
-        background: hover ? "#2563eb" : theme.isDark ? "#0f172a" : theme.cardBg,
-        color: hover ? "#ffffff" : theme.text,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        transition: "all 0.15s ease",
-        flexShrink: 0,
-      }}
-    >
-      {icon}
     </button>
   );
 }
@@ -255,11 +188,11 @@ function SummaryCard({
   return (
     <div
       style={{
-        background: theme.isDark ? "#0f172a" : theme.cardBg,
+        background: theme.isDark ? "#0f172a" : "#ffffff",
         border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
         borderRadius: 18,
         padding: 18,
-        minHeight: 126,
+        minHeight: 118,
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -278,7 +211,7 @@ function SummaryCard({
 
       <div
         style={{
-          fontSize: 28,
+          fontSize: 26,
           fontWeight: 900,
           color: accent || theme.text,
           lineHeight: 1.1,
@@ -302,100 +235,19 @@ function SummaryCard({
   );
 }
 
-function ShortcutCard({
-  title,
-  subtitle,
-  onClick,
-  icon,
-  theme,
-}: {
-  title: string;
-  subtitle: string;
-  onClick?: () => void;
-  icon: React.ReactNode;
-  theme: ThemeShape;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        width: "100%",
-        textAlign: "left",
-        background: theme.isDark ? "#0f172a" : theme.cardBg,
-        border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
-        borderRadius: 18,
-        padding: 18,
-        cursor: "pointer",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 14,
-        }}
-      >
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 14,
-            background: theme.isDark ? "#111827" : "#e8f0ff",
-            color: theme.primary,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: 15,
-              fontWeight: 900,
-              color: theme.text,
-              marginBottom: 6,
-            }}
-          >
-            {title}
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: theme.isDark ? "#94a3b8" : "#64748b",
-              lineHeight: 1.45,
-            }}
-          >
-            {subtitle}
-          </div>
-        </div>
-
-        <ArrowRight size={16} color={theme.isDark ? "#94a3b8" : "#64748b"} />
-      </div>
-    </button>
-  );
-}
-
 function Section({
   title,
-  right,
   children,
   theme,
 }: {
   title: string;
-  right?: React.ReactNode;
   children: React.ReactNode;
   theme: ThemeShape;
 }) {
   return (
     <div
       style={{
-        background: theme.isDark ? "#0f172a" : theme.cardBg,
+        background: theme.isDark ? "#0f172a" : "#ffffff",
         border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
         borderRadius: 18,
         padding: 20,
@@ -403,25 +255,13 @@ function Section({
     >
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
+          fontSize: 18,
+          fontWeight: 900,
+          color: theme.text,
           marginBottom: 16,
-          flexWrap: "wrap",
         }}
       >
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 900,
-            color: theme.text,
-          }}
-        >
-          {title}
-        </div>
-
-        {right}
+        {title}
       </div>
 
       {children}
@@ -476,15 +316,14 @@ function InfoRow({
 
 export default function InvestorPortalPage() {
   const router = useRouter();
-  const { theme: mode, toggleTheme } = useTheme();
+  const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
 
-  const pageBg = theme.isDark ? "#081225" : theme.pageBg;
+  const pageBg = theme.isDark ? "#081225" : "#f3f6fb";
   const muted = theme.isDark ? "#94a3b8" : "#64748b";
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [data, setData] = useState<InvestorPortalResponse | null>(null);
@@ -523,10 +362,9 @@ export default function InvestorPortalPage() {
         );
       }
 
-      const meData = meJson as InvestorPortalResponse;
-      const dailyData = dailyJson as DailyRegionsResponse;
+      setData(meJson as InvestorPortalResponse);
 
-      setData(meData);
+      const dailyData = dailyJson as DailyRegionsResponse;
       setDailyRegions(
         Array.isArray(dailyData?.items)
           ? dailyData.items
@@ -545,28 +383,12 @@ export default function InvestorPortalPage() {
     }
   }
 
-  async function handleLogout() {
-    try {
-      setLoggingOut(true);
-      await fetch("/api/investor-auth/logout", {
-        method: "POST",
-      });
-    } catch (error) {
-      console.error(error);
-    } finally {
-      router.push("/investor/login");
-      router.refresh();
-      setLoggingOut(false);
-    }
-  }
-
   useEffect(() => {
     loadData();
   }, []);
 
   const myDailyRegions = useMemo(() => {
     if (!data) return [];
-
     const regionIds = new Set((data.shares ?? []).map((share) => share.regionId));
 
     return dailyRegions
@@ -576,7 +398,6 @@ export default function InvestorPortalPage() {
 
   const projectedInvestorTotalCents = useMemo(() => {
     if (!data) return 0;
-
     const investorId = data.investor.id;
 
     return myDailyRegions.reduce((sum, region) => {
@@ -593,7 +414,6 @@ export default function InvestorPortalPage() {
 
   const totalRecoveredCents = useMemo(() => {
     if (!data) return 0;
-
     return data.distributions
       .filter((item) => item.status === "PAID")
       .reduce((sum, item) => sum + (item.totalDistributionCents ?? 0), 0);
@@ -634,12 +454,11 @@ export default function InvestorPortalPage() {
           quotaNumbers: [share.quotaNumber],
           investedCents: shareAmount,
         });
-        continue;
+      } else {
+        existing.quotaCount += 1;
+        existing.quotaNumbers.push(share.quotaNumber);
+        existing.investedCents += shareAmount;
       }
-
-      existing.quotaCount += 1;
-      existing.quotaNumbers.push(share.quotaNumber);
-      existing.investedCents += shareAmount;
     }
 
     return Array.from(map.values())
@@ -672,8 +491,7 @@ export default function InvestorPortalPage() {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: pageBg,
+          minHeight: "calc(100vh - 74px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -690,8 +508,7 @@ export default function InvestorPortalPage() {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: pageBg,
+          minHeight: "calc(100vh - 74px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -703,8 +520,8 @@ export default function InvestorPortalPage() {
           style={{
             width: "100%",
             maxWidth: 640,
-            background: theme.isDark ? "#0f172a" : theme.cardBg,
-            border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
+            background: theme.isDark ? "#0f172a" : "#ffffff",
+            border: `1px solid ${theme.border}`,
             borderRadius: 18,
             padding: 24,
           }}
@@ -715,12 +532,6 @@ export default function InvestorPortalPage() {
           <div style={{ color: "#ef4444", marginBottom: 16 }}>
             {error || "Não foi possível carregar os dados do investidor."}
           </div>
-          <ActionButton
-            label="Voltar para o login"
-            theme={theme}
-            onClick={() => router.push("/investor/login")}
-            primary
-          />
         </div>
       </div>
     );
@@ -729,8 +540,7 @@ export default function InvestorPortalPage() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        width: "100%",
+        minHeight: "calc(100vh - 74px)",
         background: pageBg,
         padding: 24,
         color: theme.text,
@@ -739,124 +549,139 @@ export default function InvestorPortalPage() {
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
         <div
           style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: 22,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: muted,
+                marginBottom: 8,
+              }}
+            >
+              Portal do investidor
+            </div>
+
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 30,
+                fontWeight: 900,
+              }}
+            >
+              Painel do investidor
+            </h1>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 13,
+                color: muted,
+              }}
+            >
+              Acompanhe seu patrimônio, suas cotas e suas distribuições.
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <PageButton
+              label={refreshing ? "Atualizando..." : "Atualizar"}
+              icon={<RefreshCw size={16} />}
+              theme={theme}
+              onClick={() => loadData(true)}
+              disabled={refreshing}
+            />
+          </div>
+        </div>
+
+        {error ? (
+          <div
+            style={{
+              marginBottom: 18,
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ef4444",
+              color: "#ef4444",
+              background: theme.isDark ? "#0f172a" : "#ffffff",
+              fontWeight: 700,
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <div
+          style={{
             display: "grid",
             gridTemplateColumns: "1.4fr 1fr",
             gap: 16,
             marginBottom: 20,
           }}
         >
-          <div
-            style={{
-              background: theme.isDark ? "#0f172a" : theme.cardBg,
-              border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
-              borderRadius: 22,
-              padding: 24,
-            }}
-          >
+          <Section title="Investidor" theme={theme}>
             <div
               style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: muted,
-                marginBottom: 10,
-              }}
-            >
-              Painel do investidor
-            </div>
-
-            <div
-              style={{
-                fontSize: 30,
+                fontSize: 26,
                 fontWeight: 900,
-                lineHeight: 1.1,
-                marginBottom: 10,
+                marginBottom: 14,
               }}
             >
-              Bem-vindo, {data.investor.name}
+              {data.investor.name}
             </div>
 
             <div
               style={{
-                fontSize: 14,
-                color: muted,
-                lineHeight: 1.5,
-                marginBottom: 18,
-                maxWidth: 760,
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 12,
               }}
             >
-              Acompanhe seu patrimônio, cotas ativas, distribuições recebidas e
-              projeções das regiões vinculadas em um único painel.
-            </div>
+              <div
+                style={{
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 14,
+                  padding: 14,
+                  background: theme.isDark ? "#111827" : "#f8fafc",
+                }}
+              >
+                <div style={{ fontSize: 12, color: muted, marginBottom: 6 }}>E-mail</div>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>{data.investor.email || "-"}</div>
+              </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
-              <ActionButton
-                label={refreshing ? "Atualizando..." : "Atualizar"}
-                icon={<RefreshCw size={16} />}
-                theme={theme}
-                onClick={() => loadData(true)}
-                disabled={refreshing}
-              />
-              <ActionButton
-                label="Minhas cotas"
-                icon={<Layers3 size={16} />}
-                theme={theme}
-                onClick={() => router.push("/investor/quotas")}
-              />
-              <ActionButton
-                label="Distribuições"
-                icon={<BadgeDollarSign size={16} />}
-                theme={theme}
-                onClick={() => router.push("/investor/distributions")}
-              />
-              <IconActionButton
-                icon={theme.isDark ? <Sun size={18} /> : <Moon size={18} />}
-                theme={theme}
-                onClick={toggleTheme}
-              />
-              <ActionButton
-                label="Versão mobile"
-                icon={<Smartphone size={16} />}
-                theme={theme}
-                primary
-                onClick={() => router.push("/m/investor")}
-              />
-              <ActionButton
-                label={loggingOut ? "Saindo..." : "Sair"}
-                icon={<LogOut size={16} />}
-                theme={theme}
-                danger
-                onClick={handleLogout}
-                disabled={loggingOut}
-              />
-            </div>
-          </div>
+              <div
+                style={{
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 14,
+                  padding: 14,
+                  background: theme.isDark ? "#111827" : "#f8fafc",
+                }}
+              >
+                <div style={{ fontSize: 12, color: muted, marginBottom: 6 }}>Telefone</div>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>{data.investor.phone || "-"}</div>
+              </div>
 
-          <div
-            style={{
-              background: theme.isDark ? "#0f172a" : theme.cardBg,
-              border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
-              borderRadius: 22,
-              padding: 24,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: muted,
-                marginBottom: 8,
-              }}
-            >
-              Progresso do investimento
+              <div
+                style={{
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 14,
+                  padding: 14,
+                  background: theme.isDark ? "#111827" : "#f8fafc",
+                }}
+              >
+                <div style={{ fontSize: 12, color: muted, marginBottom: 6 }}>Documento</div>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>{data.investor.document || "-"}</div>
+              </div>
             </div>
+          </Section>
 
+          <Section title="Progresso do investimento" theme={theme}>
             <div style={{ fontSize: 30, fontWeight: 900, marginBottom: 8 }}>
               {paybackProgressPercent}%
             </div>
@@ -881,12 +706,12 @@ export default function InvestorPortalPage() {
             </div>
 
             <InfoRow
-              label="Total investido"
+              label="Investido"
               value={money(totalCurrentQuotaValueCents)}
               theme={theme}
             />
             <InfoRow
-              label="Total recebido"
+              label="Já recebido"
               value={money(totalRecoveredCents)}
               theme={theme}
             />
@@ -896,29 +721,13 @@ export default function InvestorPortalPage() {
               theme={theme}
               last
             />
-          </div>
+          </Section>
         </div>
-
-        {error ? (
-          <div
-            style={{
-              marginBottom: 18,
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #ef4444",
-              color: "#ef4444",
-              background: theme.isDark ? "#0f172a" : theme.cardBg,
-              fontWeight: 700,
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+            gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
             gap: 14,
             marginBottom: 20,
           }}
@@ -926,58 +735,82 @@ export default function InvestorPortalPage() {
           <SummaryCard
             title="Cotas ativas"
             value={String(data.summary.activeQuotaCount)}
-            helper="Participações em carteira"
             theme={theme}
           />
           <SummaryCard
             title="Regiões"
             value={String(data.summary.totalRegions)}
-            helper="Regiões vinculadas"
             theme={theme}
           />
           <SummaryCard
             title="Investido"
             value={money(data.summary.totalInvestedCents)}
-            helper="Valor total aplicado"
             theme={theme}
             accent="#22c55e"
           />
           <SummaryCard
-            title="Distribuído"
+            title="Recebido"
             value={money(data.summary.totalDistributedCents)}
-            helper="Total já recebido"
             theme={theme}
             accent="#2563eb"
+          />
+          <SummaryCard
+            title="Pendente"
+            value={money(data.summary.pendingDistributionCents)}
+            theme={theme}
+            accent="#f59e0b"
+          />
+          <SummaryCard
+            title="Projeção do mês"
+            value={money(projectedInvestorTotalCents)}
+            theme={theme}
+            accent="#8b5cf6"
           />
         </div>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
             gap: 14,
             marginBottom: 20,
           }}
         >
-          <ShortcutCard
-            title="Minhas cotas"
-            subtitle="Consulte as cotas vinculadas, regiões e valores investidos."
-            onClick={() => router.push("/investor/quotas")}
-            icon={<Layers3 size={20} />}
+          <SummaryCard
+            title="Faturamento do mês"
+            value={money(
+              myDailyRegions.reduce((sum, region) => sum + (region.grossRevenueCents ?? 0), 0)
+            )}
             theme={theme}
           />
-          <ShortcutCard
-            title="Distribuições"
-            subtitle="Acompanhe o histórico de repasses, status e totais recebidos."
-            onClick={() => router.push("/investor/distributions")}
-            icon={<BadgeDollarSign size={20} />}
+          <SummaryCard
+            title="EBITDA estimado"
+            value={money(
+              myDailyRegions.reduce((sum, region) => sum + (region.ebitdaEstimatedCents ?? 0), 0)
+            )}
             theme={theme}
           />
-          <ShortcutCard
-            title="Abrir versão mobile"
-            subtitle="Troque para a visão mobile do investidor com o mesmo conteúdo."
-            onClick={() => router.push("/m/investor")}
-            icon={<Smartphone size={20} />}
+          <SummaryCard
+            title="Lucro operacional"
+            value={money(
+              myDailyRegions.reduce((sum, region) => sum + (region.operatingProfitCents ?? 0), 0)
+            )}
+            theme={theme}
+          />
+          <SummaryCard
+            title="Fundo trimestral"
+            value={money(
+              myDailyRegions.reduce((sum, region) => sum + (region.reserveEstimatedCents ?? 0), 0)
+            )}
+            theme={theme}
+          />
+          <SummaryCard
+            title="Projeção por cota"
+            value={
+              data.summary.activeQuotaCount > 0
+                ? money(Math.round(projectedInvestorTotalCents / data.summary.activeQuotaCount))
+                : money(0)
+            }
             theme={theme}
           />
         </div>
@@ -985,63 +818,19 @@ export default function InvestorPortalPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.1fr 0.9fr",
+            gridTemplateColumns: "1fr 1fr",
             gap: 16,
             marginBottom: 20,
           }}
         >
-          <Section title="Resumo do investidor" theme={theme}>
-            <InfoRow label="Nome" value={data.investor.name || "-"} theme={theme} />
-            <InfoRow label="E-mail" value={data.investor.email || "-"} theme={theme} />
-            <InfoRow label="Telefone" value={data.investor.phone || "-"} theme={theme} />
-            <InfoRow
-              label="Documento"
-              value={data.investor.document || "-"}
-              theme={theme}
-              last
-            />
-          </Section>
-
-          <Section title="Visão do mês" theme={theme}>
-            <InfoRow
-              label="Projeção do mês"
-              value={money(projectedInvestorTotalCents)}
-              theme={theme}
-            />
-            <InfoRow
-              label="Regiões com participação"
-              value={String(myDailyRegions.length)}
-              theme={theme}
-            />
-            <InfoRow
-              label="Última atualização"
-              value={
-                myDailyRegions[0]
-                  ? formatMonthYear(myDailyRegions[0].month, myDailyRegions[0].year)
-                  : "-"
-              }
-              theme={theme}
-              last
-            />
-          </Section>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 0.8fr",
-            gap: 16,
-            marginBottom: 20,
-          }}
-        >
-          <Section title="Participações por região" theme={theme}>
+          <Section title="Regiões investidas" theme={theme}>
             {regions.length === 0 ? (
               <div style={{ color: muted, fontWeight: 700 }}>
                 Nenhuma participação encontrada.
               </div>
             ) : (
               <div style={{ display: "grid", gap: 12 }}>
-                {regions.map((region) => (
+                {regions.map((region, index) => (
                   <div
                     key={region.regionId}
                     style={{
@@ -1054,170 +843,190 @@ export default function InvestorPortalPage() {
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "flex-start",
                         justifyContent: "space-between",
                         gap: 12,
-                        marginBottom: 8,
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
                       }}
                     >
                       <div>
-                        <div
-                          style={{
-                            fontSize: 15,
-                            fontWeight: 900,
-                            color: theme.text,
-                          }}
-                        >
-                          {region.regionName}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 12,
-                            color: muted,
-                          }}
-                        >
-                          Cotas #{region.quotaNumbers.join(", #")}
+                        <div style={{ fontSize: 15, fontWeight: 900 }}>{region.regionName}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: muted }}>
+                          {region.quotaCount} cota(s) • #{region.quotaNumbers.join(", #")}
                         </div>
                       </div>
 
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 900,
-                          color: theme.primary,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {region.quotaCount} cota(s)
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 14, fontWeight: 900 }}>
+                          {money(region.investedCents)}
+                        </div>
+                        <div style={{ fontSize: 12, color: muted }}>Investido</div>
                       </div>
                     </div>
-
-                    <InfoRow
-                      label="Valor investido"
-                      value={money(region.investedCents)}
-                      theme={theme}
-                      last
-                    />
                   </div>
                 ))}
               </div>
             )}
           </Section>
 
+          <Section title="Projeção diária por região" theme={theme}>
+            {myDailyRegions.length === 0 ? (
+              <div style={{ color: muted, fontWeight: 700 }}>
+                Nenhuma região com projeção encontrada.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 12 }}>
+                {myDailyRegions.map((region) => {
+                  const mine = region.investors.find(
+                    (item) => item.investorId === data.investor.id
+                  );
+
+                  return (
+                    <div
+                      key={region.regionId}
+                      style={{
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 14,
+                        padding: 14,
+                        background: theme.isDark ? "#111827" : "#f8fafc",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          flexWrap: "wrap",
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 900 }}>{region.regionName}</div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: muted }}>
+                            {formatMonthYear(region.month, region.year)}
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 14, fontWeight: 900, color: "#8b5cf6" }}>
+                            {money(mine?.estimatedDistributionCents ?? 0)}
+                          </div>
+                          <div style={{ fontSize: 12, color: muted }}>Sua projeção</div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                          gap: 10,
+                        }}
+                      >
+                        <div
+                          style={{
+                            border: `1px solid ${theme.border}`,
+                            borderRadius: 12,
+                            padding: 12,
+                            background: theme.isDark ? "#0f172a" : "#ffffff",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
+                            Faturamento
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 900 }}>
+                            {money(region.grossRevenueCents)}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            border: `1px solid ${theme.border}`,
+                            borderRadius: 12,
+                            padding: 12,
+                            background: theme.isDark ? "#0f172a" : "#ffffff",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
+                            EBITDA
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 900 }}>
+                            {money(region.ebitdaEstimatedCents)}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            border: `1px solid ${theme.border}`,
+                            borderRadius: 12,
+                            padding: 12,
+                            background: theme.isDark ? "#0f172a" : "#ffffff",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
+                            Fundo trimestral
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 900 }}>
+                            {money(region.reserveEstimatedCents)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Section>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 16,
+          }}
+        >
           <Section title="Últimos investimentos" theme={theme}>
             {recentInvestments.length === 0 ? (
               <div style={{ color: muted, fontWeight: 700 }}>
                 Nenhum investimento encontrado.
               </div>
             ) : (
-              recentInvestments.map((share, index) => (
-                <InfoRow
-                  key={share.id}
-                  label={`Cota #${share.quotaNumber} • ${share.region?.name || "Região"}`}
-                  value={`${money(share.amountCents)} • ${formatDate(share.investedAt)}`}
-                  theme={theme}
-                  last={index === recentInvestments.length - 1}
-                />
-              ))
+              <div style={{ display: "grid", gap: 12 }}>
+                {recentInvestments.map((share, index) => (
+                  <InfoRow
+                    key={share.id}
+                    label={`${share.region?.name || "Região"} • Cota #${share.quotaNumber}`}
+                    value={`${money(share.amountCents)} • ${formatDate(share.investedAt)}`}
+                    theme={theme}
+                    last={index === recentInvestments.length - 1}
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section title="Histórico de distribuições" theme={theme}>
+            {latestDistributions.length === 0 ? (
+              <div style={{ color: muted, fontWeight: 700 }}>
+                Nenhuma distribuição encontrada.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 12 }}>
+                {latestDistributions.map((item, index) => (
+                  <InfoRow
+                    key={item.id}
+                    label={`${formatMonthYear(item.month, item.year)} • ${
+                      item.region?.name || "Região"
+                    }`}
+                    value={money(item.totalDistributionCents)}
+                    theme={theme}
+                    last={index === latestDistributions.length - 1}
+                  />
+                ))}
+              </div>
             )}
           </Section>
         </div>
-
-        <Section
-          title="Últimas distribuições"
-          right={
-            <button
-              type="button"
-              onClick={() => router.push("/investor/distributions")}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: theme.primary,
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              Ver todas
-            </button>
-          }
-          theme={theme}
-        >
-          {latestDistributions.length === 0 ? (
-            <div style={{ color: muted, fontWeight: 700 }}>
-              Nenhuma distribuição encontrada.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              {latestDistributions.map((item) => (
-                <div
-                  key={item.id}
-                  style={{
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: 14,
-                    padding: 14,
-                    background: theme.isDark ? "#111827" : "#f8fafc",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      alignItems: "flex-start",
-                      flexWrap: "wrap",
-                      marginBottom: 8,
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 15,
-                          fontWeight: 900,
-                          color: theme.text,
-                        }}
-                      >
-                        {formatMonthYear(item.month, item.year)}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 4,
-                          fontSize: 12,
-                          color: muted,
-                        }}
-                      >
-                        {item.region?.name || "Região"} • {item.quotaCount} cota(s)
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 900,
-                        color: item.status === "PAID" ? "#16a34a" : "#f59e0b",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item.status === "PAID" ? "Pago" : "Pendente"}
-                    </div>
-                  </div>
-
-                  <InfoRow
-                    label="Valor por cota"
-                    value={money(item.valuePerQuotaCents)}
-                    theme={theme}
-                  />
-                  <InfoRow
-                    label="Total"
-                    value={money(item.totalDistributionCents)}
-                    theme={theme}
-                    last
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </Section>
       </div>
     </div>
   );

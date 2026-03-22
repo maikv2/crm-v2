@@ -2,21 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import MobileInvestorPageFrame from "@/app/components/mobile/mobile-investor-page-frame";
 import {
-  CircleDollarSign,
-  Coins,
-  HandCoins,
-  PieChart,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import MobileShell, {
   MobileCard,
-  MobileInfoRow,
   MobileSectionTitle,
   MobileStatCard,
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
-import { investorMobileNavItems } from "@/app/components/mobile/mobile-investor-shared";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -24,440 +16,192 @@ type ShareItem = {
   id: string;
   quotaNumber: number;
   amountCents: number;
-  investedAt: string;
-  paidBackAt?: string | null;
-  regionId: string;
-  region?: {
-    id: string;
-    name: string;
-    quotaValueCents: number;
-    maxQuotaCount: number;
-  } | null;
 };
 
 type DistributionItem = {
   id: string;
-  regionId: string;
-  month: number;
-  year: number;
-  quotaCount: number;
-  valuePerQuotaCents: number;
   totalDistributionCents: number;
-  paidAt?: string | null;
-  status: string;
-  region?: {
-    id: string;
-    name: string;
-  } | null;
 };
 
-type InvestorPortalResponse = {
-  investor: {
-    id: string;
-    name: string;
-    email: string | null;
-    phone: string | null;
-    document: string | null;
-    notes: string | null;
-  };
-  summary: {
-    activeQuotaCount: number;
-    totalRegions: number;
-    totalInvestedCents: number;
-    totalDistributedCents: number;
-    pendingDistributionCents: number;
-  };
-  shares: ShareItem[];
-  distributions: DistributionItem[];
-};
-
-export default function MobileInvestorPage() {
-  const router = useRouter();
+function RowLink({
+  href,
+  title,
+  value,
+}: {
+  href: string;
+  title: string;
+  value: string;
+}) {
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
-  const cardSurface = colors.isDark ? "#111827" : "#ffffff";
-  const softSurface = colors.isDark ? "#111827" : "#f8fafc";
-  const highlightSurface = colors.isDark ? "#111827" : "#eef4ff";
+  return (
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "12px 0",
+          borderBottom: `1px solid ${colors.border}`,
+          color: colors.text,
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
+        <div style={{ fontSize: 12, color: colors.subtext }}>{value}</div>
+      </div>
+    </Link>
+  );
+}
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<InvestorPortalResponse | null>(null);
-
-  async function loadData(showRefreshing = false) {
-    try {
-      if (showRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
-      setError(null);
-
-      const res = await fetch("/api/investor-auth/me", {
-        cache: "no-store",
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (res.status === 401) {
-        router.push("/investor/login");
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(json?.error || "Erro ao carregar investidor mobile.");
-      }
-
-      setData(json);
-    } catch (err) {
-      console.error(err);
-      setError(
-        err instanceof Error ? err.message : "Erro ao carregar investidor mobile."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const latestDistributions = useMemo(() => {
-    return (data?.distributions ?? []).slice(0, 5);
-  }, [data]);
-
-  const groupedShares = useMemo(() => {
-    const map = new Map<
-      string,
-      { regionName: string; quotaCount: number; totalCents: number }
-    >();
-
-    for (const share of data?.shares ?? []) {
-      const regionName = share.region?.name ?? "Região";
-      const current = map.get(regionName) ?? {
-        regionName,
-        quotaCount: 0,
-        totalCents: 0,
-      };
-
-      current.quotaCount += 1;
-      current.totalCents += share.amountCents ?? 0;
-
-      map.set(regionName, current);
-    }
-
-    return Array.from(map.values()).sort((a, b) =>
-      a.regionName.localeCompare(b.regionName, "pt-BR")
-    );
-  }, [data]);
+function RowValue({
+  title,
+  value,
+  last = false,
+}: {
+  title: string;
+  value: string;
+  last?: boolean;
+}) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   return (
-    <MobileShell
-      title="Investidor"
-      subtitle="Visão resumida das suas cotas"
-      navItems={investorMobileNavItems}
-      showBrand
-      brandHref="/m/investor"
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "12px 0",
+        borderBottom: last ? "none" : `1px solid ${colors.border}`,
+        color: colors.text,
+      }}
     >
-      <MobileSectionTitle
-        title="Resumo"
-        action={
-          <button
-            onClick={() => loadData(true)}
-            style={{
-              height: 34,
-              padding: "0 12px",
-              borderRadius: 10,
-              border: `1px solid ${colors.border}`,
-              background: cardSurface,
-              color: colors.text,
-              fontSize: 12,
-              fontWeight: 800,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {refreshing ? "Atualizando..." : "Atualizar"}
-          </button>
+      <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
+      <div style={{ fontSize: 13, color: colors.subtext }}>{value}</div>
+    </div>
+  );
+}
+
+export default function MobileInvestorDashboardPage() {
+  const [shares, setShares] = useState<ShareItem[]>([]);
+  const [distributions, setDistributions] = useState<DistributionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      try {
+        const [sharesRes, distributionsRes] = await Promise.all([
+          fetch("/api/investor/shares", { cache: "no-store" }),
+          fetch("/api/investor/distributions", { cache: "no-store" }),
+        ]);
+
+        const sharesJson = await sharesRes.json().catch(() => null);
+        const distJson = await distributionsRes.json().catch(() => null);
+
+        if (active) {
+          setShares(sharesJson?.shares ?? []);
+          setDistributions(distJson?.distributions ?? []);
         }
-      />
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
 
+    load();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const investedCents = useMemo(() => {
+    return shares.reduce((acc, s) => acc + (s.amountCents ?? 0), 0);
+  }, [shares]);
+
+  const totalDistributions = useMemo(() => {
+    return distributions.reduce(
+      (acc, d) => acc + (d.totalDistributionCents ?? 0),
+      0
+    );
+  }, [distributions]);
+
+  return (
+    <MobileInvestorPageFrame
+      title="Portal do investidor"
+      subtitle="Resumo das suas cotas"
+      desktopHref="/investor"
+    >
       {loading ? (
-        <MobileCard>Carregando...</MobileCard>
-      ) : error ? (
-        <MobileCard>{error}</MobileCard>
-      ) : data ? (
+        <MobileCard>Carregando informações...</MobileCard>
+      ) : (
         <>
-          <MobileCard
-            style={{
-              background: colors.isDark
-                ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
-                : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 900,
-                marginBottom: 8,
-                lineHeight: 1.15,
-                wordBreak: "break-word",
-                overflowWrap: "anywhere",
-              }}
-            >
-              {data.investor.name}
-            </div>
-
-            <div
-              style={{
-                fontSize: 13,
-                opacity: 0.9,
-                lineHeight: 1.35,
-                wordBreak: "break-word",
-                overflowWrap: "anywhere",
-              }}
-            >
-              {data.investor.email || "investidor"}
-            </div>
-
-            {data.investor.phone ? (
-              <div
-                style={{
-                  marginTop: 6,
-                  fontSize: 12,
-                  opacity: 0.8,
-                  lineHeight: 1.35,
-                  wordBreak: "break-word",
-                  overflowWrap: "anywhere",
-                }}
-              >
-                {data.investor.phone}
-              </div>
-            ) : null}
-          </MobileCard>
-
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns: "repeat(2, minmax(0,1fr))",
               gap: 12,
             }}
           >
             <MobileStatCard
-              label="Cotas ativas"
-              value={String(data.summary.activeQuotaCount ?? 0)}
+              label="Total investido"
+              value={formatMoneyBR(investedCents)}
+              helper={`${shares.length} cotas`}
             />
+
             <MobileStatCard
-              label="Regiões"
-              value={String(data.summary.totalRegions ?? 0)}
-            />
-            <MobileStatCard
-              label="Investido"
-              value={formatMoneyBR(data.summary.totalInvestedCents ?? 0)}
-            />
-            <MobileStatCard
-              label="Recebido"
-              value={formatMoneyBR(data.summary.totalDistributedCents ?? 0)}
-            />
-            <MobileStatCard
-              label="Pendente"
-              value={formatMoneyBR(data.summary.pendingDistributionCents ?? 0)}
-            />
-            <MobileStatCard
-              label="Projeção"
-              value={formatMoneyBR(data.summary.pendingDistributionCents ?? 0)}
+              label="Distribuições"
+              value={formatMoneyBR(totalDistributions)}
+              helper="Total recebido"
             />
           </div>
 
           <MobileCard>
-            <MobileSectionTitle title="Ações rápidas" />
+            <MobileSectionTitle title="Acesso rápido" />
 
-            <div style={{ display: "grid", gap: 10 }}>
-              <Link href="/m/investor/quotas" style={{ textDecoration: "none" }}>
-                <div
-                  style={{
-                    borderRadius: 16,
-                    padding: 14,
-                    background: softSurface,
-                    border: `1px solid ${colors.border}`,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    minWidth: 0,
-                  }}
-                >
-                  <Coins size={18} />
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: colors.text,
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    Minhas cotas
-                  </div>
-                </div>
-              </Link>
+            <RowLink
+              href="/m/investor/quotas"
+              title="Minhas cotas"
+              value="Ver detalhes"
+            />
 
-              <Link
-                href="/m/investor/distributions"
-                style={{ textDecoration: "none" }}
-              >
-                <div
-                  style={{
-                    borderRadius: 16,
-                    padding: 14,
-                    background: softSurface,
-                    border: `1px solid ${colors.border}`,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    minWidth: 0,
-                  }}
-                >
-                  <CircleDollarSign size={18} />
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: colors.text,
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    Distribuições
-                  </div>
-                </div>
-              </Link>
+            <RowLink
+              href="/m/investor/distributions"
+              title="Distribuições"
+              value="Ver histórico"
+            />
 
-              <Link href="/m/investor/portal" style={{ textDecoration: "none" }}>
-                <div
-                  style={{
-                    borderRadius: 16,
-                    padding: 14,
-                    background: softSurface,
-                    border: `1px solid ${colors.border}`,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    minWidth: 0,
-                  }}
-                >
-                  <PieChart size={18} />
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: colors.text,
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    Portal completo
-                  </div>
-                </div>
-              </Link>
-            </div>
+            <RowLink
+              href="/m/investor/portal"
+              title="Portal completo"
+              value="Abrir"
+            />
           </MobileCard>
 
           <MobileCard>
-            <MobileSectionTitle title="Distribuições recentes" />
+            <MobileSectionTitle title="Resumo das cotas" />
 
-            {latestDistributions.length === 0 ? (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: colors.subtext,
-                  lineHeight: 1.4,
-                }}
-              >
-                Nenhuma distribuição registrada.
-              </div>
+            {shares.length === 0 ? (
+              <div style={{ fontSize: 13 }}>Nenhuma cota encontrada.</div>
             ) : (
-              latestDistributions.map((item) => (
-                <MobileInfoRow
-                  key={item.id}
-                  title={`${item.region?.name || "Região"} • ${String(
-                    item.month
-                  ).padStart(2, "0")}/${item.year}`}
-                  subtitle={`${item.quotaCount} cotas • ${item.status}`}
-                  right={formatMoneyBR(item.totalDistributionCents ?? 0)}
-                  href="/m/investor/distributions"
+              shares.slice(0, 4).map((share, index) => (
+                <RowValue
+                  key={share.id}
+                  title={`Cota #${share.quotaNumber}`}
+                  value={formatMoneyBR(share.amountCents)}
+                  last={index === Math.min(shares.length, 4) - 1}
                 />
               ))
             )}
           </MobileCard>
-
-          <MobileCard>
-            <MobileSectionTitle title="Minha posição por região" />
-
-            {groupedShares.length === 0 ? (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: colors.subtext,
-                  lineHeight: 1.4,
-                }}
-              >
-                Nenhuma cota ativa encontrada.
-              </div>
-            ) : (
-              groupedShares.map((item) => (
-                <MobileInfoRow
-                  key={item.regionName}
-                  title={item.regionName}
-                  subtitle={`${item.quotaCount} cotas`}
-                  right={formatMoneyBR(item.totalCents)}
-                  href="/m/investor/quotas"
-                />
-              ))
-            )}
-          </MobileCard>
-
-          <Link href="/m/investor/portal" style={{ textDecoration: "none" }}>
-            <MobileCard
-              style={{
-                background: highlightSurface,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  marginBottom: 6,
-                  minWidth: 0,
-                }}
-              >
-                <HandCoins size={18} />
-                <div
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 900,
-                    color: colors.text,
-                    wordBreak: "break-word",
-                  }}
-                >
-                  Abrir portal completo do investidor
-                </div>
-              </div>
-
-              <div
-                style={{
-                  fontSize: 13,
-                  color: colors.subtext,
-                  lineHeight: 1.4,
-                }}
-              >
-                Para acompanhar mais detalhes por região.
-              </div>
-            </MobileCard>
-          </Link>
         </>
-      ) : null}
-    </MobileShell>
+      )}
+    </MobileInvestorPageFrame>
   );
 }

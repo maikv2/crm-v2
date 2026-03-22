@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
@@ -61,7 +61,7 @@ function LoginPageContent() {
       ? "Entre para acessar o portal do cliente."
       : "Entre para acessar o portal do investidor.";
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     try {
@@ -74,21 +74,30 @@ function LoginPageContent() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          access,
           identifier,
           password,
         }),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
 
       if (!res.ok) {
         throw new Error(json?.error || "Erro ao realizar login.");
       }
 
-      // pequeno delay para garantir persistência do cookie
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
-      router.replace(json.destination);
+      const destination =
+        typeof json?.destination === "string" && json.destination.trim()
+          ? json.destination
+          : access === "CRM"
+            ? "/choose/crm"
+            : access === "CLIENT"
+              ? "/portal"
+              : "/investor";
+
+      router.replace(destination);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao realizar login.");
@@ -97,7 +106,7 @@ function LoginPageContent() {
     }
   }
 
-  const inputStyle: React.CSSProperties = {
+  const inputStyle: CSSProperties = {
     width: "100%",
     padding: "12px 14px",
     borderRadius: 12,

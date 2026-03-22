@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Laptop, Moon, Smartphone, Sun } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
@@ -36,7 +36,7 @@ function OptionButton({
 }: {
   title: string;
   subtitle: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   onClick?: () => void;
   primary?: boolean;
 }) {
@@ -164,7 +164,8 @@ export default function ChooseCrmPage() {
             return;
           }
         }
-      } catch {
+      } catch (error) {
+        console.error(error);
         router.replace("/login?access=CRM");
       } finally {
         if (active) setLoading(false);

@@ -1,17 +1,14 @@
 "use client";
 
 import {
-  Moon,
   Search,
   Settings,
-  Sun,
   Plus,
   LogOut,
   Building2,
   Shield,
   KeyRound,
   Users,
-  Smartphone,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "../providers/theme-provider";
@@ -114,145 +111,10 @@ function isMobileRoute(pathname: string) {
   );
 }
 
-function desktopToMobile(pathname: string, user: LoggedUser | null) {
-  if (user?.role === "REPRESENTATIVE") {
-    if (
-      pathname === "/rep" ||
-      pathname === "/rep/dashboard" ||
-      pathname === "/rep/sales-dashboard"
-    ) {
-      return "/m/rep";
-    }
-
-    if (startsWithSegment(pathname, "/rep/clients")) return "/m/rep/clients";
-    if (pathname === "/rep/orders/new") return "/m/rep/orders/new";
-    if (startsWithSegment(pathname, "/rep/orders")) return "/m/rep/orders";
-    if (startsWithSegment(pathname, "/rep/finance/commissions")) {
-      return "/m/rep/finance/commissions";
-    }
-    if (startsWithSegment(pathname, "/rep/finance/receivables")) {
-      return "/m/rep/finance/receivables";
-    }
-    if (startsWithSegment(pathname, "/rep/finance/transfers")) {
-      return "/m/rep/finance/transfers";
-    }
-    if (startsWithSegment(pathname, "/rep/finance")) return "/m/rep/finance";
-    if (startsWithSegment(pathname, "/rep/operations")) return "/m/rep/operations";
-    if (startsWithSegment(pathname, "/rep/visit")) return "/m/rep/visit";
-    if (startsWithSegment(pathname, "/rep/exhibitors")) return "/m/rep/exhibitors";
-    if (startsWithSegment(pathname, "/rep/prospects")) return "/m/rep/prospects";
-    if (startsWithSegment(pathname, "/rep/map")) return "/m/rep/map";
-
-    return "/m/rep";
-  }
-
-  if (user?.role === "INVESTOR") {
-    if (pathname === "/investor") return "/m/investor";
-    if (startsWithSegment(pathname, "/investor/quotas")) return "/m/investor/quotas";
-    if (startsWithSegment(pathname, "/investor/distributions")) {
-      return "/m/investor/distributions";
-    }
-
-    return "/m/investor";
-  }
-
-  if (pathname === "/" || pathname === "/dashboard") return "/m/admin";
-
-  if (pathname === "/clients/new") return "/m/admin/clients/new";
-  if (startsWithSegment(pathname, "/clients")) return "/m/admin/clients";
-
-  if (pathname === "/orders/new") return "/m/admin/orders/new";
-  if (startsWithSegment(pathname, "/orders")) return "/m/admin/orders";
-
-  if (pathname === "/exhibitors/new") return "/m/admin/exhibitors/new";
-  if (startsWithSegment(pathname, "/exhibitors")) return "/m/admin/exhibitors";
-
-  if (startsWithSegment(pathname, "/finance/receivables")) {
-    return "/m/admin/finance/receivables";
-  }
-  if (startsWithSegment(pathname, "/finance/transfers")) {
-    return "/m/admin/finance/transfers";
-  }
-  if (startsWithSegment(pathname, "/finance")) return "/m/admin/finance";
-
-  if (startsWithSegment(pathname, "/sales-dashboard")) return "/m/admin/sales";
-  if (startsWithSegment(pathname, "/regions")) return "/m/admin/regions";
-  if (startsWithSegment(pathname, "/representatives")) return "/m/admin/representatives";
-  if (startsWithSegment(pathname, "/prospects")) return "/m/admin/prospects";
-  if (startsWithSegment(pathname, "/map")) return "/m/admin/map";
-  if (startsWithSegment(pathname, "/alerts")) return "/m/admin/alerts";
-  if (startsWithSegment(pathname, "/settings")) return "/m/admin/settings";
-
-  return "/m/admin";
-}
-
-function mobileToDesktop(pathname: string, user: LoggedUser | null) {
-  if (pathname === "/m/rep") return "/rep";
-  if (startsWithSegment(pathname, "/m/rep/clients")) return "/rep/clients";
-  if (pathname === "/m/rep/orders/new") return "/rep/orders/new";
-  if (startsWithSegment(pathname, "/m/rep/orders")) return "/rep/orders";
-  if (startsWithSegment(pathname, "/m/rep/finance/commissions")) {
-    return "/rep/finance/commissions";
-  }
-  if (startsWithSegment(pathname, "/m/rep/finance/receivables")) {
-    return "/rep/finance/receivables";
-  }
-  if (startsWithSegment(pathname, "/m/rep/finance/transfers")) {
-    return "/rep/finance/transfers";
-  }
-  if (startsWithSegment(pathname, "/m/rep/finance")) return "/rep/finance";
-  if (startsWithSegment(pathname, "/m/rep/operations")) return "/rep/operations";
-  if (startsWithSegment(pathname, "/m/rep/visit")) return "/rep/visit";
-  if (startsWithSegment(pathname, "/m/rep/exhibitors")) return "/rep/exhibitors";
-  if (startsWithSegment(pathname, "/m/rep/prospects")) return "/rep/prospects";
-  if (startsWithSegment(pathname, "/m/rep/map")) return "/rep/map";
-
-  if (pathname === "/m/investor") return "/investor";
-  if (startsWithSegment(pathname, "/m/investor/quotas")) return "/investor/quotas";
-  if (startsWithSegment(pathname, "/m/investor/distributions")) {
-    return "/investor/distributions";
-  }
-  if (startsWithSegment(pathname, "/m/investor/portal")) {
-    return "/investor";
-  }
-
-  if (pathname === "/m/admin") return "/dashboard";
-  if (pathname === "/m/admin/clients/new") return "/clients/new";
-  if (startsWithSegment(pathname, "/m/admin/clients")) return "/clients";
-
-  if (pathname === "/m/admin/orders/new") return "/orders/new";
-  if (startsWithSegment(pathname, "/m/admin/orders")) return "/orders";
-
-  if (pathname === "/m/admin/exhibitors/new") return "/exhibitors/new";
-  if (startsWithSegment(pathname, "/m/admin/exhibitors")) return "/exhibitors";
-
-  if (startsWithSegment(pathname, "/m/admin/finance/receivables")) {
-    return "/finance/receivables";
-  }
-  if (startsWithSegment(pathname, "/m/admin/finance/transfers")) {
-    return "/finance/transfers";
-  }
-  if (startsWithSegment(pathname, "/m/admin/finance")) return "/finance";
-
-  if (startsWithSegment(pathname, "/m/admin/sales")) return "/sales-dashboard";
-  if (startsWithSegment(pathname, "/m/admin/regions")) return "/regions";
-  if (startsWithSegment(pathname, "/m/admin/representatives")) return "/representatives";
-  if (startsWithSegment(pathname, "/m/admin/prospects")) return "/prospects";
-  if (startsWithSegment(pathname, "/m/admin/map")) return "/map";
-  if (startsWithSegment(pathname, "/m/admin/alerts")) return "/alerts";
-  if (startsWithSegment(pathname, "/m/admin/settings")) return "/settings";
-  if (startsWithSegment(pathname, "/m/admin/cadastros")) return "/dashboard";
-  if (startsWithSegment(pathname, "/m/admin/more")) return "/dashboard";
-
-  if (user?.role === "REPRESENTATIVE") return "/rep";
-  if (user?.role === "INVESTOR") return "/investor";
-  return "/dashboard";
-}
-
 export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, toggleTheme } = useTheme();
+  const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
   const [openCadastros, setOpenCadastros] = useState(false);
@@ -338,20 +200,6 @@ export default function Header() {
     } finally {
       setLoggingOut(false);
     }
-  }
-
-  function handleToggleMobile() {
-    const nextRoute = mobile
-      ? mobileToDesktop(pathname, user)
-      : desktopToMobile(pathname, user);
-
-    try {
-      localStorage.setItem("v2_view_mode", mobile ? "desktop" : "mobile");
-    } catch (error) {
-      console.error(error);
-    }
-
-    router.push(nextRoute);
   }
 
   const userInitials = user?.name
@@ -534,74 +382,6 @@ export default function Header() {
             </div>
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={toggleTheme}
-          style={{
-            height: 40,
-            minWidth: 76,
-            padding: "0 10px",
-            borderRadius: 12,
-            border: `1px solid ${colors.border}`,
-            background: colors.cardBg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            cursor: "pointer",
-            color: colors.text,
-          }}
-        >
-          {colors.isDark ? <Moon size={15} /> : <Sun size={15} />}
-          <div
-            style={{
-              width: 30,
-              height: 18,
-              borderRadius: 999,
-              background: colors.isDark ? "#1d4ed8" : "#d1d5db",
-              position: "relative",
-            }}
-          >
-            <div
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: "50%",
-                background: "#ffffff",
-                position: "absolute",
-                top: 2,
-                left: colors.isDark ? 14 : 2,
-                transition: "all 0.2s ease",
-              }}
-            />
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={handleToggleMobile}
-          title={mobile ? "Abrir modo normal" : "Abrir modo mobile"}
-          style={{
-            height: 40,
-            minWidth: 108,
-            padding: "0 12px",
-            borderRadius: 12,
-            border: `1px solid ${colors.border}`,
-            background: colors.cardBg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            cursor: "pointer",
-            color: mobile ? "#2563eb" : colors.text,
-            fontWeight: 700,
-            fontSize: 13,
-          }}
-        >
-          <Smartphone size={16} />
-          {mobile ? "Normal" : "Mobile"}
-        </button>
 
         {isAdmin ? (
           <div ref={settingsRef} style={{ position: "relative" }}>

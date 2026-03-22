@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
+type AccessType = "CRM" | "CLIENT" | "INVESTOR";
+
 function expiredCookie(name: string) {
   return {
     name,
@@ -15,46 +17,210 @@ function expiredCookie(name: string) {
   };
 }
 
+function normalizeAccess(value: unknown): AccessType {
+  const access = String(value || "CRM").toUpperCase().trim();
+
+  if (access === "CLIENT") return "CLIENT";
+  if (access === "INVESTOR") return "INVESTOR";
+  return "CRM";
+}
+
+function normalizeIdentifier(value: unknown) {
+  return String(value || "").trim();
+}
+
+function normalizeEmail(value: string) {
+  return value.toLowerCase().trim();
+}
+
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+async function clearAllSessions() {
+  const cookieStore = await cookies();
+
+  cookieStore.set(expiredCookie("portal_session"));
+  cookieStore.set(expiredCookie("investor_session"));
+  cookieStore.set(expiredCookie("crm_session"));
+
+  return cookieStore;
+}
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
 
-    const email = String(body.email || "").toLowerCase().trim();
-    const password = String(body.password || "");
+    const access = normalizeAccess(body?.access);
+    const rawIdentifier = normalizeIdentifier(
+      body?.identifier ?? body?.email ?? body?.user ?? ""
+    );
+    const password = String(body?.password || "");
 
-    if (!email || !password) {
+    if (!rawIdentifier || !password) {
       return NextResponse.json(
-        { error: "Email e senha são obrigatórios." },
+        { error: "Usuário e senha são obrigatórios." },
         { status: 400 }
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email },
+    if (access === "CRM") {
+      const email = normalizeEmail(rawIdentifier);
+
+      const user = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (!user || !user.passwordHash) {
+        return NextResponse.json(
+          { error: "Usuário ou senha inválidos." },
+          { status: 401 }
+        );
+      }
+
+      if (user.role !== "ADMIN" && user.role !== "REPRESENTATIVE") {
+        return NextResponse.json(
+          { error: "Este usuário não possui acesso ao CRM." },
+          { status: 403 }
+        );
+      }
+
+      if (!user.active) {
+        return NextResponse.json(
+          { error: "Usuário inativo." },
+          { status: 403 }
+        );
+      }
+
+      const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+
+      if (!passwordMatch) {
+        return NextResponse.json(
+          { error: "Usuário ou senha inválidos." },
+          { status: 401 }
+        );
+      }
+
+      const cookieStore = await clearAllSessions();
+
+      cookieStore.set({
+        name: "crm_session",
+        value: user.id,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        destination: "/choose/crm",
+        user: {
+          id: user.id,
+          role: user.role,
+          name: user.name,
+        },
+      });
+    }
+
+    if (access === "INVESTOR") {
+      const email = normalizeEmail(rawIdentifier);
+
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          investorProfile: true,
+        },
+      });
+
+      if (!user || !user.passwordHash) {
+        return NextResponse.json(
+          { error: "Usuário ou senha inválidos." },
+          { status: 401 }
+        );
+      }
+
+      if (user.role !== "INVESTOR") {
+        return NextResponse.json(
+          { error: "Este usuário não possui acesso ao portal do investidor." },
+          { status: 403 }
+        );
+      }
+
+      if (!user.active) {
+        return NextResponse.json(
+          { error: "Usuário inativo." },
+          { status: 403 }
+        );
+      }
+
+      const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+
+      if (!passwordMatch) {
+        return NextResponse.json(
+          { error: "Usuário ou senha inválidos." },
+          { status: 401 }
+        );
+      }
+
+      const cookieStore = await clearAllSessions();
+
+      cookieStore.set({
+        name: "investor_session",
+        value: user.id,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        destination: "/investor",
+        user: {
+          id: user.id,
+          role: user.role,
+          name: user.name,
+          investorId: user.investorProfile?.id ?? null,
+        },
+      });
+    }
+
+    const identifier = rawIdentifier.trim();
+    const identifierEmail = normalizeEmail(identifier);
+    const identifierDigits = onlyDigits(identifier);
+
+    const client = await prisma.client.findFirst({
+      where: {
+        portalEnabled: true,
+        active: true,
+        OR: [
+          { code: identifier },
+          { email: identifierEmail },
+          { billingEmail: identifierEmail },
+          ...(identifierDigits
+            ? [
+                { cnpj: identifierDigits },
+                { cpf: identifierDigits },
+              ]
+            : []),
+        ],
+      },
     });
 
-    if (!user || !user.passwordHash) {
+    if (!client || !client.portalPasswordHash) {
       return NextResponse.json(
         { error: "Usuário ou senha inválidos." },
         { status: 401 }
       );
     }
 
-    if (user.role !== "ADMIN" && user.role !== "REPRESENTATIVE") {
-      return NextResponse.json(
-        { error: "Este usuário não possui acesso ao CRM." },
-        { status: 403 }
-      );
-    }
-
-    if (!user.active) {
-      return NextResponse.json(
-        { error: "Usuário inativo." },
-        { status: 403 }
-      );
-    }
-
-    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    const passwordMatch = await bcrypt.compare(
+      password,
+      client.portalPasswordHash
+    );
 
     if (!passwordMatch) {
       return NextResponse.json(
@@ -63,15 +229,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const cookieStore = await cookies();
-
-    cookieStore.set(expiredCookie("portal_session"));
-    cookieStore.set(expiredCookie("investor_session"));
-    cookieStore.set(expiredCookie("crm_session"));
+    const cookieStore = await clearAllSessions();
 
     cookieStore.set({
-      name: "crm_session",
-      value: user.id,
+      name: "portal_session",
+      value: client.id,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
@@ -81,10 +243,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      user: {
-        id: user.id,
-        role: user.role,
-        name: user.name,
+      destination: "/portal",
+      client: {
+        id: client.id,
+        name: client.name,
+        code: client.code,
       },
     });
   } catch (error) {

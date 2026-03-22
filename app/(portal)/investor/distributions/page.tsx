@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Moon, RefreshCw, Smartphone, Sun } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -11,80 +13,533 @@ function money(cents: number) {
   });
 }
 
+function formatMonthYear(month?: number, year?: number) {
+  if (!month || !year) return "-";
+  return `${String(month).padStart(2, "0")}/${year}`;
+}
+
+type DistributionItem = {
+  id: string;
+  regionId: string;
+  month: number;
+  year: number;
+  quotaCount: number;
+  valuePerQuotaCents: number;
+  totalDistributionCents: number;
+  paidAt?: string | null;
+  status: string;
+  region?: {
+    id: string;
+    name: string;
+  } | null;
+};
+
+type InvestorMeResponse = {
+  investor: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    document: string | null;
+    notes: string | null;
+  };
+  summary: {
+    activeQuotaCount: number;
+    totalRegions: number;
+    totalInvestedCents: number;
+    totalDistributedCents: number;
+    pendingDistributionCents: number;
+  };
+  distributions: DistributionItem[];
+};
+
+type ThemeShape = ReturnType<typeof getThemeColors>;
+
+function ActionButton({
+  label,
+  icon,
+  theme,
+  onClick,
+  primary,
+  disabled,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  theme: ThemeShape;
+  onClick?: () => void;
+  primary?: boolean;
+  disabled?: boolean;
+}) {
+  const [hover, setHover] = useState(false);
+
+  const background = primary
+    ? hover
+      ? "#1d4ed8"
+      : "#2563eb"
+    : hover
+      ? "#2563eb"
+      : theme.isDark
+        ? "#0f172a"
+        : theme.cardBg;
+
+  const color = primary ? "#ffffff" : hover ? "#ffffff" : theme.text;
+  const border = primary ? "none" : `1px solid ${theme.border}`;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        height: 42,
+        padding: "0 14px",
+        borderRadius: 12,
+        border,
+        background,
+        color,
+        fontWeight: 800,
+        fontSize: 13,
+        cursor: disabled ? "not-allowed" : "pointer",
+        transition: "all 0.15s ease",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        opacity: disabled ? 0.7 : 1,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function IconActionButton({
+  icon,
+  theme,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  theme: ThemeShape;
+  onClick?: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: 12,
+        border: `1px solid ${theme.border}`,
+        background: hover ? "#2563eb" : theme.isDark ? "#0f172a" : theme.cardBg,
+        color: hover ? "#ffffff" : theme.text,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        transition: "all 0.15s ease",
+        flexShrink: 0,
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function SummaryCard({
+  title,
+  value,
+  helper,
+  theme,
+  accent,
+}: {
+  title: string;
+  value: string;
+  helper?: string;
+  theme: ThemeShape;
+  accent?: string;
+}) {
+  return (
+    <div
+      style={{
+        background: theme.isDark ? "#0f172a" : theme.cardBg,
+        border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
+        borderRadius: 18,
+        padding: 18,
+        minHeight: 120,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: theme.isDark ? "#94a3b8" : "#64748b",
+          marginBottom: 10,
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: 26,
+          fontWeight: 900,
+          color: accent || theme.text,
+          lineHeight: 1.1,
+        }}
+      >
+        {value}
+      </div>
+
+      {helper ? (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: theme.isDark ? "#94a3b8" : "#64748b",
+          }}
+        >
+          {helper}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function InvestorDistributionsPage() {
-  const { theme } = useTheme();
-  const colors = getThemeColors(theme);
+  const router = useRouter();
+  const { theme: mode, toggleTheme } = useTheme();
+  const theme = getThemeColors(mode);
 
-  const [distributions, setDistributions] = useState<any[]>([]);
+  const pageBg = theme.isDark ? "#081225" : theme.pageBg;
+  const muted = theme.isDark ? "#94a3b8" : "#64748b";
+
+  const [data, setData] = useState<InvestorMeResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function load() {
-    const res = await fetch("/api/investor-auth/me", {
-      cache: "no-store",
-    });
+  async function load(showRefreshing = false) {
+    try {
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
-    const data = await res.json();
+      setError(null);
 
-    setDistributions(data.distributions || []);
-    setLoading(false);
+      const res = await fetch("/api/investor-auth/me", {
+        cache: "no-store",
+      });
+
+      if (res.status === 401) {
+        router.push("/investor/login");
+        return;
+      }
+
+      const json = (await res.json().catch(() => null)) as InvestorMeResponse | null;
+
+      if (!res.ok) {
+        throw new Error((json as any)?.error || "Erro ao carregar distribuições.");
+      }
+
+      setData(json);
+    } catch (error) {
+      console.error(error);
+      setError(
+        error instanceof Error ? error.message : "Erro ao carregar distribuições."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
 
   useEffect(() => {
     load();
   }, []);
 
+  const distributions = useMemo(() => data?.distributions || [], [data]);
+
+  const paid = useMemo(() => {
+    return distributions.filter((item) => item.status === "PAID");
+  }, [distributions]);
+
+  const pending = useMemo(() => {
+    return distributions.filter((item) => item.status !== "PAID");
+  }, [distributions]);
+
+  const totalPaid = useMemo(() => {
+    return paid.reduce((sum, item) => sum + (item.totalDistributionCents ?? 0), 0);
+  }, [paid]);
+
+  const totalPending = useMemo(() => {
+    return pending.reduce((sum, item) => sum + (item.totalDistributionCents ?? 0), 0);
+  }, [pending]);
+
   if (loading) {
-    return <div style={{ padding: 30 }}>Carregando distribuições...</div>;
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: pageBg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: theme.text,
+          fontWeight: 700,
+        }}
+      >
+        Carregando distribuições...
+      </div>
+    );
   }
 
   return (
-    <div style={{ padding: 30 }}>
-      <h1>Distribuições</h1>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: pageBg,
+        padding: 24,
+        color: theme.text,
+      }}
+    >
+      <div style={{ maxWidth: 1240, margin: "0 auto" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            marginBottom: 22,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: muted,
+                marginBottom: 8,
+              }}
+            >
+              Portal do investidor
+            </div>
 
-      <div
-        style={{
-          marginTop: 20,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 12,
-          overflow: "hidden",
-        }}
-      >
-        <table style={{ width: "100%" }}>
-          <thead
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 30,
+                fontWeight: 900,
+              }}
+            >
+              Distribuições
+            </h1>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 13,
+                color: muted,
+              }}
+            >
+              Acompanhe o histórico de repasses, valores e status dos pagamentos.
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <ActionButton
+              label={refreshing ? "Atualizando..." : "Atualizar"}
+              icon={<RefreshCw size={16} />}
+              theme={theme}
+              onClick={() => load(true)}
+              disabled={refreshing}
+            />
+            <IconActionButton
+              icon={theme.isDark ? <Sun size={18} /> : <Moon size={18} />}
+              theme={theme}
+              onClick={toggleTheme}
+            />
+            <ActionButton
+              label="Versão mobile"
+              icon={<Smartphone size={16} />}
+              theme={theme}
+              primary
+              onClick={() => router.push("/m/investor/distributions")}
+            />
+            <ActionButton
+              label="Voltar ao painel"
+              icon={<ArrowLeft size={16} />}
+              theme={theme}
+              onClick={() => router.push("/investor")}
+            />
+          </div>
+        </div>
+
+        {error ? (
+          <div
             style={{
-              background: colors.hoverBg,
+              marginBottom: 18,
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ef4444",
+              color: "#ef4444",
+              background: theme.isDark ? "#0f172a" : theme.cardBg,
+              fontWeight: 700,
             }}
           >
-            <tr>
-              <th>Região</th>
-              <th>Mês</th>
-              <th>Cotas</th>
-              <th>Valor por cota</th>
-              <th>Total</th>
-              <th>Status</th>
-            </tr>
-          </thead>
+            {error}
+          </div>
+        ) : null}
 
-          <tbody>
-            {distributions.map((dist) => (
-              <tr key={dist.id}>
-                <td>{dist.region?.name}</td>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 14,
+            marginBottom: 20,
+          }}
+        >
+          <SummaryCard
+            title="Total de lançamentos"
+            value={String(distributions.length)}
+            helper="Histórico completo"
+            theme={theme}
+          />
+          <SummaryCard
+            title="Total pago"
+            value={money(totalPaid)}
+            helper="Distribuições pagas"
+            theme={theme}
+            accent="#22c55e"
+          />
+          <SummaryCard
+            title="Total pendente"
+            value={money(totalPending)}
+            helper="Aguardando pagamento"
+            theme={theme}
+            accent="#f59e0b"
+          />
+        </div>
 
-                <td>
-                  {String(dist.month).padStart(2, "0")}/{dist.year}
-                </td>
+        <div style={{ display: "grid", gap: 14 }}>
+          {distributions.length === 0 ? (
+            <div
+              style={{
+                border: `1px solid ${theme.border}`,
+                borderRadius: 16,
+                padding: 18,
+                background: theme.isDark ? "#0f172a" : theme.cardBg,
+                color: muted,
+                fontWeight: 700,
+              }}
+            >
+              Nenhuma distribuição encontrada.
+            </div>
+          ) : (
+            distributions.map((dist) => (
+              <div
+                key={dist.id}
+                style={{
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 16,
+                  padding: 18,
+                  background: theme.isDark ? "#0f172a" : theme.cardBg,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    alignItems: "flex-start",
+                    marginBottom: 14,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontWeight: 900,
+                        fontSize: 16,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {dist.region?.name || "Região"}
+                    </div>
 
-                <td>{dist.quotaCount}</td>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: muted,
+                      }}
+                    >
+                      {formatMonthYear(dist.month, dist.year)}
+                    </div>
+                  </div>
 
-                <td>{money(dist.valuePerQuotaCents)}</td>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 900,
+                      color: dist.status === "PAID" ? "#16a34a" : "#f59e0b",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {dist.status === "PAID" ? "Pago" : "Pendente"}
+                  </div>
+                </div>
 
-                <td>{money(dist.totalDistributionCents)}</td>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
+                      Cotas
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 800 }}>
+                      {dist.quotaCount}
+                    </div>
+                  </div>
 
-                <td>{dist.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <div>
+                    <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
+                      Valor por cota
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 800 }}>
+                      {money(dist.valuePerQuotaCents)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
+                      Total
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 800 }}>
+                      {money(dist.totalDistributionCents)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

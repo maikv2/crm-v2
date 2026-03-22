@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Moon, RefreshCw, Smartphone, Sun } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -56,35 +56,20 @@ type InvestorMeResponse = {
 
 type ThemeShape = ReturnType<typeof getThemeColors>;
 
-function ActionButton({
+function PageButton({
   label,
   icon,
   theme,
   onClick,
-  primary,
   disabled,
 }: {
   label: string;
   icon?: React.ReactNode;
   theme: ThemeShape;
   onClick?: () => void;
-  primary?: boolean;
   disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
-
-  const background = primary
-    ? hover
-      ? "#1d4ed8"
-      : "#2563eb"
-    : hover
-      ? "#2563eb"
-      : theme.isDark
-        ? "#0f172a"
-        : theme.cardBg;
-
-  const color = primary ? "#ffffff" : hover ? "#ffffff" : theme.text;
-  const border = primary ? "none" : `1px solid ${theme.border}`;
 
   return (
     <button
@@ -97,9 +82,9 @@ function ActionButton({
         height: 42,
         padding: "0 14px",
         borderRadius: 12,
-        border,
-        background,
-        color,
+        border: `1px solid ${theme.border}`,
+        background: hover ? "#2563eb" : theme.isDark ? "#0f172a" : "#ffffff",
+        color: hover ? "#ffffff" : theme.text,
         fontWeight: 800,
         fontSize: 13,
         cursor: disabled ? "not-allowed" : "pointer",
@@ -113,43 +98,6 @@ function ActionButton({
     >
       {icon}
       {label}
-    </button>
-  );
-}
-
-function IconActionButton({
-  icon,
-  theme,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  theme: ThemeShape;
-  onClick?: () => void;
-}) {
-  const [hover, setHover] = useState(false);
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        width: 42,
-        height: 42,
-        borderRadius: 12,
-        border: `1px solid ${theme.border}`,
-        background: hover ? "#2563eb" : theme.isDark ? "#0f172a" : theme.cardBg,
-        color: hover ? "#ffffff" : theme.text,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        transition: "all 0.15s ease",
-        flexShrink: 0,
-      }}
-    >
-      {icon}
     </button>
   );
 }
@@ -170,11 +118,11 @@ function SummaryCard({
   return (
     <div
       style={{
-        background: theme.isDark ? "#0f172a" : theme.cardBg,
+        background: theme.isDark ? "#0f172a" : "#ffffff",
         border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
         borderRadius: 18,
         padding: 18,
-        minHeight: 120,
+        minHeight: 118,
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -219,10 +167,10 @@ function SummaryCard({
 
 export default function InvestorQuotasPage() {
   const router = useRouter();
-  const { theme: mode, toggleTheme } = useTheme();
+  const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
 
-  const pageBg = theme.isDark ? "#081225" : theme.pageBg;
+  const pageBg = theme.isDark ? "#081225" : "#f3f6fb";
   const muted = theme.isDark ? "#94a3b8" : "#64748b";
 
   const [data, setData] = useState<InvestorMeResponse | null>(null);
@@ -283,8 +231,7 @@ export default function InvestorQuotasPage() {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: pageBg,
+          minHeight: "calc(100vh - 74px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -300,7 +247,7 @@ export default function InvestorQuotasPage() {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "calc(100vh - 74px)",
         background: pageBg,
         padding: 24,
         color: theme.text,
@@ -350,27 +297,15 @@ export default function InvestorQuotasPage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <ActionButton
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <PageButton
               label={refreshing ? "Atualizando..." : "Atualizar"}
               icon={<RefreshCw size={16} />}
               theme={theme}
               onClick={() => load(true)}
               disabled={refreshing}
             />
-            <IconActionButton
-              icon={theme.isDark ? <Sun size={18} /> : <Moon size={18} />}
-              theme={theme}
-              onClick={toggleTheme}
-            />
-            <ActionButton
-              label="Versão mobile"
-              icon={<Smartphone size={16} />}
-              theme={theme}
-              primary
-              onClick={() => router.push("/m/investor/quotas")}
-            />
-            <ActionButton
+            <PageButton
               label="Voltar ao painel"
               icon={<ArrowLeft size={16} />}
               theme={theme}
@@ -387,7 +322,7 @@ export default function InvestorQuotasPage() {
               borderRadius: 12,
               border: "1px solid #ef4444",
               color: "#ef4444",
-              background: theme.isDark ? "#0f172a" : theme.cardBg,
+              background: theme.isDark ? "#0f172a" : "#ffffff",
               fontWeight: 700,
             }}
           >
@@ -436,7 +371,7 @@ export default function InvestorQuotasPage() {
                 border: `1px solid ${theme.border}`,
                 borderRadius: 16,
                 padding: 18,
-                background: theme.isDark ? "#0f172a" : theme.cardBg,
+                background: theme.isDark ? "#0f172a" : "#ffffff",
                 color: muted,
                 fontWeight: 700,
               }}
@@ -451,7 +386,7 @@ export default function InvestorQuotasPage() {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 16,
                   padding: 18,
-                  background: theme.isDark ? "#0f172a" : theme.cardBg,
+                  background: theme.isDark ? "#0f172a" : "#ffffff",
                 }}
               >
                 <div

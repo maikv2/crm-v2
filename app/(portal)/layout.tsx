@@ -124,6 +124,7 @@ export default function PortalLayout({
   const [loadingUser, setLoadingUser] = useState(true);
 
   const isLoginPage = pathname === "/portal/login";
+  const isPortalChoicePage = pathname === "/portal";
 
   useEffect(() => {
     let active = true;
@@ -174,7 +175,7 @@ export default function PortalLayout({
     }
   }
 
-  if (isLoginPage) {
+  if (isLoginPage || isPortalChoicePage) {
     return <>{children}</>;
   }
 

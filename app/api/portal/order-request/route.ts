@@ -23,8 +23,8 @@ function normalizeQuantity(value: unknown) {
     typeof value === "number"
       ? value
       : typeof value === "string"
-      ? Number(value)
-      : NaN;
+        ? Number(value)
+        : NaN;
 
   if (!Number.isFinite(numberValue)) return 0;
 
@@ -35,6 +35,7 @@ async function getPortalClientIdFromCookies() {
   const cookieStore = await cookies();
 
   const possibleCookieNames = [
+    "portal_session",
     "portalClientId",
     "portal_client_id",
     "clientId",

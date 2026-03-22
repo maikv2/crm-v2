@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Laptop, Moon, Smartphone, Sun } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
@@ -10,9 +10,12 @@ type PortalClientResponse = {
   client?: {
     id: string;
     name: string;
+    tradeName?: string | null;
     code: string;
     city?: string | null;
     district?: string | null;
+    cnpj?: string | null;
+    cpf?: string | null;
   } | null;
 };
 
@@ -25,7 +28,7 @@ function OptionButton({
 }: {
   title: string;
   subtitle: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   onClick?: () => void;
   primary?: boolean;
 }) {
@@ -119,6 +122,7 @@ export default function PortalChoicePage() {
 
   const [loading, setLoading] = useState(true);
   const [clientName, setClientName] = useState("Cliente");
+  const [clientDocument, setClientDocument] = useState("-");
 
   useEffect(() => {
     let active = true;
@@ -142,7 +146,9 @@ export default function PortalChoicePage() {
         const json = (await res.json().catch(() => null)) as PortalClientResponse | null;
 
         if (active) {
-          setClientName(json?.client?.name?.trim() || "Cliente");
+          const client = json?.client;
+          setClientName(client?.tradeName?.trim() || client?.name?.trim() || "Cliente");
+          setClientDocument(client?.cnpj || client?.cpf || "-");
         }
       } catch {
         router.push("/portal/login");
@@ -239,9 +245,21 @@ export default function PortalChoicePage() {
                 fontSize: 16,
                 color: colors.subtext,
                 lineHeight: 1.45,
+                fontWeight: 700,
               }}
             >
               {clientName}
+            </div>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 13,
+                color: colors.subtext,
+                lineHeight: 1.45,
+              }}
+            >
+              {clientDocument}
             </div>
           </div>
 

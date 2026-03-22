@@ -1,18 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-
-type OrderItem = {
-  id: string;
-  qty: number;
-  unitCents: number;
-  product: {
-    id: string;
-    name: string;
-    sku?: string | null;
-  };
-};
+import { Download, FileText } from "lucide-react";
+import { useTheme } from "@/app/providers/theme-provider";
+import { getThemeColors } from "@/lib/theme";
 
 type Order = {
   id: string;
@@ -20,11 +12,6 @@ type Order = {
   status: string;
   issuedAt: string;
   totalCents: number;
-  subtotalCents?: number;
-  discountCents?: number;
-  paymentMethod?: string | null;
-  notes?: string | null;
-  items: OrderItem[];
 };
 
 function money(cents: number) {
@@ -46,25 +33,35 @@ function statusLabel(status: string) {
       return "Pago";
     case "CANCELLED":
       return "Cancelado";
+    case "OVERDUE":
+      return "Vencido";
     default:
       return status;
   }
 }
 
-function paymentMethodLabel(value?: string | null) {
-  switch (value) {
-    case "CASH":
-      return "Dinheiro";
-    case "PIX":
-      return "Pix";
-    case "BOLETO":
-      return "Boleto";
-    case "CARD_DEBIT":
-      return "Cartão débito";
-    case "CARD_CREDIT":
-      return "Cartão crédito";
+function statusColors(status: string, isDark: boolean) {
+  switch (status) {
+    case "PAID":
+      return {
+        bg: isDark ? "rgba(34,197,94,0.18)" : "#dcfce7",
+        color: "#16a34a",
+      };
+    case "CANCELLED":
+      return {
+        bg: isDark ? "rgba(239,68,68,0.18)" : "#fee2e2",
+        color: "#dc2626",
+      };
+    case "OVERDUE":
+      return {
+        bg: isDark ? "rgba(245,158,11,0.18)" : "#fef3c7",
+        color: "#b45309",
+      };
     default:
-      return value || "-";
+      return {
+        bg: isDark ? "rgba(37,99,235,0.18)" : "#dbeafe",
+        color: "#2563eb",
+      };
   }
 }
 
@@ -75,6 +72,8 @@ function ActionButton({
   label: string;
   onClick?: () => void;
 }) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
   const [hover, setHover] = useState(false);
 
   return (
@@ -87,9 +86,9 @@ function ActionButton({
         height: 40,
         padding: "0 14px",
         borderRadius: 12,
-        border: "1px solid #e5e7eb",
-        background: hover ? "#2563eb" : "#ffffff",
-        color: hover ? "#ffffff" : "#111827",
+        border: `1px solid ${colors.border}`,
+        background: hover ? "#2563eb" : colors.cardBg,
+        color: hover ? "#ffffff" : colors.text,
         fontWeight: 800,
         fontSize: 13,
         cursor: "pointer",
@@ -111,14 +110,19 @@ function Block({
   subtitle?: string;
   children: React.ReactNode;
 }) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
+
   return (
     <div
       style={{
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
+        background: colors.cardBg,
+        border: `1px solid ${colors.border}`,
         borderRadius: 18,
         padding: 22,
-        boxShadow: "0 8px 24px rgba(15,23,42,0.06)",
+        boxShadow: colors.isDark
+          ? "0 8px 24px rgba(2,6,23,0.26)"
+          : "0 8px 24px rgba(15,23,42,0.06)",
       }}
     >
       <div style={{ marginBottom: 16 }}>
@@ -126,7 +130,7 @@ function Block({
           style={{
             fontSize: 18,
             fontWeight: 800,
-            color: "#111827",
+            color: colors.text,
           }}
         >
           {title}
@@ -137,7 +141,7 @@ function Block({
             style={{
               marginTop: 6,
               fontSize: 13,
-              color: "#64748b",
+              color: colors.subtext,
               lineHeight: 1.5,
             }}
           >
@@ -153,6 +157,8 @@ function Block({
 
 export default function PortalOrdersPage() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -193,13 +199,17 @@ export default function PortalOrdersPage() {
     };
   }, [router]);
 
+  const totalValue = useMemo(() => {
+    return orders.reduce((sum, item) => sum + Number(item.totalCents || 0), 0);
+  }, [orders]);
+
   if (loading) {
     return (
       <div
         style={{
           minHeight: "100vh",
-          background: "#f3f6fb",
-          color: "#111827",
+          background: colors.pageBg,
+          color: colors.text,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -215,12 +225,12 @@ export default function PortalOrdersPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#f3f6fb",
-        color: "#111827",
+        background: colors.pageBg,
+        color: colors.text,
         padding: 24,
       }}
     >
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
           style={{
             display: "flex",
@@ -236,7 +246,7 @@ export default function PortalOrdersPage() {
               style={{
                 fontSize: 14,
                 fontWeight: 700,
-                color: "#64748b",
+                color: colors.subtext,
                 marginBottom: 10,
               }}
             >
@@ -247,20 +257,20 @@ export default function PortalOrdersPage() {
               style={{
                 fontSize: 22,
                 fontWeight: 900,
-                color: "#111827",
+                color: colors.text,
               }}
             >
-              Meus Pedidos
+              Meus pedidos
             </div>
 
             <div
               style={{
                 marginTop: 6,
                 fontSize: 13,
-                color: "#64748b",
+                color: colors.subtext,
               }}
             >
-              Consulte os detalhes completos dos seus pedidos, itens e forma de pagamento.
+              Lista simplificada dos seus pedidos. Para ver o pedido completo, baixe o PDF.
             </div>
           </div>
 
@@ -272,6 +282,23 @@ export default function PortalOrdersPage() {
           </div>
         </div>
 
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
+            marginBottom: 18,
+          }}
+        >
+          <Block title="Quantidade" subtitle="Pedidos encontrados">
+            <div style={{ fontSize: 28, fontWeight: 900 }}>{orders.length}</div>
+          </Block>
+
+          <Block title="Total" subtitle="Valor somado dos pedidos">
+            <div style={{ fontSize: 28, fontWeight: 900 }}>{money(totalValue)}</div>
+          </Block>
+        </div>
+
         <Block
           title="Lista de pedidos"
           subtitle="Abaixo estão os pedidos vinculados ao seu cadastro."
@@ -281,9 +308,9 @@ export default function PortalOrdersPage() {
               style={{
                 padding: 18,
                 borderRadius: 14,
-                border: "1px solid #e5e7eb",
-                background: "#f8fafc",
-                color: "#64748b",
+                border: `1px solid ${colors.border}`,
+                background: colors.isDark ? "#111827" : "#f8fafc",
+                color: colors.subtext,
                 fontSize: 14,
               }}
             >
@@ -291,416 +318,127 @@ export default function PortalOrdersPage() {
             </div>
           ) : (
             <div style={{ display: "grid", gap: 14 }}>
-              {orders.map((order) => (
-                <div
-                  key={order.id}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 16,
-                    padding: 18,
-                    background: "#f8fafc",
-                  }}
-                >
+              {orders.map((order) => {
+                const badge = statusColors(order.status, colors.isDark);
+
+                return (
                   <div
+                    key={order.id}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      flexWrap: "wrap",
-                      marginBottom: 14,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 16,
+                      padding: 18,
+                      background: colors.isDark ? "#111827" : "#f8fafc",
                     }}
                   >
-                    <div>
-                      <div
-                        style={{
-                          fontWeight: 900,
-                          fontSize: 18,
-                          color: "#111827",
-                        }}
-                      >
-                        Pedido #{String(order.number).padStart(4, "0")}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: 4,
-                          fontSize: 13,
-                          color: "#64748b",
-                        }}
-                      >
-                        Emitido em {dateBR(order.issuedAt)}
-                      </div>
-                    </div>
-
                     <div
                       style={{
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        border: "1px solid #dbe3ef",
-                        background: "#ffffff",
-                        color: "#2563eb",
-                        fontSize: 12,
-                        fontWeight: 800,
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0,1fr) auto",
+                        gap: 12,
+                        alignItems: "center",
                       }}
                     >
-                      {statusLabel(order.status)}
-                    </div>
-                  </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 900,
+                            fontSize: 18,
+                            color: colors.text,
+                          }}
+                        >
+                          Pedido #{order.number}
+                        </div>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                      gap: 14,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Data
+                        <div
+                          style={{
+                            marginTop: 6,
+                            fontSize: 13,
+                            color: colors.subtext,
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 10,
+                          }}
+                        >
+                          <span>{dateBR(order.issuedAt)}</span>
+                          <span>{money(order.totalCents)}</span>
+                        </div>
                       </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: "#111827",
-                        }}
-                      >
-                        {dateBR(order.issuedAt)}
-                      </div>
-                    </div>
 
-                    <div>
-                      <div
+                      <span
                         style={{
+                          borderRadius: 999,
+                          padding: "8px 12px",
                           fontSize: 12,
-                          color: "#64748b",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Status
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: "#111827",
+                          fontWeight: 800,
+                          background: badge.bg,
+                          color: badge.color,
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {statusLabel(order.status)}
-                      </div>
+                      </span>
                     </div>
 
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Forma de pagamento
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: "#111827",
-                        }}
-                      >
-                        {paymentMethodLabel(order.paymentMethod)}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Total
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: "#111827",
-                        }}
-                      >
-                        {money(order.totalCents)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 14,
-                      background: "#ffffff",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        padding: "12px 14px",
-                        borderBottom: "1px solid #e5e7eb",
-                        fontSize: 14,
-                        fontWeight: 800,
-                        color: "#111827",
-                        background: "#f8fafc",
-                      }}
-                    >
-                      Itens do pedido
-                    </div>
-
-                    <div style={{ display: "grid" }}>
-                      {order.items.length === 0 ? (
-                        <div
-                          style={{
-                            padding: 14,
-                            color: "#64748b",
-                            fontSize: 14,
-                          }}
-                        >
-                          Nenhum item encontrado neste pedido.
-                        </div>
-                      ) : (
-                        order.items.map((item) => (
-                          <div
-                            key={item.id}
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "minmax(0, 1.6fr) 120px 140px 140px",
-                              gap: 12,
-                              padding: 14,
-                              borderTop: "1px solid #f1f5f9",
-                              alignItems: "center",
-                            }}
-                          >
-                            <div>
-                              <div
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 800,
-                                  color: "#111827",
-                                }}
-                              >
-                                {item.product?.name || "Produto"}
-                              </div>
-
-                              <div
-                                style={{
-                                  marginTop: 4,
-                                  fontSize: 12,
-                                  color: "#64748b",
-                                }}
-                              >
-                                SKU: {item.product?.sku || "-"}
-                              </div>
-                            </div>
-
-                            <div>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: "#64748b",
-                                  marginBottom: 4,
-                                }}
-                              >
-                                Quantidade
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 700,
-                                  color: "#111827",
-                                }}
-                              >
-                                {item.qty}
-                              </div>
-                            </div>
-
-                            <div>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: "#64748b",
-                                  marginBottom: 4,
-                                }}
-                              >
-                                Valor unitário
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 700,
-                                  color: "#111827",
-                                }}
-                              >
-                                {money(item.unitCents)}
-                              </div>
-                            </div>
-
-                            <div>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: "#64748b",
-                                  marginBottom: 4,
-                                }}
-                              >
-                                Subtotal
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 700,
-                                  color: "#111827",
-                                }}
-                              >
-                                {money(item.qty * item.unitCents)}
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      gap: 14,
-                      marginTop: 16,
-                    }}
-                  >
-                    <div
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 12,
-                        padding: 12,
-                        background: "#ffffff",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Subtotal
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: "#111827",
-                        }}
-                      >
-                        {money(order.subtotalCents ?? order.totalCents)}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 12,
-                        padding: 12,
-                        background: "#ffffff",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Desconto
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: "#111827",
-                        }}
-                      >
-                        {money(order.discountCents ?? 0)}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 12,
-                        padding: 12,
-                        background: "#ffffff",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Total final
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 15,
-                          fontWeight: 900,
-                          color: "#111827",
-                        }}
-                      >
-                        {money(order.totalCents)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {order.notes ? (
                     <div
                       style={{
                         marginTop: 14,
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 12,
-                        padding: 12,
-                        background: "#ffffff",
+                        display: "flex",
+                        gap: 10,
+                        flexWrap: "wrap",
                       }}
                     >
-                      <div
+                      <a
+                        href={`/api/orders/${order.id}/pdf`}
+                        target="_blank"
+                        rel="noreferrer"
                         style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                          marginBottom: 6,
+                          textDecoration: "none",
                         }}
                       >
-                        Observações
-                      </div>
+                        <div
+                          style={{
+                            minHeight: 42,
+                            padding: "0 14px",
+                            borderRadius: 12,
+                            background: "#2563eb",
+                            color: "#ffffff",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 8,
+                            fontSize: 13,
+                            fontWeight: 800,
+                          }}
+                        >
+                          <Download size={15} />
+                          Baixar PDF
+                        </div>
+                      </a>
+
                       <div
                         style={{
-                          fontSize: 14,
-                          color: "#111827",
-                          lineHeight: 1.6,
+                          minHeight: 42,
+                          padding: "0 14px",
+                          borderRadius: 12,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.cardBg,
+                          color: colors.text,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 8,
+                          fontSize: 13,
+                          fontWeight: 800,
                         }}
                       >
-                        {order.notes}
+                        <FileText size={15} />
+                        Pedido resumido
                       </div>
                     </div>
-                  ) : null}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </Block>

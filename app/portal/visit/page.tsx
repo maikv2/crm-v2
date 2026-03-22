@@ -2,29 +2,33 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@/app/providers/theme-provider";
+import { getThemeColors } from "@/lib/theme";
 
 function ActionButton({
   label,
   onClick,
+  primary,
   disabled,
-  primary = false,
 }: {
   label: string;
   onClick?: () => void;
-  disabled?: boolean;
   primary?: boolean;
+  disabled?: boolean;
 }) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
   const [hover, setHover] = useState(false);
 
-  const bg = primary
+  const background = primary
     ? hover
       ? "#1d4ed8"
       : "#2563eb"
     : hover
-    ? "#2563eb"
-    : "#ffffff";
+      ? "#2563eb"
+      : colors.cardBg;
 
-  const color = hover || primary ? "#ffffff" : "#111827";
+  const color = primary ? "#ffffff" : hover ? "#ffffff" : colors.text;
 
   return (
     <button
@@ -35,12 +39,13 @@ function ActionButton({
       onMouseLeave={() => setHover(false)}
       style={{
         height: 42,
-        padding: "0 18px",
+        padding: "0 14px",
         borderRadius: 12,
-        border: primary ? "1px solid #2563eb" : "1px solid #e5e7eb",
-        background: bg,
+        border: primary ? "none" : `1px solid ${colors.border}`,
+        background,
         color,
         fontWeight: 800,
+        fontSize: 13,
         cursor: disabled ? "not-allowed" : "pointer",
         transition: "all 0.15s ease",
         opacity: disabled ? 0.7 : 1,
@@ -60,14 +65,19 @@ function Block({
   subtitle?: string;
   children: React.ReactNode;
 }) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
+
   return (
     <div
       style={{
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
+        background: colors.cardBg,
+        border: `1px solid ${colors.border}`,
         borderRadius: 18,
         padding: 22,
-        boxShadow: "0 8px 24px rgba(15,23,42,0.06)",
+        boxShadow: colors.isDark
+          ? "0 8px 24px rgba(2,6,23,0.26)"
+          : "0 8px 24px rgba(15,23,42,0.06)",
       }}
     >
       <div style={{ marginBottom: 16 }}>
@@ -75,7 +85,7 @@ function Block({
           style={{
             fontSize: 18,
             fontWeight: 800,
-            color: "#111827",
+            color: colors.text,
           }}
         >
           {title}
@@ -86,7 +96,7 @@ function Block({
             style={{
               marginTop: 6,
               fontSize: 13,
-              color: "#64748b",
+              color: colors.subtext,
               lineHeight: 1.5,
             }}
           >
@@ -102,6 +112,8 @@ function Block({
 
 export default function PortalVisitPage() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -121,7 +133,7 @@ export default function PortalVisitPage() {
         body: JSON.stringify({ message }),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
 
       if (!res.ok) {
         throw new Error(json?.error || "Erro ao solicitar visita.");
@@ -129,8 +141,8 @@ export default function PortalVisitPage() {
 
       setOk(true);
       setMessage("");
-    } catch (err: any) {
-      setError(err?.message || "Erro ao solicitar visita.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao solicitar visita.");
     } finally {
       setSending(false);
     }
@@ -141,8 +153,8 @@ export default function PortalVisitPage() {
       <div
         style={{
           minHeight: "100vh",
-          background: "#f3f6fb",
-          color: "#111827",
+          background: colors.pageBg,
+          color: colors.text,
           padding: 24,
           display: "flex",
           alignItems: "center",
@@ -152,7 +164,7 @@ export default function PortalVisitPage() {
         <div style={{ width: "100%", maxWidth: 720 }}>
           <Block
             title="Visita solicitada"
-            subtitle="Nossa equipe entrará em contato em breve para organizar o atendimento."
+            subtitle="Nossa equipe recebeu sua solicitação e organizará o atendimento."
           >
             <div
               style={{
@@ -186,8 +198,8 @@ export default function PortalVisitPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#f3f6fb",
-        color: "#111827",
+        background: colors.pageBg,
+        color: colors.text,
         padding: 24,
       }}
     >
@@ -207,7 +219,7 @@ export default function PortalVisitPage() {
               style={{
                 fontSize: 14,
                 fontWeight: 700,
-                color: "#64748b",
+                color: colors.subtext,
                 marginBottom: 10,
               }}
             >
@@ -218,7 +230,7 @@ export default function PortalVisitPage() {
               style={{
                 fontSize: 22,
                 fontWeight: 900,
-                color: "#111827",
+                color: colors.text,
               }}
             >
               Solicitar visita
@@ -228,10 +240,10 @@ export default function PortalVisitPage() {
               style={{
                 marginTop: 6,
                 fontSize: 13,
-                color: "#64748b",
+                color: colors.subtext,
               }}
             >
-              Descreva o que você precisa para que nossa equipe possa atender melhor.
+              Explique o motivo da visita para que nossa equipe priorize o atendimento.
             </div>
           </div>
 
@@ -245,7 +257,7 @@ export default function PortalVisitPage() {
 
         <Block
           title="Mensagem para a equipe"
-          subtitle="Você pode solicitar visita comercial, suporte, manutenção, reposição ou outro atendimento."
+          subtitle="Descreva o motivo da visita e qualquer informação importante."
         >
           {error ? (
             <div
@@ -256,7 +268,7 @@ export default function PortalVisitPage() {
                 marginBottom: 16,
                 color: "#ef4444",
                 fontSize: 14,
-                background: "#fff1f2",
+                background: colors.isDark ? "rgba(127,29,29,0.18)" : "#fff1f2",
               }}
             >
               {error}
@@ -269,7 +281,7 @@ export default function PortalVisitPage() {
               fontSize: 14,
               fontWeight: 700,
               marginBottom: 8,
-              color: "#111827",
+              color: colors.text,
             }}
           >
             Mensagem
@@ -279,14 +291,14 @@ export default function PortalVisitPage() {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={8}
-            placeholder="Ex.: preciso de reposição, manutenção no expositor, visita comercial, ajuste de pedido..."
+            placeholder="Ex.: precisamos de uma visita técnica/comercial para reposição, conferência ou acompanhamento."
             style={{
               width: "100%",
               padding: 14,
               borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "#ffffff",
-              color: "#111827",
+              border: `1px solid ${colors.border}`,
+              background: colors.cardBg,
+              color: colors.text,
               outline: "none",
               resize: "vertical",
               fontSize: 14,

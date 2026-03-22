@@ -19,9 +19,12 @@ export async function GET() {
       select: {
         id: true,
         name: true,
+        tradeName: true,
         code: true,
         city: true,
         district: true,
+        cpf: true,
+        cnpj: true,
         exhibitors: {
           orderBy: {
             installedAt: "desc",

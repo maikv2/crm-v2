@@ -1,38 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Minus, Plus, Search, ShoppingCart } from "lucide-react";
 import { useRouter } from "next/navigation";
-
-function money(cents: number) {
-  return (cents / 100).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-}
-
-function getSkuSortNumber(sku: string) {
-  const match = sku.match(/(\d+)/);
-  if (!match) return Number.MAX_SAFE_INTEGER;
-  return Number(match[1]);
-}
-
-function compareSku(a: string, b: string) {
-  const prefixA = a.replace(/\d+/g, "").toUpperCase();
-  const prefixB = b.replace(/\d+/g, "").toUpperCase();
-
-  if (prefixA !== prefixB) {
-    return prefixA.localeCompare(prefixB, "pt-BR");
-  }
-
-  const numberA = getSkuSortNumber(a);
-  const numberB = getSkuSortNumber(b);
-
-  if (numberA !== numberB) {
-    return numberA - numberB;
-  }
-
-  return a.localeCompare(b, "pt-BR");
-}
+import { useTheme } from "@/app/providers/theme-provider";
+import { getThemeColors } from "@/lib/theme";
 
 type Product = {
   id: string;
@@ -42,43 +14,106 @@ type Product = {
   priceCents?: number | null;
   active?: boolean;
   imageUrl?: string | null;
-  description?: string | null;
-  shortDescription?: string | null;
 };
 
 type CatalogItem = {
   productId: string;
   qty: number;
-  unitCents: number;
 };
+
+type RequestItem = {
+  id: string;
+  quantity: number;
+  lineTotalCents: number;
+  product: {
+    id: string;
+    sku?: string | null;
+    name: string;
+    category?: string | null;
+    priceCents?: number | null;
+  };
+};
+
+type RequestHistoryItem = {
+  id: string;
+  status: string;
+  createdAt: string;
+  notes?: string | null;
+  subtotalCents: number;
+  items: RequestItem[];
+};
+
+function money(cents: number) {
+  return (cents / 100).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function dateBR(date: string) {
+  return new Date(date).toLocaleDateString("pt-BR");
+}
+
+function statusLabel(status: string) {
+  switch (status) {
+    case "PENDING":
+      return "Pendente";
+    case "APPROVED":
+      return "Aprovado";
+    case "REJECTED":
+      return "Rejeitado";
+    case "CONVERTED_TO_ORDER":
+      return "Convertido em pedido";
+    default:
+      return status;
+  }
+}
 
 function ActionButton({
   label,
   onClick,
+  primary,
+  disabled,
 }: {
   label: string;
   onClick?: () => void;
+  primary?: boolean;
+  disabled?: boolean;
 }) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
   const [hover, setHover] = useState(false);
+
+  const background = primary
+    ? hover
+      ? "#1d4ed8"
+      : "#2563eb"
+    : hover
+      ? "#2563eb"
+      : colors.cardBg;
+
+  const color = primary ? "#ffffff" : hover ? "#ffffff" : colors.text;
 
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        height: 34,
-        padding: "0 12px",
-        borderRadius: 10,
-        border: "1px solid #e5e7eb",
-        background: hover ? "#2563eb" : "#ffffff",
-        color: hover ? "#ffffff" : "#111827",
-        fontWeight: 700,
+        height: 42,
+        padding: "0 14px",
+        borderRadius: 12,
+        border: primary ? "none" : `1px solid ${colors.border}`,
+        background,
+        color,
+        fontWeight: 800,
         fontSize: 13,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         whiteSpace: "nowrap",
         transition: "all 0.15s ease",
+        opacity: disabled ? 0.7 : 1,
       }}
     >
       {label}
@@ -95,14 +130,19 @@ function Card({
   children: React.ReactNode;
   right?: React.ReactNode;
 }) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
+
   return (
     <div
       style={{
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
+        background: colors.cardBg,
+        border: `1px solid ${colors.border}`,
         borderRadius: 18,
         padding: 22,
-        boxShadow: "0 8px 24px rgba(15,23,42,0.06)",
+        boxShadow: colors.isDark
+          ? "0 8px 24px rgba(2,6,23,0.26)"
+          : "0 8px 24px rgba(15,23,42,0.06)",
       }}
     >
       <div
@@ -119,7 +159,7 @@ function Card({
           style={{
             fontSize: 18,
             fontWeight: 800,
-            color: "#111827",
+            color: colors.text,
           }}
         >
           {title}
@@ -133,280 +173,137 @@ function Card({
   );
 }
 
-function getProductDescription(product?: Product | null) {
-  if (!product) return "Sem descrição cadastrada.";
-  return (
-    product.description ||
-    product.shortDescription ||
-    "Sem descrição cadastrada."
-  );
-}
-
-function normalizeProducts(payload: any): Product[] {
-  let rawProducts: any[] = [];
-
-  if (Array.isArray(payload)) {
-    rawProducts = payload;
-  } else if (Array.isArray(payload?.products)) {
-    rawProducts = payload.products;
-  } else if (Array.isArray(payload?.items)) {
-    rawProducts = payload.items;
-  } else if (Array.isArray(payload?.data)) {
-    rawProducts = payload.data;
-  } else if (Array.isArray(payload?.data?.products)) {
-    rawProducts = payload.data.products;
-  } else if (Array.isArray(payload?.rows)) {
-    rawProducts = payload.rows;
-  }
-
-  return rawProducts
-    .filter((item) => item && item.id && item.name)
-    .map((item) => ({
-      id: String(item.id),
-      sku: String(item.sku ?? "-"),
-      name: String(item.name ?? ""),
-      category: item.category ?? null,
-      priceCents:
-        typeof item.priceCents === "number"
-          ? item.priceCents
-          : typeof item.price === "number"
-            ? item.price
-            : 0,
-      active: typeof item.active === "boolean" ? item.active : true,
-      imageUrl: item.imageUrl ?? null,
-      description: item.description ?? null,
-      shortDescription: item.shortDescription ?? null,
-    }))
-    .filter((item) => item.active !== false);
-}
-
-function ProductImage({
-  sku,
-  name,
-  alt,
-}: {
-  sku: string;
-  name: string;
-  alt: string;
-}) {
-  const [failed, setFailed] = useState(false);
-
-  if ((!sku && !name) || failed) {
-    return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 13,
-          color: "#64748b",
-          textAlign: "center",
-          padding: 12,
-        }}
-      >
-        Sem imagem
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={`/api/product-image?sku=${encodeURIComponent(sku)}&name=${encodeURIComponent(name)}`}
-      alt={alt}
-      onError={() => setFailed(true)}
-      style={{
-        width: "100%",
-        height: "100%",
-        objectFit: "cover",
-        display: "block",
-      }}
-    />
-  );
-}
-
 export default function PortalOrderRequestPage() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [requests, setRequests] = useState<RequestHistoryItem[]>([]);
+  const [catalog, setCatalog] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadBase() {
+    let active = true;
+
+    async function loadData() {
       try {
         setLoading(true);
-        setErrorMessage(null);
+        setError(null);
 
-        const prodRes = await fetch("/api/products", {
-          cache: "no-store",
-        });
+        const [productsRes, requestsRes] = await Promise.all([
+          fetch("/api/products", { cache: "no-store" }),
+          fetch("/api/portal/order-request", { cache: "no-store" }),
+        ]);
 
-        if (!prodRes.ok) {
-          setProducts([]);
-          setCatalog([]);
-          setErrorMessage("Não foi possível carregar os produtos do catálogo.");
-          setLoading(false);
+        if (productsRes.status === 401 || requestsRes.status === 401) {
+          router.push("/portal/login");
           return;
         }
 
-        const prodData = await prodRes.json();
-        const productList = normalizeProducts(prodData);
+        const productsJson = await productsRes.json().catch(() => null);
+        const requestsJson = await requestsRes.json().catch(() => null);
 
-        setProducts(productList);
-        setCatalog(
-          productList.map((p) => ({
-            productId: p.id,
-            qty: 0,
-            unitCents: p.priceCents ?? 0,
-          }))
-        );
-
-        if (productList.length === 0) {
-          setErrorMessage("Nenhum produto disponível no catálogo.");
+        if (!productsRes.ok) {
+          throw new Error(productsJson?.error || "Erro ao carregar produtos.");
         }
-      } catch (error) {
-        console.error(error);
-        setProducts([]);
-        setCatalog([]);
-        setErrorMessage("Erro ao carregar os produtos do catálogo.");
+
+        if (!requestsRes.ok) {
+          throw new Error(
+            requestsJson?.error || "Erro ao carregar histórico de solicitações."
+          );
+        }
+
+        if (active) {
+          const activeProducts = Array.isArray(productsJson)
+            ? productsJson.filter((item: Product) => item.active !== false)
+            : [];
+
+          activeProducts.sort((a: Product, b: Product) => {
+            const skuA = String(a.sku || "").toUpperCase();
+            const skuB = String(b.sku || "").toUpperCase();
+            return skuA.localeCompare(skuB, "pt-BR");
+          });
+
+          setProducts(activeProducts);
+          setRequests(Array.isArray(requestsJson?.requests) ? requestsJson.requests : []);
+        }
+      } catch (err) {
+        console.error(err);
+        if (active) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Erro ao carregar solicitação de pedido."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
-    loadBase();
-  }, []);
+    loadData();
 
-  function updateQty(productId: string, qty: number) {
-    setCatalog((prev) =>
-      prev.map((item) =>
-        item.productId === productId
-          ? { ...item, qty: Math.max(0, qty || 0) }
-          : item
-      )
-    );
-  }
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
-  function incrementQty(productId: string, amount = 1) {
-    setCatalog((prev) =>
-      prev.map((item) =>
-        item.productId === productId
-          ? { ...item, qty: item.qty + amount }
-          : item
-      )
-    );
-  }
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
 
-  function decrementQty(productId: string, amount = 1) {
-    setCatalog((prev) =>
-      prev.map((item) =>
-        item.productId === productId
-          ? { ...item, qty: Math.max(0, item.qty - amount) }
-          : item
-      )
-    );
-  }
+    return products.filter((product) => {
+      if (!q) return true;
 
-  function clearAll() {
-    setCatalog((prev) => prev.map((item) => ({ ...item, qty: 0 })));
-  }
-
-  const categories = useMemo(() => {
-    return Array.from(
-      new Set(products.map((p) => p.category).filter(Boolean))
-    ).sort() as string[];
-  }, [products]);
-
-  const itemsWithProduct = useMemo(() => {
-    return catalog.map((item) => {
-      const product = products.find((p) => p.id === item.productId);
-      return {
-        ...item,
-        product,
-        subtotalCents: item.qty * item.unitCents,
-      };
+      return (
+        String(product.name ?? "").toLowerCase().includes(q) ||
+        String(product.sku ?? "").toLowerCase().includes(q) ||
+        String(product.category ?? "").toLowerCase().includes(q)
+      );
     });
-  }, [catalog, products]);
-
-  const visibleItems = useMemo(() => {
-    return itemsWithProduct.filter((item) => {
-      const product = item.product;
-      if (!product) return false;
-
-      const matchesSearch =
-        !search ||
-        product.name.toLowerCase().includes(search.toLowerCase()) ||
-        product.sku.toLowerCase().includes(search.toLowerCase());
-
-      const matchesCategory =
-        !categoryFilter || product.category === categoryFilter;
-
-      return matchesSearch && matchesCategory;
-    });
-  }, [itemsWithProduct, search, categoryFilter]);
-
-  const visibleGroupedItems = useMemo(() => {
-    const ordered = [...visibleItems].sort((a, b) => {
-      const categoryA = (a.product?.category || "").trim();
-      const categoryB = (b.product?.category || "").trim();
-
-      const categoryCompare = categoryA.localeCompare(categoryB, "pt-BR");
-      if (categoryCompare !== 0) return categoryCompare;
-
-      return compareSku(a.product?.sku || "", b.product?.sku || "");
-    });
-
-    const groups = ordered.reduce<Record<string, typeof ordered>>((acc, item) => {
-      const categoryName = item.product?.category?.trim() || "Sem categoria";
-
-      if (!acc[categoryName]) {
-        acc[categoryName] = [];
-      }
-
-      acc[categoryName].push(item);
-      return acc;
-    }, {});
-
-    return Object.entries(groups);
-  }, [visibleItems]);
+  }, [products, search]);
 
   const selectedItems = useMemo(() => {
-    return itemsWithProduct.filter((item) => item.qty > 0);
-  }, [itemsWithProduct]);
+    return products
+      .map((product) => ({
+        product,
+        qty: catalog[product.id] ?? 0,
+      }))
+      .filter((item) => item.qty > 0);
+  }, [products, catalog]);
 
-  const selectedItemsCount = useMemo(() => {
-    return selectedItems.length;
+  const subtotalCents = useMemo(() => {
+    return selectedItems.reduce((sum, item) => {
+      return sum + item.qty * Number(item.product.priceCents || 0);
+    }, 0);
   }, [selectedItems]);
 
-  const totalQuantity = useMemo(() => {
-    return selectedItems.reduce((acc, item) => acc + item.qty, 0);
-  }, [selectedItems]);
+  function changeQty(productId: string, delta: number) {
+    setCatalog((prev) => {
+      const nextQty = Math.max(0, (prev[productId] ?? 0) + delta);
+      return {
+        ...prev,
+        [productId]: nextQty,
+      };
+    });
+  }
 
-  async function save() {
-    const validItems = itemsWithProduct
-      .filter((i) => i.qty > 0)
-      .map((i) => ({
-        productId: i.productId,
-        quantity: i.qty,
-      }));
-
-    if (validItems.length === 0) {
-      alert("Informe a quantidade de pelo menos um produto.");
-      return;
-    }
-
-    setSaving(true);
-    setSuccess(null);
-
+  async function handleSubmit() {
     try {
+      if (selectedItems.length === 0) {
+        setError("Selecione ao menos um produto.");
+        return;
+      }
+
+      setSending(true);
+      setError(null);
+      setOk(null);
+
       const res = await fetch("/api/portal/order-request", {
         method: "POST",
         headers: {
@@ -414,22 +311,37 @@ export default function PortalOrderRequestPage() {
         },
         body: JSON.stringify({
           notes,
-          items: validItems,
+          items: selectedItems.map((item) => ({
+            productId: item.product.id,
+            quantity: item.qty,
+          })),
         }),
       });
 
+      const json = await res.json().catch(() => null);
+
       if (!res.ok) {
-        const txt = await res.text();
-        alert(`Erro ao enviar solicitação: ${txt}`);
-        return;
+        throw new Error(json?.error || "Erro ao enviar solicitação de pedido.");
       }
 
-      setCatalog((prev) => prev.map((item) => ({ ...item, qty: 0 })));
+      setCatalog({});
       setNotes("");
-      setSuccess("Solicitação enviada com sucesso.");
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      setOk("Solicitação enviada com sucesso.");
+
+      const historyRes = await fetch("/api/portal/order-request", {
+        cache: "no-store",
+      });
+      const historyJson = await historyRes.json().catch(() => null);
+
+      if (historyRes.ok) {
+        setRequests(Array.isArray(historyJson?.requests) ? historyJson.requests : []);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Erro ao enviar solicitação de pedido."
+      );
     } finally {
-      setSaving(false);
+      setSending(false);
     }
   }
 
@@ -437,16 +349,16 @@ export default function PortalOrderRequestPage() {
     return (
       <div
         style={{
-          minHeight: "40vh",
+          minHeight: "100vh",
+          background: colors.pageBg,
+          color: colors.text,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#f3f6fb",
-          color: "#111827",
           fontWeight: 700,
         }}
       >
-        Carregando...
+        Carregando catálogo...
       </div>
     );
   }
@@ -454,531 +366,437 @@ export default function PortalOrderRequestPage() {
   return (
     <div
       style={{
-        background: "#f3f6fb",
-        color: "#111827",
-        minHeight: "100%",
-        padding: 28,
+        minHeight: "100vh",
+        background: colors.pageBg,
+        color: colors.text,
+        padding: 24,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 22,
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: "#64748b",
-              marginBottom: 10,
-            }}
-          >
-            🏠 / Portal do Cliente / Solicitar pedido
-          </div>
-
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 900,
-              color: "#111827",
-            }}
-          >
-            Solicitar Pedido
-          </div>
-
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 13,
-              color: "#64748b",
-            }}
-          >
-            Monte sua solicitação por catálogo. Este lançamento não gera venda
-            direta, apenas um pedido pendente para o representante.
-          </div>
-        </div>
-
+      <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gap: 18 }}>
         <div
           style={{
             display: "flex",
-            gap: 10,
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 16,
             flexWrap: "wrap",
           }}
         >
-          <ActionButton
-            label="Voltar"
-            onClick={() => router.push("/portal/dashboard")}
-          />
-          <ActionButton
-            label={saving ? "Enviando..." : "Enviar solicitação"}
-            onClick={save}
-          />
-        </div>
-      </div>
-
-      {success ? (
-        <div
-          style={{
-            marginBottom: 18,
-            border: "1px solid #86efac",
-            background: "#f0fdf4",
-            color: "#166534",
-            borderRadius: 14,
-            padding: 16,
-            fontWeight: 700,
-          }}
-        >
-          {success}
-        </div>
-      ) : null}
-
-      {errorMessage ? (
-        <div
-          style={{
-            marginBottom: 18,
-            border: "1px solid #fdba74",
-            background: "#fff7ed",
-            color: "#9a3412",
-            borderRadius: 14,
-            padding: 16,
-            fontWeight: 700,
-          }}
-        >
-          {errorMessage}
-        </div>
-      ) : null}
-
-      <div style={{ display: "grid", gap: 18 }}>
-        <Card
-          title="Catálogo de Produtos"
-          right={
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar produto..."
-                style={{ ...input(), width: 220 }}
-              />
-
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                style={{ ...input(), width: 180 }}
-              >
-                <option value="">Todas categorias</option>
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-
-              <button onClick={clearAll} style={btnSecondary()} type="button">
-                Limpar quantidades
-              </button>
-            </div>
-          }
-        >
-          {visibleGroupedItems.length === 0 ? (
-            <div style={{ color: "#64748b" }}>Nenhum produto encontrado.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 18 }}>
-              {visibleGroupedItems.map(([categoryName, categoryItems]) => (
-                <div
-                  key={categoryName}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 14,
-                    overflow: "hidden",
-                    background: "#f8fafc",
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: "14px 16px",
-                      borderBottom: "1px solid #e5e7eb",
-                      background: "#f8fafc",
-                      fontWeight: 800,
-                      color: "#111827",
-                      fontSize: 16,
-                    }}
-                  >
-                    {categoryName}
-                  </div>
-
-                  <div
-                    style={{
-                      padding: 16,
-                      display: "grid",
-                      gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-                      gap: 14,
-                    }}
-                  >
-                    {categoryItems.map((item) => (
-                      <div
-                        key={item.productId}
-                        style={{
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 14,
-                          padding: 14,
-                          background: "#ffffff",
-                          minWidth: 0,
-                        }}
-                      >
-                        <div
-                          style={{
-                            height: 220,
-                            borderRadius: 12,
-                            background: "#ffffff",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            marginBottom: 14,
-                            overflow: "hidden",
-                            border: "1px solid #e5e7eb",
-                          }}
-                        >
-                          <ProductImage
-                            sku={item.product?.sku ?? ""}
-                            name={item.product?.name ?? ""}
-                            alt={item.product?.name ?? "Produto"}
-                          />
-                        </div>
-
-                        <div
-                          style={{
-                            fontWeight: 900,
-                            fontSize: 16,
-                            color: "#111827",
-                            lineHeight: 1.35,
-                            minHeight: 44,
-                          }}
-                        >
-                          {item.product?.name ?? "Produto"}
-                        </div>
-
-                        <div style={{ color: "#64748b", marginTop: 6, fontSize: 12 }}>
-                          SKU: {item.product?.sku ?? "-"}
-                        </div>
-
-                        <div style={{ color: "#64748b", marginTop: 2, fontSize: 12 }}>
-                          Categoria: {item.product?.category ?? "-"}
-                        </div>
-
-                        <div
-                          style={{
-                            marginTop: 10,
-                            fontSize: 12,
-                            lineHeight: 1.55,
-                            color: "#64748b",
-                            minHeight: 74,
-                            display: "-webkit-box",
-                            WebkitLineClamp: 4,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {getProductDescription(item.product)}
-                        </div>
-
-                        <div
-                          style={{
-                            marginTop: 10,
-                            fontSize: 18,
-                            fontWeight: 900,
-                            color: "#111827",
-                          }}
-                        >
-                          {money(item.unitCents)}
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            marginTop: 14,
-                          }}
-                        >
-                          <button
-                            onClick={() => decrementQty(item.productId, 1)}
-                            style={qtyBtn()}
-                            type="button"
-                          >
-                            -
-                          </button>
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.qty}
-                            onChange={(e) =>
-                              updateQty(item.productId, Number(e.target.value))
-                            }
-                            style={{ ...input(), textAlign: "center", padding: "0 8px" }}
-                          />
-
-                          <button
-                            onClick={() => incrementQty(item.productId, 1)}
-                            style={qtyBtn()}
-                            type="button"
-                          >
-                            +
-                          </button>
-                        </div>
-
-                        <div style={{ marginTop: 12, color: "#64748b", fontSize: 12 }}>
-                          Subtotal:{" "}
-                          <b style={{ color: "#111827" }}>{money(item.subtotalCents)}</b>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card title="Resumo da solicitação">
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
-            <div>
-              <div style={{ color: "#64748b" }}>Produtos selecionados</div>
-              <div
-                style={{
-                  fontSize: 24,
-                  fontWeight: 900,
-                  marginTop: 6,
-                  color: "#111827",
-                }}
-              >
-                {selectedItemsCount}
-              </div>
-            </div>
-
-            <div>
-              <div style={{ color: "#64748b" }}>Quantidade total</div>
-              <div
-                style={{
-                  fontSize: 24,
-                  fontWeight: 900,
-                  marginTop: 6,
-                  color: "#111827",
-                }}
-              >
-                {totalQuantity}
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 14,
-              overflow: "hidden",
-              marginBottom: 16,
-            }}
-          >
+          <div>
             <div
               style={{
-                padding: "12px 14px",
-                borderBottom: "1px solid #e5e7eb",
-                background: "#f8fafc",
-                fontWeight: 800,
-                color: "#111827",
-                fontSize: 15,
+                fontSize: 14,
+                fontWeight: 700,
+                color: colors.subtext,
+                marginBottom: 10,
               }}
             >
-              Itens escolhidos
+              🏠 / Portal do Cliente / Solicitar pedido
             </div>
 
-            {selectedItems.length === 0 ? (
-              <div
-                style={{
-                  padding: 14,
-                  color: "#64748b",
-                }}
-              >
-                Nenhum produto selecionado ainda.
-              </div>
-            ) : (
-              <div style={{ display: "grid" }}>
-                {selectedItems.map((item) => (
-                  <div
-                    key={item.productId}
-                    style={{
-                      padding: 14,
-                      borderTop: "1px solid #e5e7eb",
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) 80px",
-                      gap: 10,
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 800,
-                          color: "#111827",
-                          fontSize: 14,
-                        }}
-                      >
-                        {item.product?.name ?? "Produto"}
-                      </div>
-                      <div
-                        style={{
-                          color: "#64748b",
-                          fontSize: 12,
-                          marginTop: 4,
-                        }}
-                      >
-                        SKU: {item.product?.sku ?? "-"}
-                      </div>
-                    </div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: colors.text,
+              }}
+            >
+              Solicitar pedido
+            </div>
 
-                    <div
-                      style={{
-                        textAlign: "right",
-                        fontWeight: 900,
-                        color: "#2563eb",
-                      }}
-                    >
-                      x{item.qty}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 13,
+                color: colors.subtext,
+              }}
+            >
+              Escolha os produtos, ajuste a quantidade e envie sua solicitação.
+            </div>
           </div>
 
-          <div>
-            <label style={label()}>Observações</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Escreva aqui alguma observação para o representante."
-              rows={5}
-              style={textarea()}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <ActionButton
+              label="Voltar ao portal"
+              onClick={() => router.push("/portal/dashboard")}
+            />
+            <ActionButton
+              label={sending ? "Enviando..." : "Enviar solicitação"}
+              primary
+              disabled={sending || selectedItems.length === 0}
+              onClick={handleSubmit}
             />
           </div>
-        </Card>
+        </div>
+
+        {error ? (
+          <div
+            style={{
+              borderRadius: 14,
+              border: "1px solid #ef4444",
+              background: colors.isDark ? "rgba(127,29,29,0.18)" : "#fff1f2",
+              color: "#ef4444",
+              padding: 14,
+              fontSize: 14,
+              fontWeight: 700,
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+
+        {ok ? (
+          <div
+            style={{
+              borderRadius: 14,
+              border: "1px solid #22c55e",
+              background: colors.isDark ? "rgba(21,128,61,0.18)" : "#f0fdf4",
+              color: "#16a34a",
+              padding: 14,
+              fontSize: 14,
+              fontWeight: 700,
+            }}
+          >
+            {ok}
+          </div>
+        ) : null}
 
         <div
           style={{
-            display: "flex",
-            gap: 10,
-            justifyContent: "flex-end",
-            flexWrap: "wrap",
+            display: "grid",
+            gridTemplateColumns: "minmax(0,1fr) 340px",
+            gap: 18,
           }}
         >
-          <button
-            onClick={() => router.push("/portal/dashboard")}
-            style={btnSecondary()}
-            type="button"
-          >
-            Cancelar
-          </button>
+          <div style={{ display: "grid", gap: 18 }}>
+            <Card
+              title="Catálogo"
+              right={
+                <div
+                  style={{
+                    minWidth: 220,
+                    height: 42,
+                    borderRadius: 12,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.cardBg,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 12px",
+                  }}
+                >
+                  <Search size={16} color={colors.subtext} />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar produto, SKU ou categoria"
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      color: colors.text,
+                      fontSize: 14,
+                    }}
+                  />
+                </div>
+              }
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: 14,
+                }}
+              >
+                {filteredProducts.map((product) => {
+                  const qty = catalog[product.id] ?? 0;
 
-          <button
-            onClick={save}
-            style={btnPrimary()}
-            disabled={saving}
-            type="button"
-          >
-            {saving ? "Enviando..." : "Enviar solicitação"}
-          </button>
+                  return (
+                    <div
+                      key={product.id}
+                      style={{
+                        borderRadius: 16,
+                        border: `1px solid ${colors.border}`,
+                        background: colors.isDark ? "#111827" : "#f8fafc",
+                        overflow: "hidden",
+                        display: "grid",
+                      }}
+                    >
+                      <div
+                        style={{
+                          aspectRatio: "1 / 1",
+                          background: colors.isDark ? "#0f172a" : "#eef2ff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {product.imageUrl ? (
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "contain",
+                              display: "block",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: colors.subtext,
+                              textAlign: "center",
+                              padding: 16,
+                            }}
+                          >
+                            Sem imagem
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ padding: 14 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: colors.subtext,
+                            marginBottom: 6,
+                          }}
+                        >
+                          {product.sku}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 900,
+                            color: colors.text,
+                            lineHeight: 1.35,
+                            minHeight: 38,
+                          }}
+                        >
+                          {product.name}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 6,
+                            fontSize: 12,
+                            color: colors.subtext,
+                          }}
+                        >
+                          {product.category || "Sem categoria"}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 8,
+                            fontSize: 15,
+                            fontWeight: 900,
+                            color: colors.primary,
+                          }}
+                        >
+                          {money(Number(product.priceCents || 0))}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 12,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => changeQty(product.id, -1)}
+                            style={{
+                              width: 38,
+                              height: 38,
+                              borderRadius: 12,
+                              border: `1px solid ${colors.border}`,
+                              background: colors.cardBg,
+                              color: colors.text,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <Minus size={16} />
+                          </button>
+
+                          <div
+                            style={{
+                              minWidth: 44,
+                              textAlign: "center",
+                              fontSize: 16,
+                              fontWeight: 900,
+                              color: colors.text,
+                            }}
+                          >
+                            {qty}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => changeQty(product.id, 1)}
+                            style={{
+                              width: 38,
+                              height: 38,
+                              borderRadius: 12,
+                              border: "none",
+                              background: "#2563eb",
+                              color: "#ffffff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+
+          <div style={{ display: "grid", gap: 18 }}>
+            <Card title="Resumo da solicitação">
+              {selectedItems.length === 0 ? (
+                <div style={{ fontSize: 13, color: colors.subtext }}>
+                  Nenhum produto selecionado.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {selectedItems.map((item) => (
+                    <div
+                      key={item.product.id}
+                      style={{
+                        borderRadius: 14,
+                        border: `1px solid ${colors.border}`,
+                        background: colors.isDark ? "#111827" : "#f8fafc",
+                        padding: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          color: colors.text,
+                        }}
+                      >
+                        {item.product.name}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: colors.subtext,
+                        }}
+                      >
+                        {item.product.sku} • {item.qty} un.
+                      </div>
+                    </div>
+                  ))}
+
+                  <div
+                    style={{
+                      paddingTop: 6,
+                      fontSize: 16,
+                      fontWeight: 900,
+                      color: colors.text,
+                    }}
+                  >
+                    Total estimado: {money(subtotalCents)}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 16 }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    marginBottom: 8,
+                    color: colors.text,
+                  }}
+                >
+                  Observações
+                </label>
+
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={5}
+                  placeholder="Informações adicionais sobre a solicitação"
+                  style={{
+                    width: "100%",
+                    padding: 12,
+                    borderRadius: 12,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.cardBg,
+                    color: colors.text,
+                    outline: "none",
+                    resize: "vertical",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+            </Card>
+
+            <Card title="Solicitações recentes">
+              {requests.length === 0 ? (
+                <div style={{ fontSize: 13, color: colors.subtext }}>
+                  Nenhuma solicitação encontrada.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {requests.slice(0, 5).map((request) => (
+                    <div
+                      key={request.id}
+                      style={{
+                        borderRadius: 14,
+                        border: `1px solid ${colors.border}`,
+                        background: colors.isDark ? "#111827" : "#f8fafc",
+                        padding: 12,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          color: colors.text,
+                        }}
+                      >
+                        {statusLabel(request.status)}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: colors.subtext,
+                        }}
+                      >
+                        {dateBR(request.createdAt)} • {money(request.subtotalCents)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
         </div>
       </div>
     </div>
   );
-}
-
-function label(): React.CSSProperties {
-  return {
-    display: "block",
-    marginBottom: 8,
-    fontWeight: 700,
-    color: "#111827",
-    fontSize: 14,
-  };
-}
-
-function input(): React.CSSProperties {
-  return {
-    width: "100%",
-    height: 44,
-    padding: "0 12px",
-    borderRadius: 10,
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    color: "#111827",
-    outline: "none",
-    fontSize: 14,
-  };
-}
-
-function textarea(): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: 12,
-    borderRadius: 10,
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    color: "#111827",
-    outline: "none",
-    fontSize: 14,
-    resize: "vertical",
-  };
-}
-
-function btnPrimary(): React.CSSProperties {
-  return {
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "none",
-    background: "#2563eb",
-    color: "white",
-    cursor: "pointer",
-    fontWeight: 800,
-  };
-}
-
-function btnSecondary(): React.CSSProperties {
-  return {
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    color: "#111827",
-    cursor: "pointer",
-    fontWeight: 700,
-  };
-}
-
-function qtyBtn(): React.CSSProperties {
-  return {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    color: "#111827",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 18,
-    flexShrink: 0,
-  };
 }

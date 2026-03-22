@@ -42,6 +42,10 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { theme } = useTheme();
 
+  if (pathname.startsWith("/m/")) {
+    return null;
+  }
+
   const dark = theme === "dark";
 
   const [user, setUser] = useState<LoggedUser | null>(null);

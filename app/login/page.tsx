@@ -24,6 +24,13 @@ function LoginPageContent() {
     const value = searchParams.get("redirect")?.trim();
     if (!value) return null;
     if (!value.startsWith("/")) return null;
+
+    const blockedRedirects = ["/login", "/portal/login", "/investor/login"];
+
+    if (blockedRedirects.includes(value)) {
+      return null;
+    }
+
     return value;
   }, [searchParams]);
 
@@ -168,6 +175,12 @@ function LoginPageContent() {
           setError(null);
           setIdentifier("");
           setPassword("");
+
+          const params = new URLSearchParams(searchParams.toString());
+          params.set("access", value);
+          params.delete("redirect");
+
+          router.replace(`/login?${params.toString()}`);
         }}
         style={{
           height: 40,

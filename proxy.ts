@@ -88,7 +88,7 @@ export function proxy(req: NextRequest) {
   }
 
   if (isPortalLoginPage && portalSession) {
-    return NextResponse.redirect(new URL("/portal/dashboard", req.url));
+    return NextResponse.redirect(new URL("/portal", req.url));
   }
 
   if (isInvestorLoginPage && investorSession) {

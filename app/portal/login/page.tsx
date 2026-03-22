@@ -16,6 +16,8 @@ export default function PortalLoginPage({
 
   if (searchParams?.redirect?.startsWith("/")) {
     params.set("redirect", searchParams.redirect);
+  } else {
+    params.set("redirect", "/portal");
   }
 
   if (searchParams?.m === "1") {

@@ -86,8 +86,8 @@ export default function MobileAdminClientsPage() {
         const items = Array.isArray(json)
           ? json
           : Array.isArray(json?.items)
-          ? json.items
-          : [];
+            ? json.items
+            : [];
 
         if (active) {
           setClients(items);
@@ -314,8 +314,8 @@ export default function MobileAdminClientsPage() {
                                 ? "#2a1313"
                                 : "#fee2e2"
                               : colors.isDark
-                              ? "#0f2a17"
-                              : "#dcfce7",
+                                ? "#0f2a17"
+                                : "#dcfce7",
                           color: client.active === false ? "#ef4444" : "#16a34a",
                         }}
                       >
@@ -350,7 +350,10 @@ export default function MobileAdminClientsPage() {
                         gap: 8,
                       }}
                     >
-                      <Link href="/clients" style={{ textDecoration: "none" }}>
+                      <Link
+                        href={`/m/admin/clients/${client.id}`}
+                        style={{ textDecoration: "none" }}
+                      >
                         <div
                           style={{
                             minHeight: 42,

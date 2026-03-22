@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 export const size = {
   width: 512,
@@ -8,9 +10,9 @@ export const size = {
 export const contentType = "image/png";
 
 export default async function Icon() {
-  const logo = await fetch(
-    new URL("../public/logo_branca.svg", import.meta.url)
-  ).then((res) => res.arrayBuffer());
+  const logoPath = path.join(process.cwd(), "public", "logo_branca.svg");
+  const logo = await fs.readFile(logoPath, "utf8");
+  const logoBase64 = Buffer.from(logo).toString("base64");
 
   return new ImageResponse(
     (
@@ -25,13 +27,12 @@ export default async function Icon() {
         }}
       >
         <img
-          src={`data:image/svg+xml;base64,${Buffer.from(logo).toString(
-            "base64"
-          )}`}
+          src={`data:image/svg+xml;base64,${logoBase64}`}
           style={{
             width: 300,
             height: 300,
           }}
+          alt="V2"
         />
       </div>
     ),

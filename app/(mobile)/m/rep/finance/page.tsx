@@ -7,7 +7,6 @@ import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import {
   MobileCard,
   MobileSectionTitle,
-  MobileStatCard,
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
@@ -94,6 +93,7 @@ function Shortcut({
                 fontWeight: 900,
                 color: colors.text,
                 lineHeight: 1.2,
+                wordBreak: "break-word",
               }}
             >
               {title}
@@ -105,6 +105,7 @@ function Shortcut({
                 fontSize: 12,
                 color: colors.subtext,
                 lineHeight: 1.45,
+                wordBreak: "break-word",
               }}
             >
               {subtitle}
@@ -115,6 +116,62 @@ function Shortcut({
         </div>
       </MobileCard>
     </Link>
+  );
+}
+
+function FinanceMetricCard({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
+
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        borderRadius: 18,
+        border: `1px solid ${highlight ? colors.primary : colors.border}`,
+        background: colors.cardBg,
+        padding: 14,
+        boxShadow: colors.isDark
+          ? "0 10px 24px rgba(2,6,23,0.22)"
+          : "0 10px 24px rgba(15,23,42,0.05)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: colors.subtext,
+          marginBottom: 8,
+          lineHeight: 1.35,
+          wordBreak: "break-word",
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          minWidth: 0,
+          fontSize: "clamp(16px, 4vw, 22px)",
+          lineHeight: 1.15,
+          fontWeight: 900,
+          color: highlight ? colors.primary : colors.text,
+          letterSpacing: -0.3,
+          wordBreak: "break-word",
+          overflowWrap: "anywhere",
+        }}
+      >
+        {value}
+      </div>
+    </div>
   );
 }
 
@@ -186,20 +243,25 @@ export default function RepFinancePage() {
 
   const receivablesSummary = useMemo(() => {
     const now = new Date();
+
     return (receivables?.items ?? []).reduce(
       (acc, item) => {
-        const value = item.amountCents ?? 0;
+        const value = Number(item.amountCents || 0);
         const status = String(item.status ?? "").toUpperCase();
         const isPaid = status.includes("PAID");
         const dueDate = item.dueDate ? new Date(item.dueDate) : null;
-        const overdue = !isPaid && dueDate && dueDate.getTime() < now.getTime();
+        const isOverdue =
+          !isPaid && !!dueDate && dueDate.getTime() < now.getTime();
 
-        if (isPaid) acc.paid += value;
-        else acc.open += value;
-        if (overdue) acc.overdue += value;
+        if (!isPaid && isOverdue) {
+          acc.overdue += value;
+        } else if (!isPaid) {
+          acc.open += value;
+        }
+
         return acc;
       },
-      { open: 0, overdue: 0, paid: 0 }
+      { open: 0, overdue: 0 }
     );
   }, [receivables]);
 
@@ -237,23 +299,24 @@ export default function RepFinancePage() {
                 gap: 12,
               }}
             >
-              <MobileStatCard
+              <FinanceMetricCard
                 label="Total gerado"
                 value={formatMoneyBR(commissions?.summary?.total ?? 0)}
               />
-              <MobileStatCard
+              <FinanceMetricCard
                 label="Aguardando pagamento"
                 value={formatMoneyBR(commissions?.summary?.awaitingPayment ?? 0)}
               />
-              <MobileStatCard
+              <FinanceMetricCard
                 label="Aguardando repasse"
                 value={formatMoneyBR(
                   commissions?.summary?.awaitingTransfer ?? 0
                 )}
               />
-              <MobileStatCard
+              <FinanceMetricCard
                 label="Disponível"
                 value={formatMoneyBR(commissions?.summary?.available ?? 0)}
+                highlight
               />
             </div>
           </MobileCard>
@@ -263,21 +326,17 @@ export default function RepFinancePage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0,1fr))",
+                gridTemplateColumns: "repeat(2, minmax(0,1fr))",
                 gap: 12,
               }}
             >
-              <MobileStatCard
+              <FinanceMetricCard
                 label="Em aberto"
                 value={formatMoneyBR(receivablesSummary.open)}
               />
-              <MobileStatCard
+              <FinanceMetricCard
                 label="Em atraso"
                 value={formatMoneyBR(receivablesSummary.overdue)}
-              />
-              <MobileStatCard
-                label="Já pagas"
-                value={formatMoneyBR(receivablesSummary.paid)}
               />
             </div>
           </MobileCard>
@@ -291,11 +350,11 @@ export default function RepFinancePage() {
                 gap: 12,
               }}
             >
-              <MobileStatCard
+              <FinanceMetricCard
                 label="Pendentes"
                 value={formatMoneyBR(transfersSummary.pending)}
               />
-              <MobileStatCard
+              <FinanceMetricCard
                 label="Realizados"
                 value={formatMoneyBR(transfersSummary.done)}
               />
@@ -314,7 +373,7 @@ export default function RepFinancePage() {
               <Shortcut
                 href="/m/rep/finance/receivables"
                 title="Contas a receber"
-                subtitle="Ver o que foi pago, aberto e atrasado"
+                subtitle="Ver o que está em aberto e em atraso"
                 icon={<Receipt size={18} />}
               />
               <Shortcut

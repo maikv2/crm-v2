@@ -27,16 +27,19 @@ export default function MobileRepNewClientPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [personType, setPersonType] = useState<"JURIDICA" | "FISICA">(
-    "JURIDICA"
-  );
+  const [personType, setPersonType] = useState<"JURIDICA" | "FISICA">("JURIDICA");
   const [tradeName, setTradeName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [name, setName] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [cpf, setCpf] = useState("");
+
   const [billingEmail, setBillingEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [phone, setPhone] = useState("");
+  const [stateRegistration, setStateRegistration] = useState("");
+  const [contactName, setContactName] = useState("");
+
   const [cep, setCep] = useState("");
   const [street, setStreet] = useState("");
   const [number, setNumber] = useState("");
@@ -44,6 +47,7 @@ export default function MobileRepNewClientPage() {
   const [city, setCity] = useState("");
   const [stateValue, setStateValue] = useState("");
   const [complement, setComplement] = useState("");
+
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -58,12 +62,12 @@ export default function MobileRepNewClientPage() {
         const json = (await res.json().catch(() => null)) as AuthResponse | null;
 
         if (res.status === 401) {
-          router.push("/login?redirect=/m/rep/clients/new");
+          router.push("/login?redirect=/m/client/new");
           return;
         }
 
         if (json?.user?.role !== "REPRESENTATIVE") {
-          router.push("/m/rep");
+          router.push("/m/client");
           return;
         }
 
@@ -103,6 +107,9 @@ export default function MobileRepNewClientPage() {
           cpf: cpf.trim() || null,
           billingEmail: billingEmail.trim() || null,
           whatsapp: whatsapp.trim() || null,
+          phone: phone.trim() || null,
+          stateRegistration: stateRegistration.trim() || null,
+          contactName: contactName.trim() || null,
           cep: cep.trim() || null,
           street: street.trim() || null,
           number: number.trim() || null,
@@ -123,7 +130,7 @@ export default function MobileRepNewClientPage() {
         throw new Error(json?.error || "Erro ao salvar cliente.");
       }
 
-      router.push("/m/rep/clients");
+      router.push("/m/client");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao salvar cliente.");
@@ -229,6 +236,27 @@ export default function MobileRepNewClientPage() {
                 value={whatsapp}
                 onChange={(e) => setWhatsapp(e.target.value)}
                 placeholder="WhatsApp"
+                style={inputStyle}
+              />
+
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Telefone"
+                style={inputStyle}
+              />
+
+              <input
+                value={stateRegistration}
+                onChange={(e) => setStateRegistration(e.target.value)}
+                placeholder="Inscrição estadual"
+                style={inputStyle}
+              />
+
+              <input
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Contato responsável"
                 style={inputStyle}
               />
             </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 import MobileClientPageFrame from "@/app/components/mobile/mobile-client-page-frame";
@@ -95,7 +96,7 @@ export default function MobileClientOrdersPage() {
   return (
     <MobileClientPageFrame
       title="Meus pedidos"
-      subtitle="Lista simplificada com PDF"
+      subtitle="Lista simplificada com detalhes e PDF"
       desktopHref="/portal/orders"
     >
       {loading ? (
@@ -132,29 +133,47 @@ export default function MobileClientOrdersPage() {
                       padding: 14,
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 15,
-                        fontWeight: 900,
-                        color: colors.text,
-                      }}
+                    <Link
+                      href={`/m/client/orders/${order.id}`}
+                      style={{ textDecoration: "none" }}
                     >
-                      Pedido #{order.number}
-                    </div>
+                      <div style={{ display: "grid", gap: 10 }}>
+                        <div
+                          style={{
+                            fontSize: 15,
+                            fontWeight: 900,
+                            color: colors.text,
+                          }}
+                        >
+                          Pedido #{order.number}
+                        </div>
 
-                    <div
-                      style={{
-                        marginTop: 6,
-                        fontSize: 12,
-                        color: colors.subtext,
-                        display: "grid",
-                        gap: 4,
-                      }}
-                    >
-                      <div>{dateBR(order.issuedAt)}</div>
-                      <div>{statusLabel(order.status)}</div>
-                      <div>{money(order.totalCents)}</div>
-                    </div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: colors.subtext,
+                            display: "grid",
+                            gap: 4,
+                          }}
+                        >
+                          <div>{dateBR(order.issuedAt)}</div>
+                          <div>{statusLabel(order.status)}</div>
+                          <div>{money(order.totalCents)}</div>
+                        </div>
+
+                        <div
+                          style={{
+                            paddingTop: 8,
+                            borderTop: `1px solid ${colors.border}`,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: colors.primary,
+                          }}
+                        >
+                          Abrir detalhes
+                        </div>
+                      </div>
+                    </Link>
 
                     <a
                       href={`/api/orders/${order.id}/pdf`}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import {
   MobileCard,
@@ -36,6 +36,15 @@ function centsToMask(cents: number) {
   });
 }
 
+function isPendingStatus(status?: string | null) {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  return (
+    normalized.includes("PENDING") ||
+    normalized.includes("PENDENTE") ||
+    normalized.includes("AGUARDANDO")
+  );
+}
+
 export default function RepFinanceTransfersPage() {
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
@@ -51,10 +60,10 @@ export default function RepFinanceTransfersPage() {
     const res = await fetch("/api/rep/finance/transfers", {
       cache: "no-store",
     });
-    const json = await res.json().catch(() => null);
+    const json = (await res.json().catch(() => null)) as ResponseShape | null;
 
     if (!res.ok) {
-      throw new Error(json?.error || "Erro ao carregar repasses.");
+      throw new Error((json as any)?.error || "Erro ao carregar repasses.");
     }
 
     setItems(Array.isArray(json?.items) ? json.items : []);
@@ -85,6 +94,15 @@ export default function RepFinanceTransfersPage() {
       active = false;
     };
   }, []);
+
+  const pendingTotalCents = useMemo(() => {
+    return items.reduce((sum, item) => {
+      if (isPendingStatus(item.status)) {
+        return sum + Number(item.amountCents || 0);
+      }
+      return sum;
+    }, 0);
+  }, [items]);
 
   async function handleSave() {
     try {
@@ -137,6 +155,38 @@ export default function RepFinanceTransfersPage() {
         <MobileCard>Carregando repasses...</MobileCard>
       ) : (
         <>
+          <MobileCard
+            style={{
+              background: colors.isDark
+                ? "linear-gradient(135deg,#0f172a 0%, #1d4ed8 100%)"
+                : "linear-gradient(135deg,#ffffff 0%, #dbeafe 100%)",
+            }}
+          >
+            <MobileSectionTitle title="Total pendente de repasse" />
+            <div
+              style={{
+                fontSize: "clamp(22px, 6vw, 30px)",
+                fontWeight: 900,
+                color: colors.text,
+                lineHeight: 1.1,
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {formatMoneyBR(pendingTotalCents)}
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                color: colors.subtext,
+                lineHeight: 1.45,
+              }}
+            >
+              Soma de todos os repasses com status pendente.
+            </div>
+          </MobileCard>
+
           <MobileCard>
             <MobileSectionTitle title="Novo repasse" />
 

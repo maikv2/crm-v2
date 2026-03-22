@@ -76,6 +76,20 @@ function getPaymentStatusLabel(value?: string | null) {
   return map[value] || value;
 }
 
+function getPaymentMethodLabel(value?: string | null) {
+  if (!value) return "Pagamento não informado";
+
+  const map: Record<string, string> = {
+    CASH: "Dinheiro",
+    PIX: "Pix",
+    BOLETO: "Boleto",
+    CARD_DEBIT: "Cartão débito",
+    CARD_CREDIT: "Cartão crédito",
+  };
+
+  return map[value] || value;
+}
+
 export default function RepOrdersMobile() {
   const router = useRouter();
   const { theme } = useTheme();
@@ -346,7 +360,10 @@ export default function RepOrdersMobile() {
         ) : (
           filtered.map((order, index) => (
             <MobileAppear key={order.id} delay={Math.min(index * 35, 180)}>
-              <Link href="/m/rep/orders" style={{ textDecoration: "none" }}>
+              <Link
+                href={`/m/rep/orders/${order.id}`}
+                style={{ textDecoration: "none" }}
+              >
                 <MobileCard style={{ padding: 14 }}>
                   <div style={{ display: "grid", gap: 12 }}>
                     <div
@@ -442,7 +459,7 @@ export default function RepOrdersMobile() {
 
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <Wallet size={14} />
-                        {order.paymentMethod || "Pagamento não informado"}
+                        {getPaymentMethodLabel(order.paymentMethod)}
                       </div>
                     </div>
 

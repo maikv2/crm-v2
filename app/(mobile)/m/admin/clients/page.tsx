@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, MapPin, Phone, Search, Users } from "lucide-react";
-import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
+import MobilePageFrame from "@/app/components/mobile/mobile-page-frame";
 import {
   MobileCard,
   MobileSectionTitle,
@@ -14,10 +14,13 @@ import { getThemeColors } from "@/lib/theme";
 type ClientItem = {
   id: string;
   name?: string | null;
+  legalName?: string | null;
+  tradeName?: string | null;
   fantasyName?: string | null;
   city?: string | null;
   phone?: string | null;
   neighborhood?: string | null;
+  district?: string | null;
   active?: boolean | null;
 };
 
@@ -36,7 +39,7 @@ function resolveClients(data: ClientsResponse | null): ClientItem[] {
   return [];
 }
 
-export default function MobileRepClientsPage() {
+export default function MobileAdminClientsPage() {
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
@@ -53,7 +56,7 @@ export default function MobileRepClientsPage() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch("/api/rep/clients", {
+        const res = await fetch("/api/clients", {
           cache: "no-store",
         });
 
@@ -92,10 +95,13 @@ export default function MobileRepClientsPage() {
     return clients.filter((client) => {
       const haystack = [
         client.name,
+        client.legalName,
+        client.tradeName,
         client.fantasyName,
         client.city,
         client.phone,
         client.neighborhood,
+        client.district,
       ]
         .filter(Boolean)
         .join(" ")
@@ -106,10 +112,10 @@ export default function MobileRepClientsPage() {
   }, [clients, query]);
 
   return (
-    <MobileRepPageFrame
+    <MobilePageFrame
       title="Clientes"
-      subtitle="Carteira de clientes da região"
-      desktopHref="/rep/clients"
+      subtitle="Base completa de clientes"
+      desktopHref="/clients"
     >
       <MobileCard style={{ padding: 16 }}>
         <div
@@ -195,12 +201,19 @@ export default function MobileRepClientsPage() {
           <div style={{ display: "grid", gap: 12 }}>
             {filteredClients.map((client) => {
               const displayName =
-                client.fantasyName?.trim() || client.name?.trim() || "Cliente";
+                client.tradeName?.trim() ||
+                client.fantasyName?.trim() ||
+                client.name?.trim() ||
+                client.legalName?.trim() ||
+                "Cliente";
+
+              const legalDisplay =
+                client.legalName?.trim() || client.name?.trim() || null;
 
               return (
                 <Link
                   key={client.id}
-                  href={`/m/rep/clients/${client.id}`}
+                  href={`/m/admin/clients/${client.id}`}
                   style={{ textDecoration: "none" }}
                 >
                   <div
@@ -256,9 +269,8 @@ export default function MobileRepClientsPage() {
                           </div>
                         </div>
 
-                        {client.name &&
-                        client.fantasyName &&
-                        client.name !== client.fantasyName ? (
+                        {legalDisplay &&
+                        legalDisplay !== displayName ? (
                           <div
                             style={{
                               fontSize: 12,
@@ -266,7 +278,7 @@ export default function MobileRepClientsPage() {
                               marginBottom: 8,
                             }}
                           >
-                            Razão social: {client.name}
+                            Razão social: {legalDisplay}
                           </div>
                         ) : null}
 
@@ -291,6 +303,8 @@ export default function MobileRepClientsPage() {
                                 {client.city}
                                 {client.neighborhood
                                   ? ` • ${client.neighborhood}`
+                                  : client.district
+                                  ? ` • ${client.district}`
                                   : ""}
                               </span>
                             </div>
@@ -320,6 +334,6 @@ export default function MobileRepClientsPage() {
           </div>
         )}
       </MobileCard>
-    </MobileRepPageFrame>
+    </MobilePageFrame>
   );
 }

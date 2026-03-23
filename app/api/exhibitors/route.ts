@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ExhibitorType, StockMovementType } from "@prisma/client";
@@ -353,10 +354,12 @@ export async function POST(request: Request) {
     }
 
     const newCode = await generateNextExhibitorCode();
+    const exhibitorId = randomUUID();
 
-    const exhibitor = await prisma.$transaction(async (tx) => {
-      const createdExhibitor = await tx.exhibitor.create({
+    await prisma.$transaction([
+      prisma.exhibitor.create({
         data: {
+          id: exhibitorId,
           code: newCode,
           regionId,
           clientId,
@@ -370,50 +373,48 @@ export async function POST(request: Request) {
             },
           },
         },
-      });
-
-      if (cleanItems.length > 0) {
-        for (const item of cleanItems) {
-          await tx.stockMovement.create({
-            data: {
+      }),
+      ...cleanItems.map((item) =>
+        prisma.stockMovement.create({
+          data: {
+            productId: item.productId,
+            stockLocationId: region.stockLocationId!,
+            exhibitorId,
+            type: StockMovementType.OUT,
+            quantity: item.quantity,
+            note: `Abastecimento inicial do expositor ${newCode}`,
+          },
+        })
+      ),
+      ...cleanItems.map((item) =>
+        prisma.exhibitorStock.upsert({
+          where: {
+            exhibitorId_productId: {
+              exhibitorId,
               productId: item.productId,
-              stockLocationId: region.stockLocationId!,
-              exhibitorId: createdExhibitor.id,
-              type: StockMovementType.OUT,
-              quantity: item.quantity,
-              note: `Abastecimento inicial do expositor ${createdExhibitor.code}`,
             },
-          });
+          },
+          create: {
+            exhibitorId,
+            productId: item.productId,
+            quantity: item.quantity,
+          },
+          update: {
+            quantity: {
+              increment: item.quantity,
+            },
+          },
+        })
+      ),
+    ]);
 
-          await tx.exhibitorStock.upsert({
-            where: {
-              exhibitorId_productId: {
-                exhibitorId: createdExhibitor.id,
-                productId: item.productId,
-              },
-            },
-            create: {
-              exhibitorId: createdExhibitor.id,
-              productId: item.productId,
-              quantity: item.quantity,
-            },
-            update: {
-              quantity: {
-                increment: item.quantity,
-              },
-            },
-          });
-        }
-      }
-
-      return tx.exhibitor.findUnique({
-        where: { id: createdExhibitor.id },
-        include: {
-          client: true,
-          region: true,
-          stocks: true,
-        },
-      });
+    const exhibitor = await prisma.exhibitor.findUnique({
+      where: { id: exhibitorId },
+      include: {
+        client: true,
+        region: true,
+        stocks: true,
+      },
     });
 
     return NextResponse.json(exhibitor, { status: 201 });

@@ -12,6 +12,7 @@ export type MobileNavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
+  matchPrefixes?: string[];
 };
 
 export type MobileFabAction = {
@@ -239,6 +240,12 @@ export function MobileInfoRow({
   return content;
 }
 
+function matchesPath(pathname: string, href: string) {
+  if (pathname === href) return true;
+  if (href !== "/" && pathname.startsWith(`${href}/`)) return true;
+  return false;
+}
+
 export default function MobileShell({
   title,
   subtitle,
@@ -266,8 +273,12 @@ export default function MobileShell({
 
   const activeNav = useMemo(() => {
     return (navItems ?? []).find((item) => {
-      if (item.href === pathname) return true;
-      if (item.href !== "/" && pathname.startsWith(`${item.href}/`)) return true;
+      if (matchesPath(pathname, item.href)) return true;
+
+      if (item.matchPrefixes?.length) {
+        return item.matchPrefixes.some((prefix) => matchesPath(pathname, prefix));
+      }
+
       return false;
     });
   }, [navItems, pathname]);

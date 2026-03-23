@@ -4,15 +4,44 @@ import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+function clearInvestorSession(response: NextResponse) {
+  response.cookies.set("investor_session", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: new Date(0),
+  });
+
+  return response;
+}
+
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const userId = cookieStore.get("investor_session")?.value;
+    const userId = cookieStore.get("investor_session")?.value?.trim();
 
     if (!userId) {
-      return NextResponse.json(
-        { error: "Sessão do investidor não encontrada." },
-        { status: 401 }
+      return clearInvestorSession(
+        NextResponse.json(
+          { error: "Sessão do investidor não encontrada." },
+          { status: 401 }
+        )
+      );
+    }
+
+    if (!isUuid(userId)) {
+      return clearInvestorSession(
+        NextResponse.json(
+          { error: "Sessão do investidor inválida." },
+          { status: 401 }
+        )
       );
     }
 
@@ -42,9 +71,11 @@ export async function GET() {
     });
 
     if (!user || user.role !== "INVESTOR" || !user.investorProfile) {
-      return NextResponse.json(
-        { error: "Investidor não encontrado." },
-        { status: 401 }
+      return clearInvestorSession(
+        NextResponse.json(
+          { error: "Investidor não encontrado." },
+          { status: 401 }
+        )
       );
     }
 
@@ -74,7 +105,6 @@ export async function GET() {
         document: investor.document,
         notes: investor.notes,
       },
-
       summary: {
         activeQuotaCount: activeShares.length,
         totalRegions: new Set(activeShares.map((s) => s.regionId)).size,
@@ -82,9 +112,7 @@ export async function GET() {
         totalDistributedCents,
         pendingDistributionCents,
       },
-
       shares: activeShares,
-
       distributions,
     });
   } catch (error) {

@@ -2,15 +2,44 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+function clearPortalSession(response: NextResponse) {
+  response.cookies.set("portal_session", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: new Date(0),
+  });
+
+  return response;
+}
+
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const clientId = cookieStore.get("portal_session")?.value;
+    const clientId = cookieStore.get("portal_session")?.value?.trim();
 
     if (!clientId) {
-      return NextResponse.json(
-        { error: "Sessão do portal não encontrada." },
-        { status: 401 }
+      return clearPortalSession(
+        NextResponse.json(
+          { error: "Sessão do portal não encontrada." },
+          { status: 401 }
+        )
+      );
+    }
+
+    if (!isUuid(clientId)) {
+      return clearPortalSession(
+        NextResponse.json(
+          { error: "Sessão do portal inválida." },
+          { status: 401 }
+        )
       );
     }
 
@@ -25,6 +54,8 @@ export async function GET() {
         district: true,
         cpf: true,
         cnpj: true,
+        active: true,
+        portalEnabled: true,
         exhibitors: {
           orderBy: {
             installedAt: "desc",
@@ -83,10 +114,12 @@ export async function GET() {
       },
     });
 
-    if (!client) {
-      return NextResponse.json(
-        { error: "Cliente não encontrado." },
-        { status: 401 }
+    if (!client || !client.active || !client.portalEnabled) {
+      return clearPortalSession(
+        NextResponse.json(
+          { error: "Cliente não encontrado." },
+          { status: 401 }
+        )
       );
     }
 

@@ -109,12 +109,32 @@ function buildLoginUrl(
   return url;
 }
 
+function applySecurityHeaders(response: NextResponse) {
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()"
+  );
+  response.headers.set("X-DNS-Prefetch-Control", "off");
+
+  return response;
+}
+
+function nextResponse() {
+  return applySecurityHeaders(NextResponse.next());
+}
+
+function redirectResponse(url: URL) {
+  return applySecurityHeaders(NextResponse.redirect(url));
+}
+
 export function proxy(req: NextRequest) {
   const { pathname, searchParams } = req.nextUrl;
 
   if (isPublicRoute(pathname)) {
     if (pathname !== "/login") {
-      return NextResponse.next();
+      return nextResponse();
     }
 
     const access = String(searchParams.get("access") || "").toUpperCase();
@@ -127,9 +147,9 @@ export function proxy(req: NextRequest) {
         const url = req.nextUrl.clone();
         url.pathname = "/portal";
         url.search = "";
-        return NextResponse.redirect(url);
+        return redirectResponse(url);
       }
-      return NextResponse.next();
+      return nextResponse();
     }
 
     if (access === "INVESTOR") {
@@ -137,9 +157,9 @@ export function proxy(req: NextRequest) {
         const url = req.nextUrl.clone();
         url.pathname = "/investor";
         url.search = "";
-        return NextResponse.redirect(url);
+        return redirectResponse(url);
       }
-      return NextResponse.next();
+      return nextResponse();
     }
 
     if (access === "CRM") {
@@ -147,54 +167,54 @@ export function proxy(req: NextRequest) {
         const url = req.nextUrl.clone();
         url.pathname = "/choose/crm";
         url.search = "";
-        return NextResponse.redirect(url);
+        return redirectResponse(url);
       }
-      return NextResponse.next();
+      return nextResponse();
     }
 
     if (portalSession) {
       const url = req.nextUrl.clone();
       url.pathname = "/portal";
       url.search = "";
-      return NextResponse.redirect(url);
+      return redirectResponse(url);
     }
 
     if (investorSession) {
       const url = req.nextUrl.clone();
       url.pathname = "/investor";
       url.search = "";
-      return NextResponse.redirect(url);
+      return redirectResponse(url);
     }
 
     if (crmSession) {
       const url = req.nextUrl.clone();
       url.pathname = "/choose/crm";
       url.search = "";
-      return NextResponse.redirect(url);
+      return redirectResponse(url);
     }
 
-    return NextResponse.next();
+    return nextResponse();
   }
 
   if (isPortalRoute(pathname) || isPortalMobileRoute(pathname)) {
     if (!hasPortalSession(req)) {
-      return NextResponse.redirect(buildLoginUrl(req, "CLIENT"));
+      return redirectResponse(buildLoginUrl(req, "CLIENT"));
     }
-    return NextResponse.next();
+    return nextResponse();
   }
 
   if (isInvestorRoute(pathname) || isInvestorMobileRoute(pathname)) {
     if (!hasInvestorSession(req)) {
-      return NextResponse.redirect(buildLoginUrl(req, "INVESTOR"));
+      return redirectResponse(buildLoginUrl(req, "INVESTOR"));
     }
-    return NextResponse.next();
+    return nextResponse();
   }
 
   if (isProtectedCrmRoute(pathname)) {
     if (!hasCrmSession(req)) {
-      return NextResponse.redirect(buildLoginUrl(req, "CRM"));
+      return redirectResponse(buildLoginUrl(req, "CRM"));
     }
-    return NextResponse.next();
+    return nextResponse();
   }
 
   if (pathname === "/") {
@@ -202,30 +222,30 @@ export function proxy(req: NextRequest) {
       const url = req.nextUrl.clone();
       url.pathname = "/portal";
       url.search = "";
-      return NextResponse.redirect(url);
+      return redirectResponse(url);
     }
 
     if (hasInvestorSession(req)) {
       const url = req.nextUrl.clone();
       url.pathname = "/investor";
       url.search = "";
-      return NextResponse.redirect(url);
+      return redirectResponse(url);
     }
 
     if (hasCrmSession(req)) {
       const url = req.nextUrl.clone();
       url.pathname = "/choose/crm";
       url.search = "";
-      return NextResponse.redirect(url);
+      return redirectResponse(url);
     }
 
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    return NextResponse.redirect(url);
+    return redirectResponse(url);
   }
 
-  return NextResponse.next();
+  return nextResponse();
 }
 
 export const config = {

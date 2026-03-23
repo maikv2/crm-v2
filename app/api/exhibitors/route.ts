@@ -38,12 +38,21 @@ async function generateNextExhibitorCode() {
   return `EXP-${String(nextNumber).padStart(4, "0")}`;
 }
 
-function normalizeExhibitorType(value: unknown): ExhibitorType | null {
-  if (typeof value !== "string" || !value.trim()) return null;
+function normalizeExhibitorType(value: unknown): ExhibitorType {
+  if (typeof value !== "string" || !value.trim()) {
+    return ExhibitorType.FLOOR;
+  }
 
   return Object.values(ExhibitorType).includes(value as ExhibitorType)
     ? (value as ExhibitorType)
-    : null;
+    : ExhibitorType.FLOOR;
+}
+
+function parseOptionalDate(value: unknown) {
+  if (!value) return null;
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
 }
 
 async function getAvailableStockByProduct(
@@ -165,18 +174,19 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    const regionId = body.regionId as string | undefined;
-    const clientId = body.clientId as string | undefined;
+    const regionId =
+      typeof body.regionId === "string" ? body.regionId.trim() : "";
+    const clientId =
+      typeof body.clientId === "string" ? body.clientId.trim() : "";
     const type = normalizeExhibitorType(body.type);
 
     const initialStockNote =
-      (body.initialStockNote as string | undefined) ?? null;
+      typeof body.initialStockNote === "string" && body.initialStockNote.trim()
+        ? body.initialStockNote.trim()
+        : null;
 
-    const installedAt = body.installedAt
-      ? new Date(body.installedAt)
-      : new Date();
-
-    const nextVisitAt = body.nextVisitAt ? new Date(body.nextVisitAt) : null;
+    const installedAt = parseOptionalDate(body.installedAt) ?? new Date();
+    const nextVisitAt = parseOptionalDate(body.nextVisitAt);
 
     const rawInitialItems = Array.isArray(body.initialItems)
       ? (body.initialItems as InitialItemInput[])
@@ -184,7 +194,21 @@ export async function POST(request: Request) {
 
     if (!regionId || !clientId) {
       return NextResponse.json(
-        { error: "regionId e clientId são obrigatórios" },
+        { error: "regionId e clientId são obrigatórios." },
+        { status: 400 }
+      );
+    }
+
+    if (body.installedAt && Number.isNaN(installedAt.getTime())) {
+      return NextResponse.json(
+        { error: "Data de instalação inválida." },
+        { status: 400 }
+      );
+    }
+
+    if (body.nextVisitAt && !nextVisitAt) {
+      return NextResponse.json(
+        { error: "Data da próxima visita inválida." },
         { status: 400 }
       );
     }
@@ -211,21 +235,26 @@ export async function POST(request: Request) {
 
     if (!client) {
       return NextResponse.json(
-        { error: "Cliente não encontrado" },
+        { error: "Cliente não encontrado." },
         { status: 404 }
       );
     }
 
     if (!region) {
       return NextResponse.json(
-        { error: "Região não encontrada" },
+        { error: "Região não encontrada." },
         { status: 404 }
       );
     }
 
     if (!region.stockLocationId) {
       return NextResponse.json(
-        { error: "A região não possui local de estoque vinculado." },
+        {
+          error:
+            "Não foi possível cadastrar o expositor porque a região não possui local de estoque vinculado.",
+          regionId: region.id,
+          regionName: region.name,
+        },
         { status: 400 }
       );
     }
@@ -240,9 +269,21 @@ export async function POST(request: Request) {
     const cleanItems = rawInitialItems
       .filter((item) => item?.productId && Number(item?.quantity) > 0)
       .map((item) => ({
-        productId: item.productId,
-        quantity: Number(item.quantity),
-      }));
+        productId: String(item.productId),
+        quantity: Math.floor(Number(item.quantity)),
+      }))
+      .filter((item) => item.quantity > 0);
+
+    const invalidQuantity = cleanItems.find(
+      (item) => !Number.isFinite(item.quantity) || item.quantity <= 0
+    );
+
+    if (invalidQuantity) {
+      return NextResponse.json(
+        { error: "Existe item inicial com quantidade inválida." },
+        { status: 400 }
+      );
+    }
 
     const productIds = [...new Set(cleanItems.map((item) => item.productId))];
 
@@ -251,7 +292,7 @@ export async function POST(request: Request) {
         where: {
           id: { in: productIds },
         },
-        select: { id: true },
+        select: { id: true, name: true, sku: true },
       });
 
       const foundIds = new Set(foundProducts.map((p) => p.id));
@@ -260,7 +301,7 @@ export async function POST(request: Request) {
       if (invalidIds.length > 0) {
         return NextResponse.json(
           {
-            error: "Um ou mais produtos não existem",
+            error: "Um ou mais produtos não existem.",
             invalidProductIds: invalidIds,
           },
           { status: 400 }
@@ -281,7 +322,11 @@ export async function POST(request: Request) {
         [...requestedByProduct.keys()]
       );
 
-      const insufficient: any[] = [];
+      const insufficient: Array<{
+        productId: string;
+        requested: number;
+        available: number;
+      }> = [];
 
       for (const [productId, requested] of requestedByProduct.entries()) {
         const available = availableByProduct.get(productId) ?? 0;
@@ -307,7 +352,7 @@ export async function POST(request: Request) {
       }
     }
 
-    let newCode = await generateNextExhibitorCode();
+    const newCode = await generateNextExhibitorCode();
 
     const exhibitor = await prisma.$transaction(async (tx) => {
       const createdExhibitor = await tx.exhibitor.create({

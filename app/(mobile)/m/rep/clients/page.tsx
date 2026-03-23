@@ -2,17 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  ChevronRight,
-  MapPin,
-  Phone,
-  Plus,
-  Search,
-  ShoppingBag,
-  Store,
-  Target,
-  Users,
-} from "lucide-react";
+import { ChevronRight, MapPin, Phone, Search, Users } from "lucide-react";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import {
   MobileCard,
@@ -44,65 +34,6 @@ function resolveClients(data: ClientsResponse | null): ClientItem[] {
   if (Array.isArray(data.clients)) return data.clients;
   if (Array.isArray(data.items)) return data.items;
   return [];
-}
-
-function QuickAction({
-  href,
-  title,
-  icon,
-}: {
-  href: string;
-  title: string;
-  icon: React.ReactNode;
-}) {
-  const { theme } = useTheme();
-  const colors = getThemeColors(theme);
-
-  return (
-    <Link href={href} style={{ textDecoration: "none" }}>
-      <div
-        style={{
-          minWidth: 108,
-          padding: "12px 14px",
-          borderRadius: 14,
-          border: `1px solid ${colors.border}`,
-          background: colors.cardBg,
-          color: colors.text,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          boxShadow: colors.isDark
-            ? "0 8px 24px rgba(2,6,23,0.24)"
-            : "0 8px 20px rgba(15,23,42,0.06)",
-        }}
-      >
-        <div
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 12,
-            background: colors.isDark ? "#111827" : "#e8f0ff",
-            color: colors.primary,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {icon}
-        </div>
-
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 800,
-            lineHeight: 1.2,
-          }}
-        >
-          {title}
-        </div>
-      </div>
-    </Link>
-  );
 }
 
 export default function MobileRepClientsPage() {
@@ -210,40 +141,6 @@ export default function MobileRepClientsPage() {
       </MobileCard>
 
       <MobileCard>
-        <MobileSectionTitle title="Ações rápidas" />
-
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            overflowX: "auto",
-            paddingBottom: 4,
-          }}
-        >
-          <QuickAction
-            href="/clients/new"
-            title="Novo cliente"
-            icon={<Plus size={18} />}
-          />
-          <QuickAction
-            href="/m/rep/orders/new"
-            title="Novo pedido"
-            icon={<ShoppingBag size={18} />}
-          />
-          <QuickAction
-            href="/rep/exhibitors"
-            title="Expositores"
-            icon={<Store size={18} />}
-          />
-          <QuickAction
-            href="/rep/prospects"
-            title="Prospectos"
-            icon={<Target size={18} />}
-          />
-        </div>
-      </MobileCard>
-
-      <MobileCard>
         <div
           style={{
             display: "flex",
@@ -303,7 +200,7 @@ export default function MobileRepClientsPage() {
               return (
                 <Link
                   key={client.id}
-                  href={`/rep/clients/${client.id}`}
+                  href={`/m/rep/clients/${client.id}`}
                   style={{ textDecoration: "none" }}
                 >
                   <div

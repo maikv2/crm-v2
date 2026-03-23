@@ -8,6 +8,18 @@ function isUuid(value: string) {
   );
 }
 
+function clearCrmSession(response: NextResponse) {
+  response.cookies.set("crm_session", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: new Date(0),
+  });
+
+  return response;
+}
+
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -18,12 +30,9 @@ export async function GET() {
     }
 
     if (!isUuid(session)) {
-      const response = NextResponse.json({ user: null }, { status: 401 });
-      response.cookies.set("crm_session", "", {
-        path: "/",
-        expires: new Date(0),
-      });
-      return response;
+      return clearCrmSession(
+        NextResponse.json({ user: null }, { status: 401 })
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -62,12 +71,9 @@ export async function GET() {
     });
 
     if (!user || !user.active) {
-      const response = NextResponse.json({ user: null }, { status: 401 });
-      response.cookies.set("crm_session", "", {
-        path: "/",
-        expires: new Date(0),
-      });
-      return response;
+      return clearCrmSession(
+        NextResponse.json({ user: null }, { status: 401 })
+      );
     }
 
     return NextResponse.json({ user });

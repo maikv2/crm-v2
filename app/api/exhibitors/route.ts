@@ -365,7 +365,9 @@ export async function POST(request: Request) {
           nextVisitAt,
           initialStockNote,
           initialItems: {
-            create: cleanItems,
+            createMany: {
+              data: cleanItems,
+            },
           },
         },
       });

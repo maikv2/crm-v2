@@ -139,7 +139,7 @@ export default function RepHomePage() {
               Ver clientes
             </Link>
 
-            <Link href="/orders/new" style={action}>
+            <Link href="/rep/orders/new" style={action}>
               Novo pedido
             </Link>
 

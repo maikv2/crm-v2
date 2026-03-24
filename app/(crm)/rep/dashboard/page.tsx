@@ -19,9 +19,7 @@ export default function RepHomePage() {
   useEffect(() => {
     async function load() {
       const region = "Chapecó";
-      const res = await fetch(`/api/rep/agenda?region=${encodeURIComponent(region)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/rep/agenda?region=${encodeURIComponent(region)}`);
       const json = await res.json();
       setData(json);
     }

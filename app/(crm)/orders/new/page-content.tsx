@@ -8,7 +8,7 @@ type Props = {
   mode?: "ADMIN" | "REPRESENTATIVE";
 };
 
-function NewOrderPageInner({ mode = "ADMIN" }: Props) {
+function PageContent({ mode = "ADMIN" }: Props) {
   if (mode === "REPRESENTATIVE") {
     return <MobileRepOrderForm />;
   }
@@ -19,7 +19,7 @@ function NewOrderPageInner({ mode = "ADMIN" }: Props) {
 export default function NewOrderPage(props: Props) {
   return (
     <Suspense fallback={<div style={{ padding: 16 }}>Carregando...</div>}>
-      <NewOrderPageInner {...props} />
+      <PageContent {...props} />
     </Suspense>
   );
 }

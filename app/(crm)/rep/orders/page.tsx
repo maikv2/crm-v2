@@ -380,8 +380,8 @@ export default function RepOrdersPage() {
                           : item.paymentStatus === "PENDING"
                           ? "#f59e0b"
                           : item.paymentStatus === "PARTIAL"
-                          ? "#3b82f6"
-                          : "#64748b"
+                            ? "#3b82f6"
+                            : "#64748b"
                       }
                     />
                   </div>
@@ -433,7 +433,7 @@ export default function RepOrdersPage() {
 
                   <button
                     style={btnSecondary}
-                    onClick={() => router.push(`/orders/${item.id}`)}
+                    onClick={() => router.push(`/rep/orders/${item.id}`)}
                   >
                     Abrir pedido
                   </button>

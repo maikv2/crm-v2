@@ -97,8 +97,8 @@ type CartItem = {
 type DefectReturnItem = {
   productId: string;
   quantity: number;
-  reason?: string;
-  notes?: string;
+  reason: string;
+  notes: string;
 };
 
 const PAYMENT_METHODS = [
@@ -249,7 +249,6 @@ export default function MobileAdminOrderForm() {
   const [dueDate, setDueDate] = useState("");
   const [installmentCount, setInstallmentCount] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [orderType, setOrderType] = useState<"SALE" | "DEFECT_EXCHANGE">("SALE");
   const [defectReturnItems, setDefectReturnItems] = useState<DefectReturnItem[]>([]);
 
   const [savedOrderId, setSavedOrderId] = useState("");
@@ -363,7 +362,7 @@ export default function MobileAdminOrderForm() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [router, selectedStockLocationId]);
 
   const selectedClient = useMemo(() => {
     return clients.find((item) => item.id === selectedClientId) ?? null;
@@ -430,8 +429,6 @@ export default function MobileAdminOrderForm() {
   const selectedDefectReturnItems = useMemo(() => {
     return defectItemsWithProduct.filter((item) => item.quantity > 0 && item.product);
   }, [defectItemsWithProduct]);
-
-  const isDefectExchange = orderType === "DEFECT_EXCHANGE";
 
   const subtotalCents = useMemo(() => {
     return selectedItems.reduce((sum, item) => sum + item.subtotalCents, 0);
@@ -562,7 +559,6 @@ export default function MobileAdminOrderForm() {
     setDueDate("");
     setInstallmentCount(1);
     setPaymentMethod("CASH");
-    setOrderType("SALE");
     setDefectReturnItems([]);
     setCart((prev) => prev.map((item) => ({ ...item, qty: 0 })));
   }
@@ -591,13 +587,7 @@ export default function MobileAdminOrderForm() {
         return;
       }
 
-      if (isDefectExchange && selectedDefectReturnItems.length === 0) {
-        setError("Informe pelo menos um item recebido na troca.");
-        return;
-      }
-
       if (
-        !isDefectExchange &&
         (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT") &&
         !dueDate
       ) {
@@ -613,7 +603,7 @@ export default function MobileAdminOrderForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          type: orderType,
+          type: "SALE",
           clientId: selectedClientId,
           regionId: selectedClient.regionId,
           stockLocationId: selectedStockLocationId,
@@ -622,29 +612,25 @@ export default function MobileAdminOrderForm() {
             qty: item.qty,
             unitCents: item.unitCents,
           })),
-          defectReturnItems: isDefectExchange
-            ? selectedDefectReturnItems.map((item) => ({
-                productId: item.productId,
-                quantity: item.quantity,
-                reason: item.reason?.trim() || undefined,
-                notes: item.notes?.trim() || undefined,
-              }))
-            : [],
           subtotalCents,
-          discountCents: isDefectExchange ? 0 : discountCents,
-          totalCents: isDefectExchange ? subtotalCents : totalCents,
+          discountCents,
+          totalCents,
           paymentMethod,
           dueDate:
-            !isDefectExchange &&
-            (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT")
+            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
               ? dueDate || null
               : null,
           installmentCount:
-            !isDefectExchange &&
-            (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT")
+            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
               ? installmentCount
               : 1,
           installmentDates: [],
+          defectReturnItems: selectedDefectReturnItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            reason: item.reason?.trim() || null,
+            notes: item.notes?.trim() || null,
+          })),
         }),
       });
 
@@ -979,6 +965,16 @@ export default function MobileAdminOrderForm() {
       </MobileCard>
 
       <div style={{ display: "grid", gap: 12 }}>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 900,
+            color: colors.text,
+          }}
+        >
+          Produtos do pedido
+        </div>
+
         {filteredItems.length === 0 ? (
           <MobileCard>
             <div style={{ fontSize: 14, color: colors.subtext }}>
@@ -1134,197 +1130,137 @@ export default function MobileAdminOrderForm() {
       </div>
 
       <MobileCard>
-        <MobileSectionTitle title="Tipo do pedido" />
+        <MobileSectionTitle title="Itens de troca" />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-            gap: 10,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setOrderType("SALE")}
-            style={{
-              minHeight: 46,
-              borderRadius: 14,
-              border: `1px solid ${orderType === "SALE" ? colors.primary : colors.border}`,
-              background:
-                orderType === "SALE"
-                  ? colors.isDark
-                    ? "#111f39"
-                    : "#e8f0ff"
-                  : colors.cardBg,
-              color: orderType === "SALE" ? colors.primary : colors.text,
-              fontSize: 13,
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Venda
-          </button>
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ fontSize: 12, color: colors.subtext }}>
+            Registre aqui os itens devolvidos na troca. Eles acompanham o mesmo pedido e não geram financeiro.
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setOrderType("DEFECT_EXCHANGE")}
-            style={{
-              minHeight: 46,
-              borderRadius: 14,
-              border: `1px solid ${
-                orderType === "DEFECT_EXCHANGE" ? colors.primary : colors.border
-              }`,
-              background:
-                orderType === "DEFECT_EXCHANGE"
-                  ? colors.isDark
-                    ? "#111f39"
-                    : "#e8f0ff"
-                  : colors.cardBg,
-              color: orderType === "DEFECT_EXCHANGE" ? colors.primary : colors.text,
-              fontSize: 13,
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Troca
-          </button>
-        </div>
-      </MobileCard>
-
-      {isDefectExchange ? (
-        <MobileCard>
-          <MobileSectionTitle title="Registro de trocas" />
-
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ fontSize: 12, color: colors.subtext }}>
-              Informe os itens que o cliente está devolvendo na troca por defeito.
+          {filteredItems.length === 0 ? (
+            <div style={{ fontSize: 14, color: colors.subtext }}>
+              Nenhum produto encontrado para registrar na troca.
             </div>
+          ) : (
+            filteredItems.map((item) => {
+              const product = item.product;
+              if (!product) return null;
 
-            {filteredItems.length === 0 ? (
-              <div style={{ fontSize: 14, color: colors.subtext }}>
-                Nenhum produto encontrado para registrar na troca.
-              </div>
-            ) : (
-              filteredItems.map((item) => {
-                const product = item.product;
-                if (!product) return null;
+              const defectItem =
+                defectItemsWithProduct.find((entry) => entry.productId === product.id) ?? null;
 
-                const defectItem =
-                  defectItemsWithProduct.find((entry) => entry.productId === product.id) ?? null;
-
-                return (
-                  <div
-                    key={`defect-${product.id}`}
-                    style={{
-                      borderRadius: 16,
-                      border: `1px solid ${colors.border}`,
-                      background: colors.isDark ? "#0f172a" : "#f8fafc",
-                      padding: 12,
-                      display: "grid",
-                      gap: 10,
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 900,
-                          color: colors.text,
-                          lineHeight: 1.3,
-                        }}
-                      >
-                        {product.name}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: 4,
-                          fontSize: 12,
-                          color: colors.subtext,
-                        }}
-                      >
-                        {product.sku} • {product.category || "Sem categoria"}
-                      </div>
+              return (
+                <div
+                  key={`defect-${product.id}`}
+                  style={{
+                    borderRadius: 16,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.isDark ? "#0f172a" : "#f8fafc",
+                    padding: 12,
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 900,
+                        color: colors.text,
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {product.name}
                     </div>
 
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        flexWrap: "wrap",
+                        marginTop: 4,
+                        fontSize: 12,
+                        color: colors.subtext,
                       }}
                     >
-                      <ProductQtyControl
-                        qty={defectItem?.quantity ?? 0}
-                        onDecrease={() => decrementDefectQty(product.id)}
-                        onIncrease={() => incrementDefectQty(product.id)}
-                        onChange={(next) => updateDefectQty(product.id, next)}
-                        themeColors={colors}
+                      {product.sku} • {product.category || "Sem categoria"}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <ProductQtyControl
+                      qty={defectItem?.quantity ?? 0}
+                      onDecrease={() => decrementDefectQty(product.id)}
+                      onIncrease={() => incrementDefectQty(product.id)}
+                      onChange={(next) => updateDefectQty(product.id, next)}
+                      themeColors={colors}
+                    />
+
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: colors.subtext,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Quantidade da troca
+                    </div>
+                  </div>
+
+                  {(defectItem?.quantity ?? 0) > 0 ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <input
+                        type="text"
+                        value={defectItem?.reason ?? ""}
+                        onChange={(e) =>
+                          updateDefectField(product.id, "reason", e.target.value)
+                        }
+                        placeholder="Motivo da troca"
+                        style={{
+                          width: "100%",
+                          height: 42,
+                          borderRadius: 12,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.inputBg,
+                          color: colors.text,
+                          padding: "0 12px",
+                          outline: "none",
+                          fontSize: 13,
+                        }}
                       />
 
-                      <div
+                      <textarea
+                        value={defectItem?.notes ?? ""}
+                        onChange={(e) =>
+                          updateDefectField(product.id, "notes", e.target.value)
+                        }
+                        placeholder="Observações da troca (opcional)"
+                        rows={3}
                         style={{
-                          fontSize: 12,
-                          color: colors.subtext,
-                          fontWeight: 700,
+                          width: "100%",
+                          borderRadius: 12,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.inputBg,
+                          color: colors.text,
+                          padding: 12,
+                          outline: "none",
+                          fontSize: 13,
+                          resize: "vertical",
                         }}
-                      >
-                        Recebido na troca
-                      </div>
+                      />
                     </div>
-
-                    {(defectItem?.quantity ?? 0) > 0 ? (
-                      <div style={{ display: "grid", gap: 8 }}>
-                        <input
-                          type="text"
-                          value={defectItem?.reason ?? ""}
-                          onChange={(e) =>
-                            updateDefectField(product.id, "reason", e.target.value)
-                          }
-                          placeholder="Motivo do defeito (opcional)"
-                          style={{
-                            width: "100%",
-                            height: 42,
-                            borderRadius: 12,
-                            border: `1px solid ${colors.border}`,
-                            background: colors.inputBg,
-                            color: colors.text,
-                            padding: "0 12px",
-                            outline: "none",
-                            fontSize: 13,
-                          }}
-                        />
-
-                        <textarea
-                          value={defectItem?.notes ?? ""}
-                          onChange={(e) =>
-                            updateDefectField(product.id, "notes", e.target.value)
-                          }
-                          placeholder="Observações da troca (opcional)"
-                          rows={3}
-                          style={{
-                            width: "100%",
-                            borderRadius: 12,
-                            border: `1px solid ${colors.border}`,
-                            background: colors.inputBg,
-                            color: colors.text,
-                            padding: 12,
-                            outline: "none",
-                            fontSize: 13,
-                            resize: "vertical",
-                          }}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </MobileCard>
-      ) : null}
+                  ) : null}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </MobileCard>
 
       <MobileCard>
         <MobileSectionTitle title="Pagamento" />
@@ -1343,10 +1279,7 @@ export default function MobileAdminOrderForm() {
               <button
                 key={method.value}
                 type="button"
-                onClick={() => {
-                  if (isDefectExchange) return;
-                  setPaymentMethod(method.value);
-                }}
+                onClick={() => setPaymentMethod(method.value)}
                 style={{
                   minHeight: 46,
                   borderRadius: 14,
@@ -1379,12 +1312,7 @@ export default function MobileAdminOrderForm() {
             type="text"
             value={discountValue}
             onChange={(e) => setDiscountValue(e.target.value)}
-            placeholder={
-              isDefectExchange
-                ? "Troca não gera desconto nem financeiro"
-                : "Desconto em R$ (opcional)"
-            }
-            disabled={isDefectExchange}
+            placeholder="Desconto em R$ (opcional)"
             style={{
               width: "100%",
               height: 46,
@@ -1404,7 +1332,6 @@ export default function MobileAdminOrderForm() {
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                disabled={isDefectExchange}
                 style={{
                   width: "100%",
                   height: 46,
@@ -1421,7 +1348,6 @@ export default function MobileAdminOrderForm() {
               <select
                 value={installmentCount}
                 onChange={(e) => setInstallmentCount(Math.max(1, Number(e.target.value)))}
-                disabled={isDefectExchange}
                 style={{
                   width: "100%",
                   height: 46,
@@ -1446,9 +1372,7 @@ export default function MobileAdminOrderForm() {
       </MobileCard>
 
       <MobileCard>
-        <MobileSectionTitle
-          title={isDefectExchange ? "Resumo da troca" : "Resumo do pedido"}
-        />
+        <MobileSectionTitle title="Resumo do pedido" />
 
         <div style={{ display: "grid", gap: 10 }}>
           <div
@@ -1486,8 +1410,8 @@ export default function MobileAdminOrderForm() {
               fontSize: 14,
             }}
           >
-            <span style={{ color: colors.subtext }}>Tipo</span>
-            <strong>{isDefectExchange ? "Troca por defeito" : "Venda"}</strong>
+            <span style={{ color: colors.subtext }}>Itens de troca</span>
+            <strong>{selectedDefectReturnItems.length}</strong>
           </div>
 
           <div
@@ -1499,14 +1423,8 @@ export default function MobileAdminOrderForm() {
               fontSize: 14,
             }}
           >
-            <span style={{ color: colors.subtext }}>
-              {isDefectExchange ? "Itens recebidos na troca" : "Desconto"}
-            </span>
-            <strong>
-              {isDefectExchange
-                ? selectedDefectReturnItems.length
-                : formatMoneyBR(discountCents)}
-            </strong>
+            <span style={{ color: colors.subtext }}>Desconto</span>
+            <strong>{formatMoneyBR(discountCents)}</strong>
           </div>
 
           <div
@@ -1575,9 +1493,7 @@ export default function MobileAdminOrderForm() {
 
       {selectedItems.length > 0 ? (
         <MobileCard>
-          <MobileSectionTitle
-            title={isDefectExchange ? "Itens enviados na troca" : "Itens no carrinho"}
-          />
+          <MobileSectionTitle title="Itens no carrinho" />
 
           <div style={{ display: "grid", gap: 10 }}>
             {selectedItems.map((item) => (
@@ -1629,7 +1545,7 @@ export default function MobileAdminOrderForm() {
         </MobileCard>
       ) : null}
 
-      {isDefectExchange && selectedDefectReturnItems.length > 0 ? (
+      {selectedDefectReturnItems.length > 0 ? (
         <MobileCard>
           <MobileSectionTitle title="Itens recebidos na troca" />
 

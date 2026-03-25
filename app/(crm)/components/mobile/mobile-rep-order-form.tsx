@@ -96,8 +96,8 @@ type CartItem = {
 type DefectReturnItem = {
   productId: string;
   quantity: number;
-  reason?: string;
-  notes?: string;
+  reason: string;
+  notes: string;
 };
 
 const PAYMENT_METHODS = [
@@ -250,7 +250,6 @@ export default function MobileRepOrderForm() {
   const [dueDate, setDueDate] = useState("");
   const [installmentCount, setInstallmentCount] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [orderType, setOrderType] = useState<"SALE" | "DEFECT_EXCHANGE">("SALE");
   const [defectReturnItems, setDefectReturnItems] = useState<DefectReturnItem[]>([]);
 
   const [savedOrderId, setSavedOrderId] = useState("");
@@ -274,131 +273,131 @@ export default function MobileRepOrderForm() {
             fetch("/api/regions", { cache: "no-store" }),
           ]);
 
-        const authJson = (await authRes.json().catch(() => null)) as AuthResponse | null;
-        const clientsJson = await clientsRes.json().catch(() => null);
-        const productsJson = await productsRes.json().catch(() => null);
-        const stockJson = (await stockRes.json().catch(() => null)) as StockResponse | null;
-        const stockLocationsJson = await stockLocationsRes.json().catch(() => null);
-        const regionsJson = await regionsRes.json().catch(() => null);
+          const authJson = (await authRes.json().catch(() => null)) as AuthResponse | null;
+          const clientsJson = await clientsRes.json().catch(() => null);
+          const productsJson = await productsRes.json().catch(() => null);
+          const stockJson = (await stockRes.json().catch(() => null)) as StockResponse | null;
+          const stockLocationsJson = await stockLocationsRes.json().catch(() => null);
+          const regionsJson = await regionsRes.json().catch(() => null);
 
-        if (authRes.status === 401) {
-          router.push("/login?redirect=/m/rep/orders/new");
-          return;
-        }
+          if (authRes.status === 401) {
+            router.push("/login?redirect=/m/rep/orders/new");
+            return;
+          }
 
-        if (authJson?.user?.role !== "REPRESENTATIVE") {
-          router.push("/m/rep");
-          return;
-        }
+          if (authJson?.user?.role !== "REPRESENTATIVE") {
+            router.push("/m/rep");
+            return;
+          }
 
-        const nextClients: Client[] = Array.isArray(clientsJson)
-          ? clientsJson
-          : Array.isArray(clientsJson?.items)
-          ? clientsJson.items
-          : [];
+          const nextClients: Client[] = Array.isArray(clientsJson)
+            ? clientsJson
+            : Array.isArray(clientsJson?.items)
+            ? clientsJson.items
+            : [];
 
-        const nextProducts: Product[] = Array.isArray(productsJson)
-          ? productsJson
-          : Array.isArray(productsJson?.items)
-          ? productsJson.items
-          : [];
+          const nextProducts: Product[] = Array.isArray(productsJson)
+            ? productsJson
+            : Array.isArray(productsJson?.items)
+            ? productsJson.items
+            : [];
 
-        const nextStockLocations: StockLocation[] = Array.isArray(stockLocationsJson?.items)
-          ? stockLocationsJson.items
-          : Array.isArray(stockLocationsJson)
-          ? stockLocationsJson
-          : [];
+          const nextStockLocations: StockLocation[] = Array.isArray(stockLocationsJson?.items)
+            ? stockLocationsJson.items
+            : Array.isArray(stockLocationsJson)
+            ? stockLocationsJson
+            : [];
 
-        const nextRegions: RegionItem[] = Array.isArray(regionsJson?.items)
-          ? regionsJson.items
-          : Array.isArray(regionsJson)
-          ? regionsJson
-          : [];
+          const nextRegions: RegionItem[] = Array.isArray(regionsJson?.items)
+            ? regionsJson.items
+            : Array.isArray(regionsJson)
+            ? regionsJson
+            : [];
 
-        const stockMap: Record<string, Record<string, number>> = {};
-        for (const product of stockJson?.products ?? []) {
-          stockMap[product.id] = product.stock ?? {};
-        }
+          const stockMap: Record<string, Record<string, number>> = {};
+          for (const product of stockJson?.products ?? []) {
+            stockMap[product.id] = product.stock ?? {};
+          }
 
-        const representativeRegionId = authJson?.user?.regionId ?? "";
-        const representativeStockLocationId = authJson?.user?.stockLocationId ?? "";
+          const representativeRegionId = authJson?.user?.regionId ?? "";
+          const representativeStockLocationId = authJson?.user?.stockLocationId ?? "";
 
-        const representativeRegion =
-          nextRegions.find((item) => item.id === representativeRegionId) ?? null;
+          const representativeRegion =
+            nextRegions.find((item) => item.id === representativeRegionId) ?? null;
 
-        const fallbackStockLocationId =
-          representativeStockLocationId ||
-          representativeRegion?.stockLocationId ||
-          "";
+          const fallbackStockLocationId =
+            representativeStockLocationId ||
+            representativeRegion?.stockLocationId ||
+            "";
 
-        const representativeStockLocation =
-          nextStockLocations.find((item) => item.id === fallbackStockLocationId) ?? null;
+          const representativeStockLocation =
+            nextStockLocations.find((item) => item.id === fallbackStockLocationId) ?? null;
 
-        const filteredClients = nextClients
-          .filter((client) => {
-            if (!representativeRegionId) return false;
-            return client.regionId === representativeRegionId;
-          })
-          .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+          const filteredClients = nextClients
+            .filter((client) => {
+              if (!representativeRegionId) return false;
+              return client.regionId === representativeRegionId;
+            })
+            .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
-        const activeProducts = nextProducts
-          .filter((item) => item.active !== false)
-          .sort((a, b) => {
-            const categoryCompare = String(a.category ?? "").localeCompare(
-              String(b.category ?? ""),
-              "pt-BR"
-            );
-            if (categoryCompare !== 0) return categoryCompare;
-            return compareSku(a.sku ?? "", b.sku ?? "");
-          });
+          const activeProducts = nextProducts
+            .filter((item) => item.active !== false)
+            .sort((a, b) => {
+              const categoryCompare = String(a.category ?? "").localeCompare(
+                String(b.category ?? ""),
+                "pt-BR"
+              );
+              if (categoryCompare !== 0) return categoryCompare;
+              return compareSku(a.sku ?? "", b.sku ?? "");
+            });
 
-        if (!active) return;
+          if (!active) return;
 
-        setRepRegionId(representativeRegionId);
-        setRepRegionName(representativeRegion?.name ?? "Região");
-        setRepStockLocationId(fallbackStockLocationId);
-        setRepStockLocationName(representativeStockLocation?.name ?? "Estoque");
-        setClients(filteredClients);
-        setProducts(activeProducts);
-        setRegions(nextRegions);
-        setStockByProductAndLocation(stockMap);
-        setCart(
-          activeProducts.map((product) => ({
-            productId: product.id,
-            qty: 0,
-            unitCents: product.priceCents ?? 0,
-          }))
-        );
-
-        if (clientIdFromQuery) {
-          const allowedClient = filteredClients.find((client) => client.id === clientIdFromQuery);
-          setSelectedClientId(allowedClient?.id ?? "");
-        } else {
-          setSelectedClientId("");
-        }
-
-        if (!representativeRegionId) {
-          setError("O representante não possui região vinculada.");
-        } else if (!fallbackStockLocationId) {
-          setError("A região do representante não possui estoque vinculado.");
-        }
-      } catch (err) {
-        console.error(err);
-        if (active) {
-          setError(
-            err instanceof Error ? err.message : "Erro ao carregar dados do pedido."
+          setRepRegionId(representativeRegionId);
+          setRepRegionName(representativeRegion?.name ?? "Região");
+          setRepStockLocationId(fallbackStockLocationId);
+          setRepStockLocationName(representativeStockLocation?.name ?? "Estoque");
+          setClients(filteredClients);
+          setProducts(activeProducts);
+          setRegions(nextRegions);
+          setStockByProductAndLocation(stockMap);
+          setCart(
+            activeProducts.map((product) => ({
+              productId: product.id,
+              qty: 0,
+              unitCents: product.priceCents ?? 0,
+            }))
           );
+
+          if (clientIdFromQuery) {
+            const allowedClient = filteredClients.find((client) => client.id === clientIdFromQuery);
+            setSelectedClientId(allowedClient?.id ?? "");
+          } else {
+            setSelectedClientId("");
+          }
+
+          if (!representativeRegionId) {
+            setError("O representante não possui região vinculada.");
+          } else if (!fallbackStockLocationId) {
+            setError("A região do representante não possui estoque vinculado.");
+          }
+        } catch (err) {
+          console.error(err);
+          if (active) {
+            setError(
+              err instanceof Error ? err.message : "Erro ao carregar dados do pedido."
+            );
+          }
+        } finally {
+          if (active) setLoading(false);
         }
-      } finally {
-        if (active) setLoading(false);
       }
-    }
 
-    loadBase();
+      loadBase();
 
-    return () => {
-      active = false;
-    };
+      return () => {
+        active = false;
+      };
   }, [router, clientIdFromQuery]);
 
   const selectedClient = useMemo(() => {
@@ -457,8 +456,6 @@ export default function MobileRepOrderForm() {
   const selectedDefectReturnItems = useMemo(() => {
     return defectItemsWithProduct.filter((item) => item.quantity > 0 && item.product);
   }, [defectItemsWithProduct]);
-
-  const isDefectExchange = orderType === "DEFECT_EXCHANGE";
 
   const subtotalCents = useMemo(() => {
     return selectedItems.reduce((sum, item) => sum + item.subtotalCents, 0);
@@ -589,7 +586,6 @@ export default function MobileRepOrderForm() {
     setDueDate("");
     setInstallmentCount(1);
     setPaymentMethod("CASH");
-    setOrderType("SALE");
     setDefectReturnItems([]);
     setCart((prev) => prev.map((item) => ({ ...item, qty: 0 })));
   }
@@ -618,13 +614,7 @@ export default function MobileRepOrderForm() {
         return;
       }
 
-      if (isDefectExchange && selectedDefectReturnItems.length === 0) {
-        setError("Informe pelo menos um item recebido na troca.");
-        return;
-      }
-
       if (
-        !isDefectExchange &&
         (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT") &&
         !dueDate
       ) {
@@ -640,7 +630,7 @@ export default function MobileRepOrderForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          type: orderType,
+          type: "SALE",
           clientId: selectedClientId,
           regionId: repRegionId,
           stockLocationId: repStockLocationId,
@@ -649,29 +639,25 @@ export default function MobileRepOrderForm() {
             qty: item.qty,
             unitCents: item.unitCents,
           })),
-          defectReturnItems: isDefectExchange
-            ? selectedDefectReturnItems.map((item) => ({
-                productId: item.productId,
-                quantity: item.quantity,
-                reason: item.reason?.trim() || undefined,
-                notes: item.notes?.trim() || undefined,
-              }))
-            : [],
           subtotalCents,
-          discountCents: isDefectExchange ? 0 : discountCents,
-          totalCents: isDefectExchange ? subtotalCents : totalCents,
+          discountCents,
+          totalCents,
           paymentMethod,
           dueDate:
-            !isDefectExchange &&
-            (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT")
+            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
               ? dueDate || null
               : null,
           installmentCount:
-            !isDefectExchange &&
-            (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT")
+            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
               ? installmentCount
               : 1,
           installmentDates: [],
+          defectReturnItems: selectedDefectReturnItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            reason: item.reason?.trim() || null,
+            notes: item.notes?.trim() || null,
+          })),
         }),
       });
 
@@ -1009,6 +995,15 @@ export default function MobileRepOrderForm() {
       </MobileCard>
 
       <div style={{ display: "grid", gap: 12 }}>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 900,
+            color: colors.text,
+          }}
+        >
+          Produtos do pedido
+        </div>
         {filteredItems.length === 0 ? (
           <MobileCard>
             <div style={{ fontSize: 14, color: colors.subtext }}>
@@ -1164,72 +1159,14 @@ export default function MobileRepOrderForm() {
       </div>
 
       <MobileCard>
-        <MobileSectionTitle title="Tipo do pedido" />
+        <MobileSectionTitle title="Itens de troca" />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-            gap: 10,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setOrderType("SALE")}
-            style={{
-              minHeight: 46,
-              borderRadius: 14,
-              border: `1px solid ${orderType === "SALE" ? colors.primary : colors.border}`,
-              background:
-                orderType === "SALE"
-                  ? colors.isDark
-                    ? "#111f39"
-                    : "#e8f0ff"
-                  : colors.cardBg,
-              color: orderType === "SALE" ? colors.primary : colors.text,
-              fontSize: 13,
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Venda
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setOrderType("DEFECT_EXCHANGE")}
-            style={{
-              minHeight: 46,
-              borderRadius: 14,
-              border: `1px solid ${
-                orderType === "DEFECT_EXCHANGE" ? colors.primary : colors.border
-              }`,
-              background:
-                orderType === "DEFECT_EXCHANGE"
-                  ? colors.isDark
-                    ? "#111f39"
-                    : "#e8f0ff"
-                  : colors.cardBg,
-              color: orderType === "DEFECT_EXCHANGE" ? colors.primary : colors.text,
-              fontSize: 13,
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Troca
-          </button>
-        </div>
-      </MobileCard>
-
-      {isDefectExchange ? (
-        <MobileCard>
-          <MobileSectionTitle title="Registro de trocas" />
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ fontSize: 12, color: colors.subtext }}>
+            Registre aqui os itens devolvidos na troca. Eles acompanham o mesmo pedido e não geram financeiro.
+          </div>
 
           <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ fontSize: 12, color: colors.subtext }}>
-              Informe os itens que o cliente está devolvendo na troca por defeito.
-            </div>
-
             {filteredItems.length === 0 ? (
               <div style={{ fontSize: 14, color: colors.subtext }}>
                 Nenhum produto encontrado para registrar na troca.
@@ -1301,7 +1238,7 @@ export default function MobileRepOrderForm() {
                           fontWeight: 700,
                         }}
                       >
-                        Recebido na troca
+                        Quantidade da troca
                       </div>
                     </div>
 
@@ -1313,7 +1250,7 @@ export default function MobileRepOrderForm() {
                           onChange={(e) =>
                             updateDefectField(product.id, "reason", e.target.value)
                           }
-                          placeholder="Motivo do defeito (opcional)"
+                          placeholder="Motivo da troca"
                           style={{
                             width: "100%",
                             height: 42,
@@ -1353,8 +1290,8 @@ export default function MobileRepOrderForm() {
               })
             )}
           </div>
-        </MobileCard>
-      ) : null}
+        </div>
+      </MobileCard>
 
       <MobileCard>
         <MobileSectionTitle title="Pagamento" />
@@ -1373,10 +1310,7 @@ export default function MobileRepOrderForm() {
               <button
                 key={method.value}
                 type="button"
-                onClick={() => {
-                  if (isDefectExchange) return;
-                  setPaymentMethod(method.value);
-                }}
+                onClick={() => setPaymentMethod(method.value)}
                 style={{
                   minHeight: 46,
                   borderRadius: 14,
@@ -1409,12 +1343,7 @@ export default function MobileRepOrderForm() {
             type="text"
             value={discountValue}
             onChange={(e) => setDiscountValue(e.target.value)}
-            placeholder={
-              isDefectExchange
-                ? "Troca não gera desconto nem financeiro"
-                : "Desconto em R$ (opcional)"
-            }
-            disabled={isDefectExchange}
+            placeholder="Desconto em R$ (opcional)"
             style={{
               width: "100%",
               height: 46,
@@ -1434,7 +1363,6 @@ export default function MobileRepOrderForm() {
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                disabled={isDefectExchange}
                 style={{
                   width: "100%",
                   height: 46,
@@ -1451,7 +1379,6 @@ export default function MobileRepOrderForm() {
               <select
                 value={installmentCount}
                 onChange={(e) => setInstallmentCount(Math.max(1, Number(e.target.value)))}
-                disabled={isDefectExchange}
                 style={{
                   width: "100%",
                   height: 46,
@@ -1476,9 +1403,7 @@ export default function MobileRepOrderForm() {
       </MobileCard>
 
       <MobileCard>
-        <MobileSectionTitle
-          title={isDefectExchange ? "Resumo da troca" : "Resumo do pedido"}
-        />
+        <MobileSectionTitle title="Resumo do pedido" />
 
         <div style={{ display: "grid", gap: 10 }}>
           <div
@@ -1490,7 +1415,9 @@ export default function MobileRepOrderForm() {
               fontSize: 14,
             }}
           >
-            <span style={{ color: colors.subtext }}>Itens selecionados</span>
+            <span style={{ color: colors.subtext }}>
+              Itens selecionados
+            </span>
             <strong>{selectedItems.length}</strong>
           </div>
 
@@ -1516,8 +1443,8 @@ export default function MobileRepOrderForm() {
               fontSize: 14,
             }}
           >
-            <span style={{ color: colors.subtext }}>Tipo</span>
-            <strong>{isDefectExchange ? "Troca por defeito" : "Venda"}</strong>
+            <span style={{ color: colors.subtext }}>Itens de troca</span>
+            <strong>{selectedDefectReturnItems.length}</strong>
           </div>
 
           <div
@@ -1530,12 +1457,10 @@ export default function MobileRepOrderForm() {
             }}
           >
             <span style={{ color: colors.subtext }}>
-              {isDefectExchange ? "Itens recebidos na troca" : "Desconto"}
+              Desconto
             </span>
             <strong>
-              {isDefectExchange
-                ? selectedDefectReturnItems.length
-                : formatMoneyBR(discountCents)}
+              {formatMoneyBR(discountCents)}
             </strong>
           </div>
 
@@ -1571,7 +1496,7 @@ export default function MobileRepOrderForm() {
                   color: colors.primary,
                 }}
               >
-                {formatMoneyBR(isDefectExchange ? subtotalCents : totalCents)}
+                {formatMoneyBR(totalCents)}
               </div>
             </div>
 
@@ -1605,9 +1530,7 @@ export default function MobileRepOrderForm() {
 
       {selectedItems.length > 0 ? (
         <MobileCard>
-          <MobileSectionTitle
-            title={isDefectExchange ? "Itens enviados na troca" : "Itens no carrinho"}
-          />
+          <MobileSectionTitle title="Itens no carrinho" />
 
           <div style={{ display: "grid", gap: 10 }}>
             {selectedItems.map((item) => (
@@ -1659,7 +1582,7 @@ export default function MobileRepOrderForm() {
         </MobileCard>
       ) : null}
 
-      {isDefectExchange && selectedDefectReturnItems.length > 0 ? (
+      {selectedDefectReturnItems.length > 0 ? (
         <MobileCard>
           <MobileSectionTitle title="Itens recebidos na troca" />
 

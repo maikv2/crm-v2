@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
+  CalendarDays,
   ChevronRight,
   MapPin,
   MessageCircle,
@@ -229,7 +230,7 @@ export default function MobileRepClientDetailsPage() {
               style={{
                 marginTop: 14,
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0,1fr))",
+                gridTemplateColumns: "repeat(4, minmax(0,1fr))",
                 gap: 8,
               }}
             >
@@ -306,6 +307,30 @@ export default function MobileRepClientDetailsPage() {
                 >
                   <Package size={14} />
                   Pedidos
+                </div>
+              </Link>
+
+              <Link
+                href={id ? `/m/rep/visit?clientId=${id}` : "/m/rep/visit"}
+                style={{ textDecoration: "none" }}
+              >
+                <div
+                  style={{
+                    minHeight: 42,
+                    borderRadius: 12,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.cardBg,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: colors.text,
+                  }}
+                >
+                  <CalendarDays size={14} />
+                  Visita
                 </div>
               </Link>
             </div>

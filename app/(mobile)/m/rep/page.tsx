@@ -6,7 +6,6 @@ import {
   CalendarDays,
   ChevronRight,
   PlusCircle,
-  Store,
   UserPlus,
   Wrench,
 } from "lucide-react";
@@ -176,7 +175,7 @@ function SummaryCard({
           marginTop: 6,
           fontSize: 22,
           fontWeight: 900,
-          color: highlight ? colors.text : colors.text,
+          color: colors.text,
           lineHeight: 1.1,
         }}
       >
@@ -331,7 +330,7 @@ export default function RepMobileDashboardPage() {
       />
 
       <Shortcut
-        href="/m/rep/visit"
+        href="/rep/visit"
         title="Registrar visitas"
         subtitle="Registrar visita sem venda"
         icon={<CalendarDays size={20} />}

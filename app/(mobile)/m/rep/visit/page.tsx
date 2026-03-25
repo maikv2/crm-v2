@@ -1,221 +1,464 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
-import {
-  MobileCard,
-  MobileSectionTitle,
-  MobileInfoRow,
-  MobileStatCard,
-  formatDateBR,
-} from "@/app/components/mobile/mobile-shell";
+import { MobileCard, MobileSectionTitle } from "@/app/components/mobile/mobile-shell";
+import { useTheme } from "@/app/providers/theme-provider";
+import { getThemeColors } from "@/lib/theme";
 
-type AgendaExhibitorItem = {
+type Client = {
   id: string;
-  name?: string | null;
-  code?: string | null;
-  nextVisitAt?: string | null;
-  client?: {
+  name: string;
+  city?: string | null;
+  neighborhood?: string | null;
+  address?: string | null;
+  region?: {
     id: string;
-    name?: string | null;
-    city?: string | null;
-    phone?: string | null;
+    name: string;
   } | null;
 };
 
-type AgendaVisitedItem = {
-  id: string;
-  visitedAt?: string | null;
-  notes?: string | null;
-  client?: {
-    id: string;
-    name?: string | null;
-  } | null;
-  exhibitor?: {
-    id: string;
-    name?: string | null;
-    code?: string | null;
-  } | null;
-};
+function toLocalDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
-type AgendaResponse = {
-  atrasados?: AgendaExhibitorItem[];
-  hoje?: AgendaExhibitorItem[];
-  proximos?: AgendaExhibitorItem[];
-  visitadosHoje?: AgendaVisitedItem[];
-};
+export default function MobileRepVisitPage() {
+  const router = useRouter();
+  const params = useSearchParams();
 
-type TabKey = "hoje" | "atrasados" | "proximos" | "visitados";
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
-export default function RepVisitPage() {
+  const clientIdFromUrl = params.get("clientId") || "";
+
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<AgendaResponse | null>(null);
-  const [tab, setTab] = useState<TabKey>("hoje");
+
+  const [clientId, setClientId] = useState(clientIdFromUrl);
+  const [clientSearch, setClientSearch] = useState("");
+
+  const [visitDate, setVisitDate] = useState(toLocalDateInputValue(new Date()));
+  const [nextVisitDate, setNextVisitDate] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const [hadSale, setHadSale] = useState(false);
+  const [maintenanceDone, setMaintenanceDone] = useState(false);
+  const [stockChecked, setStockChecked] = useState(true);
+  const [negotiationDone, setNegotiationDone] = useState(false);
+
+  async function loadClients() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const res = await fetch("/api/rep/clients", { cache: "no-store" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erro ao carregar clientes.");
+      }
+
+      setClients(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || "Erro ao carregar clientes.");
+      setClients([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const res = await fetch("/api/rep/agenda", {
-          cache: "no-store",
-        });
-        const json = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          throw new Error(json?.error || "Erro ao carregar agenda.");
-        }
-
-        if (active) setData(json);
-      } catch (err) {
-        if (active) {
-          setError(err instanceof Error ? err.message : "Erro ao carregar agenda.");
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    load();
-
-    return () => {
-      active = false;
-    };
+    loadClients();
   }, []);
 
-  const counts = useMemo(
-    () => ({
-      hoje: data?.hoje?.length ?? 0,
-      atrasados: data?.atrasados?.length ?? 0,
-      proximos: data?.proximos?.length ?? 0,
-      visitados: data?.visitadosHoje?.length ?? 0,
-    }),
-    [data]
-  );
+  const filteredClients = useMemo(() => {
+    const normalized = clientSearch.trim().toLowerCase();
 
-  const items = useMemo(() => {
-    if (tab === "hoje") return data?.hoje ?? [];
-    if (tab === "atrasados") return data?.atrasados ?? [];
-    if (tab === "proximos") return data?.proximos ?? [];
-    return data?.visitadosHoje ?? [];
-  }, [data, tab]);
+    return clients
+      .filter((client) => {
+        if (!normalized) return true;
 
-  function TabButton({
-    label,
-    active,
-    onClick,
-  }: {
-    label: string;
-    active: boolean;
-    onClick: () => void;
-  }) {
+        const haystack = [
+          client.name,
+          client.city,
+          client.neighborhood,
+          client.address,
+          client.region?.name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return haystack.includes(normalized);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [clients, clientSearch]);
+
+  const selectedClient = useMemo(() => {
+    return clients.find((client) => client.id === clientId) ?? null;
+  }, [clients, clientId]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      if (!clientId) {
+        throw new Error("Selecione um cliente.");
+      }
+
+      if (!notes.trim()) {
+        throw new Error("Descreva a visita.");
+      }
+
+      const payload = {
+        clientId,
+        visitDate,
+        nextVisitDate: nextVisitDate || null,
+        notes: notes.trim(),
+        hadSale,
+        maintenanceDone,
+        stockChecked,
+        negotiationDone,
+      };
+
+      const res = await fetch("/api/rep/visit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erro ao registrar visita.");
+      }
+
+      if (hadSale) {
+        router.push(`/m/rep/orders/new?clientId=${clientId}`);
+        return;
+      }
+
+      router.push("/m/rep");
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || "Erro ao registrar visita.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    minHeight: 46,
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: `1px solid ${colors.border}`,
+    background: colors.inputBg,
+    color: colors.text,
+    outline: "none",
+    fontSize: 14,
+  };
+
+  if (loading) {
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        style={{
-          height: 38,
-          padding: "0 12px",
-          borderRadius: 12,
-          border: active ? "1px solid #2563eb" : "1px solid #dbe3ef",
-          background: active ? "#2563eb" : "transparent",
-          color: active ? "#fff" : "inherit",
-          fontWeight: 800,
-          cursor: "pointer",
-        }}
+      <MobileRepPageFrame
+        title="Registrar visita"
+        subtitle="Carregando clientes"
+        desktopHref="/rep/visit"
       >
-        {label}
-      </button>
+        <MobileCard>
+          <div style={{ color: colors.text, fontWeight: 800 }}>
+            Carregando visita...
+          </div>
+        </MobileCard>
+      </MobileRepPageFrame>
     );
   }
 
   return (
     <MobileRepPageFrame
-      title="Agenda"
-      subtitle="Rotina comercial da região"
-      desktopHref="/rep/agenda"
+      title="Registrar visita"
+      subtitle="Registro operacional do representante"
+      desktopHref="/rep/visit"
     >
-      {loading ? (
-        <MobileCard>Carregando agenda...</MobileCard>
-      ) : error ? (
-        <MobileCard>{error}</MobileCard>
-      ) : (
-        <>
-          <div
+      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
+        {error ? (
+          <MobileCard
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-              gap: 12,
+              border: "1px solid #ef4444",
             }}
           >
-            <MobileStatCard label="Hoje" value={String(counts.hoje)} />
-            <MobileStatCard label="Atrasados" value={String(counts.atrasados)} />
-            <MobileStatCard label="Próximos" value={String(counts.proximos)} />
-            <MobileStatCard label="Visitados" value={String(counts.visitados)} />
-          </div>
-
-          <MobileCard>
-            <MobileSectionTitle title="Filtrar agenda" />
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <TabButton
-                label={`Hoje (${counts.hoje})`}
-                active={tab === "hoje"}
-                onClick={() => setTab("hoje")}
-              />
-              <TabButton
-                label={`Atrasados (${counts.atrasados})`}
-                active={tab === "atrasados"}
-                onClick={() => setTab("atrasados")}
-              />
-              <TabButton
-                label={`Próximos (${counts.proximos})`}
-                active={tab === "proximos"}
-                onClick={() => setTab("proximos")}
-              />
-              <TabButton
-                label={`Visitados (${counts.visitados})`}
-                active={tab === "visitados"}
-                onClick={() => setTab("visitados")}
-              />
+            <div style={{ color: "#ef4444", fontWeight: 800, fontSize: 14 }}>
+              {error}
             </div>
           </MobileCard>
+        ) : null}
 
-          <MobileCard>
-            <MobileSectionTitle title="Lista" />
+        <MobileCard>
+          <MobileSectionTitle title="Cliente" />
 
-            {items.length === 0 ? (
-              <div style={{ fontSize: 13 }}>Nenhum item nessa aba.</div>
-            ) : tab === "visitados" ? (
-              (items as AgendaVisitedItem[]).map((item) => (
-                <MobileInfoRow
-                  key={item.id}
-                  title={item.client?.name ?? "Cliente"}
-                  subtitle={`Visitado em ${formatDateBR(item.visitedAt)}${
-                    item.exhibitor?.code ? ` • ${item.exhibitor.code}` : ""
-                  }`}
-                  href={item.client?.id ? `/rep/clients/${item.client.id}` : undefined}
-                />
-              ))
-            ) : (
-              (items as AgendaExhibitorItem[]).map((item) => (
-                <MobileInfoRow
-                  key={item.id}
-                  title={item.client?.name ?? item.name ?? "Expositor"}
-                  subtitle={`${item.client?.city ?? "Sem cidade"} • Próxima visita ${formatDateBR(
-                    item.nextVisitAt
-                  )}${item.code ? ` • ${item.code}` : ""}`}
-                  href={item.client?.id ? `/rep/clients/${item.client.id}` : undefined}
-                />
-              ))
-            )}
-          </MobileCard>
-        </>
-      )}
+          <div style={{ display: "grid", gap: 10 }}>
+            <input
+              type="text"
+              placeholder="Buscar cliente..."
+              value={clientSearch}
+              onChange={(e) => setClientSearch(e.target.value)}
+              style={inputStyle}
+            />
+
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Selecione um cliente</option>
+              {filteredClients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </select>
+
+            {selectedClient ? (
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.isDark ? "#0f172a" : "#f8fafc",
+                  padding: 12,
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                <div style={{ fontWeight: 900, color: colors.text, fontSize: 14 }}>
+                  {selectedClient.name}
+                </div>
+                <div style={{ color: colors.subtext, fontSize: 12 }}>
+                  {selectedClient.city || "-"} • {selectedClient.neighborhood || "-"}
+                </div>
+                <div style={{ color: colors.subtext, fontSize: 12 }}>
+                  {selectedClient.address || "-"}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </MobileCard>
+
+        <MobileCard>
+          <MobileSectionTitle title="Dados da visita" />
+
+          <div style={{ display: "grid", gap: 10 }}>
+            <div>
+              <div
+                style={{
+                  marginBottom: 6,
+                  fontWeight: 800,
+                  fontSize: 13,
+                  color: colors.text,
+                }}
+              >
+                Data da visita
+              </div>
+              <input
+                type="date"
+                value={visitDate}
+                onChange={(e) => setVisitDate(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <div
+                style={{
+                  marginBottom: 6,
+                  fontWeight: 800,
+                  fontSize: 13,
+                  color: colors.text,
+                }}
+              >
+                Próxima visita
+              </div>
+              <input
+                type="date"
+                value={nextVisitDate}
+                onChange={(e) => setNextVisitDate(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <div
+                style={{
+                  marginBottom: 6,
+                  fontWeight: 800,
+                  fontSize: 13,
+                  color: colors.text,
+                }}
+              >
+                Observações
+              </div>
+              <textarea
+                rows={5}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                style={{ ...inputStyle, minHeight: 120, resize: "vertical" }}
+                placeholder="Descreva o que foi feito, situação do cliente, pedidos, estoque, necessidade de retorno..."
+              />
+            </div>
+          </div>
+        </MobileCard>
+
+        <MobileCard>
+          <MobileSectionTitle title="Ações da visita" />
+
+          <div style={{ display: "grid", gap: 10 }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                color: colors.text,
+                fontSize: 14,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={stockChecked}
+                onChange={(e) => setStockChecked(e.target.checked)}
+              />
+              Estoque conferido
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                color: colors.text,
+                fontSize: 14,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={maintenanceDone}
+                onChange={(e) => setMaintenanceDone(e.target.checked)}
+              />
+              Manutenção realizada
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                color: colors.text,
+                fontSize: 14,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={negotiationDone}
+                onChange={(e) => setNegotiationDone(e.target.checked)}
+              />
+              Negociação realizada
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                color: colors.text,
+                fontSize: 14,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={hadSale}
+                onChange={(e) => setHadSale(e.target.checked)}
+              />
+              Houve venda nesta visita
+            </label>
+          </div>
+        </MobileCard>
+
+        <MobileCard>
+          <MobileSectionTitle title="Resumo" />
+
+          <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
+            <div>
+              <span style={{ color: colors.subtext }}>Cliente: </span>
+              <strong style={{ color: colors.text }}>
+                {selectedClient?.name || "Não selecionado"}
+              </strong>
+            </div>
+
+            <div>
+              <span style={{ color: colors.subtext }}>Cidade: </span>
+              <strong style={{ color: colors.text }}>
+                {selectedClient?.city || "-"}
+              </strong>
+            </div>
+
+            <div>
+              <span style={{ color: colors.subtext }}>Bairro: </span>
+              <strong style={{ color: colors.text }}>
+                {selectedClient?.neighborhood || "-"}
+              </strong>
+            </div>
+
+            <div>
+              <span style={{ color: colors.subtext }}>Endereço: </span>
+              <strong style={{ color: colors.text }}>
+                {selectedClient?.address || "-"}
+              </strong>
+            </div>
+
+            <div>
+              <span style={{ color: colors.subtext }}>Próxima visita: </span>
+              <strong style={{ color: colors.text }}>
+                {nextVisitDate || "-"}
+              </strong>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={saving}
+            style={{
+              width: "100%",
+              marginTop: 16,
+              minHeight: 48,
+              borderRadius: 14,
+              border: "none",
+              background: colors.primary,
+              color: "#fff",
+              fontWeight: 900,
+              fontSize: 14,
+              cursor: saving ? "not-allowed" : "pointer",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving
+              ? "Salvando visita..."
+              : hadSale
+              ? "Salvar e ir para pedido"
+              : "Salvar visita"}
+          </button>
+        </MobileCard>
+      </form>
     </MobileRepPageFrame>
   );
 }

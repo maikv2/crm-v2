@@ -330,7 +330,7 @@ export default function RepMobileDashboardPage() {
       />
 
       <Shortcut
-        href="/rep/visit"
+        href="/m/rep/visit"
         title="Registrar visitas"
         subtitle="Registrar visita sem venda"
         icon={<CalendarDays size={20} />}

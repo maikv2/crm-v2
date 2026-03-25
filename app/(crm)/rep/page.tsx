@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
@@ -10,26 +9,6 @@ function money(cents: number) {
     style: "currency",
     currency: "BRL",
   });
-}
-
-function startOfDay(date = new Date()) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date = new Date()) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function startOfWeek(date = new Date()) {
-  const d = startOfDay(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d;
 }
 
 type RepDashboardResponse = {
@@ -77,19 +56,6 @@ type RepCommissionsResponse = {
   }>;
 };
 
-type RepOrdersResponse = {
-  items: Array<{
-    id: string;
-    number: number;
-    totalCents: number;
-    issuedAt: string | Date;
-    createdAt: string | Date;
-    client?: {
-      name?: string | null;
-    } | null;
-  }>;
-};
-
 export default function RepHomePage() {
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
@@ -104,7 +70,6 @@ export default function RepHomePage() {
   const [agendaData, setAgendaData] = useState<RepAgendaResponse | null>(null);
   const [commissionData, setCommissionData] =
     useState<RepCommissionsResponse | null>(null);
-  const [ordersData, setOrdersData] = useState<RepOrdersResponse | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,18 +79,15 @@ export default function RepHomePage() {
       setLoading(true);
       setError(null);
 
-      const [dashboardRes, agendaRes, commissionsRes, ordersRes] =
-        await Promise.all([
-          fetch("/api/rep/dashboard", { cache: "no-store" }),
-          fetch("/api/rep/agenda", { cache: "no-store" }),
-          fetch("/api/rep/commissions", { cache: "no-store" }),
-          fetch("/api/rep/orders", { cache: "no-store" }),
-        ]);
+      const [dashboardRes, agendaRes, commissionsRes] = await Promise.all([
+        fetch("/api/rep/dashboard", { cache: "no-store" }),
+        fetch("/api/rep/agenda", { cache: "no-store" }),
+        fetch("/api/rep/commissions", { cache: "no-store" }),
+      ]);
 
       const dashboardJson = await dashboardRes.json().catch(() => null);
       const agendaJson = await agendaRes.json().catch(() => null);
       const commissionsJson = await commissionsRes.json().catch(() => null);
-      const ordersJson = await ordersRes.json().catch(() => null);
 
       if (!dashboardRes.ok) {
         throw new Error(
@@ -137,13 +99,8 @@ export default function RepHomePage() {
         throw new Error(agendaJson?.error || "Erro ao carregar agenda.");
       }
 
-      if (!ordersRes.ok) {
-        throw new Error(ordersJson?.error || "Erro ao carregar pedidos.");
-      }
-
       setDashboardData(dashboardJson as RepDashboardResponse);
       setAgendaData(agendaJson as RepAgendaResponse);
-      setOrdersData(ordersJson as RepOrdersResponse);
 
       if (commissionsRes.ok) {
         setCommissionData(commissionsJson as RepCommissionsResponse);
@@ -156,7 +113,6 @@ export default function RepHomePage() {
       setDashboardData(null);
       setAgendaData(null);
       setCommissionData(null);
-      setOrdersData(null);
     } finally {
       setLoading(false);
     }
@@ -179,19 +135,6 @@ export default function RepHomePage() {
       proximos,
     };
   }, [agendaData]);
-
-  const weekSalesCents = useMemo(() => {
-    const weekStart = startOfWeek();
-    const todayEnd = endOfDay();
-
-    return (ordersData?.items ?? []).reduce((acc, order) => {
-      const issuedAt = new Date(order.issuedAt);
-      if (issuedAt >= weekStart && issuedAt <= todayEnd) {
-        return acc + (order.totalCents ?? 0);
-      }
-      return acc;
-    }, 0);
-  }, [ordersData]);
 
   if (loading) {
     return (
@@ -276,26 +219,22 @@ export default function RepHomePage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0,1fr))",
+            gridTemplateColumns: "repeat(4,1fr)",
             gap: 12,
             marginBottom: 20,
           }}
         >
-          <StatMoney
-            label="Vendas reais da semana"
-            value={weekSalesCents}
-            theme={theme}
-          />
-          <StatMoney
-            label="Comissão total da semana"
-            value={commissionData?.weekCommissionCents ?? 0}
-            theme={theme}
-          />
           <StatCard
-            label="Visitas atrasadas"
+            label="Clientes atrasados"
             value={summary.atrasados}
             theme={theme}
             alert
+          />
+          <StatCard label="Visitas de hoje" value={summary.hoje} theme={theme} />
+          <StatCard
+            label="Visitados hoje"
+            value={summary.visitadosHoje}
+            theme={theme}
           />
           <StatCard
             label="Próximas visitas"
@@ -306,87 +245,8 @@ export default function RepHomePage() {
 
         <div
           style={{
-            border: `1px solid ${border}`,
-            borderRadius: 16,
-            padding: 16,
-            background: cardBg,
-            marginBottom: 20,
-          }}
-        >
-          <h3 style={{ marginTop: 0, marginBottom: 14 }}>
-            Resumo de visitas
-          </h3>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0,1fr))",
-              gap: 12,
-            }}
-          >
-            <MiniInfoCard
-              label="Visitas de hoje"
-              value={summary.hoje}
-              theme={theme}
-            />
-            <MiniInfoCard
-              label="Visitados hoje"
-              value={summary.visitadosHoje}
-              theme={theme}
-            />
-            <MiniInfoCard
-              label="Visitas atrasadas"
-              value={summary.atrasados}
-              theme={theme}
-              danger
-            />
-            <MiniInfoCard
-              label="Visitas futuras"
-              value={summary.proximos}
-              theme={theme}
-            />
-          </div>
-        </div>
-
-        <div
-          style={{
-            border: `1px solid ${border}`,
-            borderRadius: 16,
-            padding: 16,
-            background: cardBg,
-            marginBottom: 20,
-          }}
-        >
-          <h3 style={{ marginTop: 0, marginBottom: 12 }}>Acessos rápidos</h3>
-
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <QuickAction
-              href="/rep/orders/new"
-              label="Novo pedido"
-              theme={theme}
-            />
-            <QuickAction
-              href="/clients/new"
-              label="Novo cliente"
-              theme={theme}
-            />
-            <QuickAction
-              href="/exhibitors/new"
-              label="Novo expositor"
-              theme={theme}
-            />
-            <QuickAction
-              href="/rep/visit"
-              label="Registrar visitas"
-              theme={theme}
-            />
-          </div>
-        </div>
-
-        <div
-          style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0,1fr))",
+            gridTemplateColumns: "repeat(4,1fr)",
             gap: 12,
             marginBottom: 20,
           }}
@@ -416,7 +276,7 @@ export default function RepHomePage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+            gridTemplateColumns: "repeat(3,1fr)",
             gap: 12,
             marginBottom: 20,
           }}
@@ -436,6 +296,43 @@ export default function RepHomePage() {
             value={commissionData?.monthCommissionCents ?? 0}
             theme={theme}
           />
+        </div>
+
+        <div
+          style={{
+            border: `1px solid ${border}`,
+            borderRadius: 16,
+            padding: 16,
+            background: cardBg,
+            marginBottom: 20,
+          }}
+        >
+          <h3 style={{ marginTop: 0, marginBottom: 14 }}>Resumo operacional</h3>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3,1fr)",
+              gap: 12,
+            }}
+          >
+            <MiniInfoCard
+              label="Solicitações pendentes do portal"
+              value={dashboardData?.summary?.portalRequestsPending ?? 0}
+              theme={theme}
+            />
+            <MiniInfoCard
+              label="Visitas realizadas hoje"
+              value={dashboardData?.summary?.visitsToday ?? 0}
+              theme={theme}
+            />
+            <MiniInfoCard
+              label="Visitas vencidas"
+              value={dashboardData?.summary?.overdueVisits ?? 0}
+              theme={theme}
+              danger
+            />
+          </div>
         </div>
 
         <div
@@ -626,38 +523,5 @@ function MiniInfoCard({
         {value}
       </div>
     </div>
-  );
-}
-
-function QuickAction({
-  href,
-  label,
-  theme,
-}: {
-  href: string;
-  label: string;
-  theme: any;
-}) {
-  const border = theme.isDark ? "#1e293b" : theme.border;
-  const cardBg = theme.isDark ? "#0f172a" : theme.cardBg;
-
-  return (
-    <Link
-      href={href}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "10px 14px",
-        borderRadius: 10,
-        border: `1px solid ${border}`,
-        background: cardBg,
-        color: theme.text,
-        textDecoration: "none",
-        fontWeight: 800,
-      }}
-    >
-      {label}
-    </Link>
   );
 }

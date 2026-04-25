@@ -164,6 +164,7 @@ export default function StockTransferPage() {
   const [search, setSearch] = useState("");
 
   const [items, setItems] = useState<TransferItem[]>([]);
+  const [transferQuantities, setTransferQuantities] = useState<Record<string, number>>({});
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -301,6 +302,45 @@ export default function StockTransferPage() {
     });
   }
 
+  function addProductWithQuantity(productId: string) {
+    const available = getAvailableStock(productId);
+    const rawQuantity = transferQuantities[productId] ?? 1;
+    const quantity = Math.floor(Number(rawQuantity) || 1);
+
+    if (available <= 0) {
+      alert("Esse produto não possui saldo disponível na origem selecionada.");
+      return;
+    }
+
+    if (quantity <= 0) {
+      alert("Informe uma quantidade válida.");
+      return;
+    }
+
+    setItems((current) => {
+      const existing = current.find((item) => item.productId === productId);
+
+      if (existing) {
+        return current.map((item) =>
+          item.productId === productId
+            ? {
+                ...item,
+                quantity: Math.min(item.quantity + quantity, available),
+              }
+            : item
+        );
+      }
+
+      return [
+        ...current,
+        {
+          productId,
+          quantity: Math.min(quantity, available),
+        },
+      ];
+    });
+  }
+
   function updateQuantity(productId: string, quantity: number) {
     const available = getAvailableStock(productId);
     const safeQuantity = Math.max(1, Math.min(Number(quantity) || 1, available));
@@ -373,10 +413,10 @@ export default function StockTransferPage() {
 
       if (!res.ok) {
         alert(
-  `Erro ao transferir estoque: ${
-    data?.details || data?.error || text || "Erro desconhecido."
-  }`
-);
+          `Erro ao transferir estoque: ${
+            data?.details || data?.error || text || "Erro desconhecido."
+          }`
+        );
         return;
       }
 
@@ -494,6 +534,7 @@ export default function StockTransferPage() {
                 onChange={(e) => {
                   setFromLocationId(e.target.value);
                   setItems([]);
+                  setTransferQuantities({});
                 }}
                 style={input(theme, inputBg)}
               >
@@ -570,6 +611,7 @@ export default function StockTransferPage() {
               {filteredProducts.map((product) => {
                 const available = getAvailableStock(product.id);
                 const addedQty = itemsMap.get(product.id) ?? 0;
+                const typedQuantity = transferQuantities[product.id] ?? 1;
 
                 return (
                   <div
@@ -662,13 +704,49 @@ export default function StockTransferPage() {
                       </div>
                     ) : null}
 
-                    <ActionButton
-                      label={available > 0 ? "Adicionar" : "Sem saldo"}
-                      theme={theme}
-                      onClick={() => addProduct(product.id)}
-                      disabled={available <= 0}
-                      primary={available > 0}
-                    />
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "90px 1fr",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        type="number"
+                        min="1"
+                        max={Math.max(1, available)}
+                        value={typedQuantity}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          const safeValue = Math.max(
+                            1,
+                            Math.min(Number.isFinite(value) ? value : 1, Math.max(1, available))
+                          );
+
+                          setTransferQuantities((current) => ({
+                            ...current,
+                            [product.id]: safeValue,
+                          }));
+                        }}
+                        disabled={available <= 0}
+                        style={{
+                          ...input(theme, inputBg),
+                          height: 38,
+                          padding: "0 10px",
+                          fontSize: 13,
+                          opacity: available <= 0 ? 0.7 : 1,
+                        }}
+                      />
+
+                      <ActionButton
+                        label={available > 0 ? "Adicionar" : "Sem saldo"}
+                        theme={theme}
+                        onClick={() => addProductWithQuantity(product.id)}
+                        disabled={available <= 0}
+                        primary={available > 0}
+                      />
+                    </div>
                   </div>
                 );
               })}

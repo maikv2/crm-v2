@@ -62,12 +62,12 @@ export default function MobileRepNewClientPage() {
         const json = (await res.json().catch(() => null)) as AuthResponse | null;
 
         if (res.status === 401) {
-          router.push("/login?redirect=/m/client/new");
+          router.push("/login?redirect=/m/rep/clients/new");
           return;
         }
 
         if (json?.user?.role !== "REPRESENTATIVE") {
-          router.push("/m/client");
+          router.push("/m/rep/clients");
           return;
         }
 
@@ -130,7 +130,7 @@ export default function MobileRepNewClientPage() {
         throw new Error(json?.error || "Erro ao salvar cliente.");
       }
 
-      router.push("/m/client");
+      router.push("/m/rep/clients");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao salvar cliente.");

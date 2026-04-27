@@ -207,12 +207,14 @@ model Product {
   barcode              String?
   cest                 String?
   ncm                  String?
+  origem               String                   @default("2")
   extraCostCents       Int                      @default(0)
   freightCostCents     Int                      @default(0)
   imageUrl             String?
   packagingCostCents   Int                      @default(0)
   purchaseCostCents    Int                      @default(0)
   taxCostCents         Int                      @default(0)
+
   defectReturnItems    DefectReturnItem[]
   ExhibitorInitialItem ExhibitorInitialItem[]
   exhibitorStocks      ExhibitorStock[]

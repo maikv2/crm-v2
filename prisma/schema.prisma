@@ -208,6 +208,10 @@ model Product {
   cest                 String?
   ncm                  String?
   origem               String                   @default("2")
+  cfop                 String?                  @default("5104")
+  cst                  String?                  @default("200")
+  icmsRate             Float?                   @default(17)
+  commercialUnit       String?                  @default("QU")
   extraCostCents       Int                      @default(0)
   freightCostCents     Int                      @default(0)
   imageUrl             String?
@@ -236,6 +240,10 @@ model Order {
   createdAt            DateTime             @default(now())
   financialMovement    Boolean              @default(true)
   notes                String?
+  nfeStatus            String?
+  nfeNumber            String?
+  nfeKey               String?
+  nfeXmlUrl            String?
   type                 OrderType            @default(SALE)
   updatedAt            DateTime             @default(now()) @updatedAt
   discountCents        Int                  @default(0)
@@ -263,6 +271,11 @@ model OrderItem {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orderId   String   @db.Uuid
   productId String   @db.Uuid
+  ncm       String?
+  cfop      String?
+  cst       String?
+  icmsRate  Float?
+  unit      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -646,6 +659,12 @@ model CompanyProfile {
   logoUrl      String?
   primaryColor String?
   notes        String?
+  stateRegistration String?
+  taxRegime         String?
+  nfeSeries         String?
+  nfeNextNumber     Int?     @default(1)
+  nfeEnvironment    String?  @default("homologation")
+  nfeToken          String?
   createdAt    DateTime @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 }

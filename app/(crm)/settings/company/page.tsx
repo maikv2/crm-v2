@@ -22,6 +22,12 @@ type CompanyProfile = {
   logoUrl: string;
   primaryColor: string;
   notes: string;
+  stateRegistration?: string;
+  taxRegime?: string;
+  nfeSeries?: string;
+  nfeNextNumber?: number;
+  nfeEnvironment?: string;
+  nfeToken?: string;
 };
 
 function onlyDigits(value: string) {
@@ -77,6 +83,12 @@ export default function CompanySettingsPage() {
     logoUrl: "",
     primaryColor: "#2563eb",
     notes: "",
+    stateRegistration: "",
+    taxRegime: "",
+    nfeSeries: "1",
+    nfeNextNumber: 1,
+    nfeEnvironment: "homologation",
+    nfeToken: "",
   });
 
   const [loading, setLoading] = useState(true);
@@ -120,6 +132,12 @@ export default function CompanySettingsPage() {
             logoUrl: json.item.logoUrl || "",
             primaryColor: json.item.primaryColor || "#2563eb",
             notes: json.item.notes || "",
+            stateRegistration: json.item.stateRegistration || "",
+            taxRegime: json.item.taxRegime || "",
+            nfeSeries: json.item.nfeSeries || "1",
+            nfeNextNumber: json.item.nfeNextNumber || 1,
+            nfeEnvironment: json.item.nfeEnvironment || "homologation",
+            nfeToken: json.item.nfeToken || "",
           });
         }
       } catch (err: any) {
@@ -169,6 +187,12 @@ export default function CompanySettingsPage() {
         logoUrl: form.logoUrl.trim() || null,
         primaryColor: form.primaryColor.trim() || null,
         notes: form.notes.trim() || null,
+        stateRegistration: onlyDigits(form.stateRegistration || "") || null,
+        taxRegime: form.taxRegime || null,
+        nfeSeries: form.nfeSeries || "1",
+        nfeNextNumber: Number(form.nfeNextNumber) || 1,
+        nfeEnvironment: form.nfeEnvironment || "homologation",
+        nfeToken: form.nfeToken || null,
       };
 
       const res = await fetch("/api/settings/company", {
@@ -274,7 +298,7 @@ export default function CompanySettingsPage() {
           <div style={grid2Style}>
             <Field label="Nome fantasia *" theme={theme}>
               <input
-                style={inputStyle(theme, inputBg)}
+                style={{ ...inputStyle(theme, inputBg), height: 40 }}
                 value={form.tradeName}
                 onChange={(e) => updateField("tradeName", e.target.value)}
                 placeholder="MP Comércio"
@@ -283,7 +307,7 @@ export default function CompanySettingsPage() {
 
             <Field label="Razão social" theme={theme}>
               <input
-                style={inputStyle(theme, inputBg)}
+                style={{ ...inputStyle(theme, inputBg), height: 40 }}
                 value={form.legalName}
                 onChange={(e) => updateField("legalName", e.target.value)}
                 placeholder="MP Comércio e Serviços LTDA"
@@ -292,7 +316,7 @@ export default function CompanySettingsPage() {
 
             <Field label="CNPJ" theme={theme}>
               <input
-                style={inputStyle(theme, inputBg)}
+                style={{ ...inputStyle(theme, inputBg), height: 40 }}
                 value={form.cnpj}
                 onChange={(e) => updateField("cnpj", formatCNPJ(e.target.value))}
                 placeholder="00.000.000/0000-00"
@@ -301,7 +325,7 @@ export default function CompanySettingsPage() {
 
             <Field label="Telefone" theme={theme}>
               <input
-                style={inputStyle(theme, inputBg)}
+                style={{ ...inputStyle(theme, inputBg), height: 40 }}
                 value={form.phone}
                 onChange={(e) => updateField("phone", formatPhoneBR(e.target.value))}
                 placeholder="(00) 00000-0000"
@@ -421,6 +445,78 @@ export default function CompanySettingsPage() {
             />
           </Field>
         </section>
+
+        <section style={sectionStyle(theme)}>
+  <h3 style={{ margin: 0 }}>Dados fiscais / NF-e</h3>
+
+  <div style={grid3Style}>
+    <Field label="Inscrição Estadual" theme={theme}>
+      <input
+        style={{ ...inputStyle(theme, inputBg), height: 40 }}
+        value={form.stateRegistration || ""}
+        onChange={(e) => updateField("stateRegistration", onlyDigits(e.target.value))}
+        placeholder="Somente números"
+      />
+    </Field>
+
+    <Field label="Regime tributário" theme={theme}>
+      <select
+        style={{ ...inputStyle(theme, inputBg), height: 40 }}
+        value={form.taxRegime || ""}
+        onChange={(e) => updateField("taxRegime", e.target.value)}
+      >
+        <option value="">Selecione</option>
+        <option value="1">Simples Nacional</option>
+        <option value="2">Simples Excesso Sublimite</option>
+        <option value="3">Regime Normal</option>
+      </select>
+    </Field>
+
+    <Field label="Ambiente" theme={theme}>
+      <select
+         style={{ ...inputStyle(theme, inputBg), height: 40 }}
+        value={form.nfeEnvironment || "homologation"}
+        onChange={(e) => updateField("nfeEnvironment", e.target.value)}
+      >
+        <option value="homologation">Homologação</option>
+        <option value="production">Produção</option>
+      </select>
+    </Field>
+  </div>
+
+  <div style={grid3Style}>
+    <Field label="Série NF-e" theme={theme}>
+      <input
+        style={inputStyle(theme, inputBg)}
+        value={form.nfeSeries || "1"}
+        onChange={(e) => updateField("nfeSeries", e.target.value)}
+      />
+    </Field>
+
+    <Field label="Próximo número" theme={theme}>
+      <input
+        type="number"
+        style={inputStyle(theme, inputBg)}
+        value={form.nfeNextNumber || 1}
+        onChange={(e) =>
+  updateField(
+    "nfeNextNumber",
+    e.target.value ? Number(e.target.value) : 1
+  )
+}
+      />
+    </Field>
+
+    <Field label="Token Nuvem Fiscal" theme={theme}>
+      <input
+        style={inputStyle(theme, inputBg)}
+        value={form.nfeToken || ""}
+        onChange={(e) => updateField("nfeToken", e.target.value)}
+        placeholder="Token da API"
+      />
+    </Field>
+  </div>
+</section>
 
         {pageError ? <MessageBox type="error" theme={theme} text={pageError} /> : null}
         {pageSuccess ? <MessageBox type="success" theme={theme} text={pageSuccess} /> : null}

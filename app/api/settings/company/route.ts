@@ -11,6 +11,11 @@ function normalizeText(value?: string | null) {
   return text ? text : null;
 }
 
+function normalizeInt(value?: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 1;
+}
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -66,6 +71,13 @@ export async function PUT(request: Request) {
     const primaryColor = normalizeText(body.primaryColor);
     const notes = normalizeText(body.notes);
 
+    const stateRegistration = onlyDigits(body.stateRegistration) || null;
+    const taxRegime = normalizeText(body.taxRegime);
+    const nfeSeries = normalizeText(body.nfeSeries) ?? "1";
+    const nfeNextNumber = normalizeInt(body.nfeNextNumber);
+    const nfeEnvironment = normalizeText(body.nfeEnvironment) ?? "homologation";
+    const nfeToken = normalizeText(body.nfeToken);
+
     if (!tradeName) {
       return NextResponse.json(
         { error: "O nome fantasia da empresa é obrigatório." },
@@ -99,6 +111,13 @@ export async function PUT(request: Request) {
           logoUrl,
           primaryColor,
           notes,
+
+          stateRegistration,
+          taxRegime,
+          nfeSeries,
+          nfeNextNumber,
+          nfeEnvironment,
+          nfeToken,
         },
       });
     } else {
@@ -122,6 +141,13 @@ export async function PUT(request: Request) {
           logoUrl,
           primaryColor,
           notes,
+
+          stateRegistration,
+          taxRegime,
+          nfeSeries,
+          nfeNextNumber,
+          nfeEnvironment,
+          nfeToken,
         },
       });
     }

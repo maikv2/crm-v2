@@ -487,11 +487,16 @@ export async function POST(request: Request) {
         const products = await tx.product.findMany({
           where: { id: { in: allProductIds } },
           select: {
-            id: true,
-            name: true,
-            priceCents: true,
-            commissionCents: true,
-            active: true,
+          id: true,
+          name: true,
+          priceCents: true,
+          commissionCents: true,
+          active: true,
+          ncm: true,
+          cfop: true,
+          cst: true,
+          icmsRate: true,
+          commercialUnit: true,
           },
         });
 
@@ -533,7 +538,12 @@ export async function POST(request: Request) {
             qty,
             unitCents,
             productName: product.name,
-          };
+            ncm: product.ncm,
+            cfop: product.cfop || "5104",
+            cst: product.cst || "200",
+            icmsRate: product.icmsRate ?? 17,
+            unit: product.commercialUnit || "QU",
+            };
         });
 
         const normalizedDefectReturnItems = defectReturnItemsInput.map((item) => {
@@ -625,11 +635,16 @@ export async function POST(request: Request) {
             totalCents,
             notes,
             items: {
-              create: normalizedItems.map((item) => ({
-                productId: item.productId,
-                qty: item.qty,
-                unitCents: item.unitCents,
-              })),
+            create: normalizedItems.map((item) => ({
+            productId: item.productId,
+            qty: item.qty,
+            unitCents: item.unitCents,
+            ncm: item.ncm,
+            cfop: item.cfop,
+            cst: item.cst,
+            icmsRate: item.icmsRate,
+            unit: item.unit,
+            })),
             },
             ...(normalizedDefectReturnItems.length > 0
               ? {

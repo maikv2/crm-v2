@@ -194,7 +194,10 @@ export async function POST(
           quantidade_tributavel: item.qty,
           valor_bruto: totalValue,
 
-          icms_situacao_tributaria: item.cst || item.product?.cst || "200",
+          icms_situacao_tributaria:
+  String(company.taxRegime) === "1"
+    ? item.cst || item.product?.cst || "200"
+    : "00",
           icms_origem: numberOrDefault(item.product?.origem, 2),
           icms_modalidade_base_calculo: 3,
           icms_base_calculo: totalValue,

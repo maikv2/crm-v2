@@ -127,6 +127,15 @@ export async function POST(
 
     const ref = `crm-v2-order-${order.id}`;
 
+    const cepDestinatario = onlyDigits(client.zipCode || client.cep || client.postalCode);
+
+if (!cepDestinatario) {
+  return NextResponse.json(
+    { error: "Cliente sem CEP válido. Corrija o cadastro do cliente antes de emitir NF-e." },
+    { status: 400 }
+  );
+}
+
     const payload = {
       natureza_operacao: "Venda de Mercadorias / Produtos",
       data_emissao: new Date().toISOString(),
@@ -136,7 +145,6 @@ export async function POST(
       finalidade_emissao: 1,
       consumidor_final: 0,
       presenca_comprador: 1,
-
       cnpj_emitente: onlyDigits(company.cnpj),
       nome_emitente: cleanText(company.legalName, company.tradeName),
       nome_fantasia_emitente: cleanText(company.tradeName, company.legalName || company.tradeName),
@@ -162,7 +170,7 @@ export async function POST(
       bairro_destinatario: cleanText(client.district),
       municipio_destinatario: cleanText(client.city),
       uf_destinatario: destinatarioUf,
-      cep_destinatario: onlyDigits(client.zipCode),
+      cep_destinatario: cepDestinatario,
       pais_destinatario: "Brasil",
       telefone_destinatario: onlyDigits(client.phone),
 

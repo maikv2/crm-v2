@@ -567,23 +567,49 @@ export default function OrderDetailPage() {
         </div>
 
         <div
-          style={{
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <ActionButton
-            label="Voltar"
-            theme={theme}
-            onClick={() => router.push("/orders")}
-          />
-          <ActionButton
-            label="Baixar PDF"
-            theme={theme}
-            onClick={() => window.open(pdfUrl, "_blank", "noopener,noreferrer")}
-          />
-        </div>
+  style={{
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+  }}
+>
+  <ActionButton
+    label="Voltar"
+    theme={theme}
+    onClick={() => router.push("/orders")}
+  />
+  <ActionButton
+    label="Baixar PDF"
+    theme={theme}
+    onClick={() => window.open(pdfUrl, "_blank", "noopener,noreferrer")}
+  />
+  <ActionButton
+    label="Emitir NF-e"
+    theme={theme}
+    primary
+    onClick={async () => {
+      if (!order?.id) return;
+
+      try {
+        const res = await fetch(`/api/orders/${order.id}/nfe`, {
+          method: "POST",
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data?.error || "Erro ao emitir NF-e");
+          return;
+        }
+
+        alert("NF-e enviada para processamento");
+      } catch (err) {
+        console.error(err);
+        alert("Erro ao emitir NF-e");
+      }
+    }}
+  />
+</div>
       </div>
 
       <div style={{ display: "grid", gap: 18 }}>

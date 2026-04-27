@@ -78,6 +78,7 @@ export async function POST(request: Request) {
 
     const ncm = body.ncm ? String(body.ncm).trim() : null;
     const cest = body.cest ? String(body.cest).trim() : null;
+    const origem = body.origem ? String(body.origem) : "2";
 
     const active = body.active === false ? false : true;
 
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
         commissionCents,
         ncm,
         cest,
+        origem,
         active,
       },
     });

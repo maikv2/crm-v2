@@ -57,6 +57,7 @@ export default function EditProductPage() {
 
   const [ncm, setNcm] = useState("");
   const [cest, setCest] = useState("");
+  const [origem, setOrigem] = useState("2");
   const [active, setActive] = useState(true);
 
   const priceCents = useMemo(() => toCents(price), [price]);
@@ -126,6 +127,7 @@ export default function EditProductPage() {
 
         setNcm(product.ncm ?? "");
         setCest(product.cest ?? "");
+        setOrigem(product.origem ?? "2");
         setActive(product.active ?? true);
       } catch (err: any) {
         setError(err?.message || "Erro ao carregar produto.");
@@ -192,6 +194,7 @@ export default function EditProductPage() {
         commissionCents,
         ncm: ncm || null,
         cest: cest || null,
+        origem,
         active,
       }),
     });
@@ -627,6 +630,19 @@ export default function EditProductPage() {
               />
             </div>
           </div>
+
+          <div>
+  <label style={labelStyle}>Origem da mercadoria</label>
+  <select
+    style={inputStyle}
+    value={origem}
+    onChange={(e) => setOrigem(e.target.value)}
+  >
+    <option value="0">0 - Nacional</option>
+    <option value="1">1 - Importação direta</option>
+    <option value="2">2 - Importada (mercado interno)</option>
+  </select>
+</div>
 
           <div style={{ marginBottom: 16 }}>
             <label

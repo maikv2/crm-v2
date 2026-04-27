@@ -24,12 +24,12 @@ model User {
   exhibitorMaintenances     ExhibitorMaintenance[]
   investorProfile           Investor?
   orders                    Order[]
+  prospects                 Prospect[]                 @relation("RepresentativeProspects")
   receiptsReceived          Receipt[]                  @relation("Receipt_receivedBy")
   representativeCommissions RepresentativeCommission[]
   representativeSettlements RepresentativeSettlement[]
   region                    Region?                    @relation(fields: [regionId], references: [id])
   stockLocation             StockLocation?             @relation(fields: [stockLocationId], references: [id])
-  prospects                 Prospect[]                 @relation("RepresentativeProspects")
   visits                    Visit[]
 }
 
@@ -54,6 +54,8 @@ model Region {
   financeTransactions       FinanceTransaction[]
   investorDistributions     InvestorDistribution[]
   orders                    Order[]
+  portalOrderRequests       PortalOrderRequest[]
+  prospects                 Prospect[]
   receipts                  Receipt[]
   stockLocation             StockLocation?             @relation(fields: [stockLocationId], references: [id])
   monthlyResults            RegionMonthlyResult[]
@@ -61,8 +63,6 @@ model Region {
   representativeSettlements RepresentativeSettlement[]
   shares                    Share[]
   users                     User[]
-  portalOrderRequests       PortalOrderRequest[]
-  prospects                 Prospect[]
 }
 
 model Investor {
@@ -140,6 +140,11 @@ model Client {
   tradeName                  String?
   whatsapp                   String?
   code                       String?              @unique
+  lastVisitAt                DateTime?
+  latitude                   Float?
+  longitude                  Float?
+  mapStatus                  String?              @default("CLIENT")
+  needsReturn                Boolean              @default(false)
   portalEnabled              Boolean              @default(false)
   portalPasswordHash         String?
   accountsReceivables        AccountsReceivable[]
@@ -147,13 +152,8 @@ model Client {
   otherContacts              ClientOtherContact[]
   exhibitors                 Exhibitor[]
   orders                     Order[]
-  visits                     Visit[]
   portalOrderRequests        PortalOrderRequest[]
-  latitude                   Float?
-  longitude                  Float?
-  mapStatus                  String?              @default("CLIENT")
-  lastVisitAt                DateTime?
-  needsReturn                Boolean              @default(false)
+  visits                     Visit[]
 }
 
 model ClientOtherContact {
@@ -189,9 +189,9 @@ model Exhibitor {
   region            Region                 @relation(fields: [regionId], references: [id])
   initialItems      ExhibitorInitialItem[]
   maintenances      ExhibitorMaintenance[]
+  stocks            ExhibitorStock[]
   orders            Order[]
   stockMovements    StockMovement[]
-  stocks            ExhibitorStock[]
   visits            Visit[]
 }
 
@@ -199,27 +199,27 @@ model Product {
   sku                  String
   name                 String
   category             String
-  active               Boolean                @default(true)
-  commissionCents      Int                    @default(0)
-  createdAt            DateTime               @default(now())
-  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  active               Boolean                  @default(true)
+  commissionCents      Int                      @default(0)
+  createdAt            DateTime                 @default(now())
+  id                   String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   priceCents           Int
   barcode              String?
   cest                 String?
   ncm                  String?
-  extraCostCents       Int                    @default(0)
-  freightCostCents     Int                    @default(0)
+  extraCostCents       Int                      @default(0)
+  freightCostCents     Int                      @default(0)
   imageUrl             String?
-  packagingCostCents   Int                    @default(0)
-  purchaseCostCents    Int                    @default(0)
-  taxCostCents         Int                    @default(0)
+  packagingCostCents   Int                      @default(0)
+  purchaseCostCents    Int                      @default(0)
+  taxCostCents         Int                      @default(0)
+  defectReturnItems    DefectReturnItem[]
   ExhibitorInitialItem ExhibitorInitialItem[]
   exhibitorStocks      ExhibitorStock[]
-  defectReturnItems    DefectReturnItem[]
   OrderItem            OrderItem[]
+  portalOrderItems     PortalOrderRequestItem[]
   StockBalance         StockBalance[]
   StockMovement        StockMovement[]
-  portalOrderItems     PortalOrderRequestItem[]
 }
 
 model Order {
@@ -623,35 +623,8 @@ model Prospect {
   updatedAt        DateTime       @default(now()) @updatedAt
   regionId         String?        @db.Uuid
   representativeId String?        @db.Uuid
-
   region           Region?        @relation(fields: [regionId], references: [id])
   representative   User?          @relation("RepresentativeProspects", fields: [representativeId], references: [id])
-}
-
-model SystemSetting {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  singletonKey String   @unique @default("main")
-  companyName  String?
-  tradeName    String?
-  legalName    String?
-  cnpj         String?  @unique
-  phone        String?
-  whatsapp     String?
-  email        String?
-  website      String?
-  country      String?
-  cep          String?
-  street       String?
-  number       String?
-  district     String?
-  city         String?
-  state        String?
-  complement   String?
-  logoUrl      String?
-  primaryColor String?
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @default(now()) @updatedAt
 }
 
 model CompanyProfile {
@@ -671,8 +644,8 @@ model CompanyProfile {
   logoUrl      String?
   primaryColor String?
   notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @default(now()) @updatedAt
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 }
 
 enum UserRole {

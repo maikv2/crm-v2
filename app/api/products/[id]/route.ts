@@ -51,6 +51,7 @@ const commissionCents = Number(body.commissionCents ?? 0);
 
 const ncm = body.ncm ? String(body.ncm).trim() : null;
 const cest = body.cest ? String(body.cest).trim() : null;
+const origem = body.origem ? String(body.origem) : "2";
 
     
 
@@ -73,7 +74,6 @@ const cest = body.cest ? String(body.cest).trim() : null;
   category,
   barcode,
   imageUrl,
-
   priceCents,
   purchaseCostCents,
   packagingCostCents,
@@ -81,9 +81,9 @@ const cest = body.cest ? String(body.cest).trim() : null;
   taxCostCents,
   freightCostCents,
   commissionCents,
-
   ncm,
   cest,
+  origem,
   active,
 },
     });

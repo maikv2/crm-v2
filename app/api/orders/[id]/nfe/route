@@ -1,0 +1,130 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getAuthUser } from "@/lib/auth-user";
+
+export async function POST(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const authUser = await getAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 }
+      );
+    }
+
+    if (authUser.role !== "ADMIN" && authUser.role !== "REPRESENTATIVE") {
+      return NextResponse.json(
+        { error: "Sem permissão para emitir NF-e." },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await context.params;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Pedido inválido." },
+        { status: 400 }
+      );
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        client: true,
+        region: true,
+        seller: true,
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return NextResponse.json(
+        { error: "Pedido não encontrado." },
+        { status: 404 }
+      );
+    }
+
+    if (!order.client) {
+      return NextResponse.json(
+        { error: "Pedido sem cliente vinculado." },
+        { status: 400 }
+      );
+    }
+
+    if (!order.items.length) {
+      return NextResponse.json(
+        { error: "Pedido sem itens." },
+        { status: 400 }
+      );
+    }
+
+    const missingFiscalProducts = order.items
+      .filter((item) => {
+        return !item.product?.ncm || !item.product?.origem;
+      })
+      .map((item) => item.product?.name || item.productId);
+
+    if (missingFiscalProducts.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Existem produtos sem dados fiscais obrigatórios.",
+          products: missingFiscalProducts,
+        },
+        { status: 400 }
+      );
+    }
+
+    const clientState = (order.client.state || "SC").toUpperCase();
+    const cfop = clientState === "SC" ? "5104" : "6104";
+
+    const nfePreview = {
+      orderId: order.id,
+      orderNumber: order.number,
+      naturezaOperacao: "Venda de Mercadorias / Produtos",
+      cfop,
+      cliente: {
+        nome: order.client.legalName || order.client.name,
+        documento: order.client.cnpj || order.client.cpf,
+        cidade: order.client.city,
+        uf: order.client.state,
+      },
+      itens: order.items.map((item, index) => ({
+        numeroItem: index + 1,
+        codigo: item.product?.sku,
+        descricao: item.product?.name,
+        ncm: item.product?.ncm,
+        cest: item.product?.cest,
+        origem: item.product?.origem || "2",
+        cfop,
+        quantidade: item.qty,
+        valorUnitarioCents: item.unitCents,
+        valorTotalCents: item.qty * item.unitCents,
+      })),
+      totalCents: order.totalCents,
+    };
+
+    console.log("Prévia NF-e:", nfePreview);
+
+    return NextResponse.json({
+      ok: true,
+      message: "Prévia da NF-e gerada com sucesso.",
+      nfePreview,
+    });
+  } catch (error) {
+    console.error("POST /api/orders/[id]/nfe error:", error);
+
+    return NextResponse.json(
+      { error: "Erro ao preparar emissão da NF-e." },
+      { status: 500 }
+    );
+  }
+}

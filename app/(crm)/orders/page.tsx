@@ -1,9 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "../../providers/theme-provider";
 import { getThemeColors } from "../../../lib/theme";
+
+type AuthUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+};
+
+type AuthResponse = {
+  user?: AuthUser | null;
+};
 
 type Installment = {
   id: string;
@@ -119,12 +131,13 @@ function actionButtonStyle(theme: ThemeShape): React.CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 34,
     padding: "8px 12px",
     borderRadius: 10,
     border: `1px solid ${theme.border}`,
     background: theme.cardBg,
     color: theme.text,
-    fontWeight: 700,
+    fontWeight: 800,
     fontSize: 13,
     textDecoration: "none",
     cursor: "pointer",
@@ -133,104 +146,386 @@ function actionButtonStyle(theme: ThemeShape): React.CSSProperties {
 }
 
 export default function OrdersPage() {
+  const router = useRouter();
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
 
   const [orders, setOrders] = useState<Order[]>([]);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadOrders() {
-      const res = await fetch("/api/orders", { cache: "no-store" });
-      const data = await res.json();
-      setOrders(data);
+  const isAdmin = user?.role === "ADMIN";
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [authRes, ordersRes] = await Promise.all([
+        fetch("/api/auth/me", { cache: "no-store" }),
+        fetch("/api/orders", { cache: "no-store" }),
+      ]);
+
+      const authJson = (await authRes.json().catch(() => null)) as AuthResponse | null;
+      const ordersJson = await ordersRes.json().catch(() => null);
+
+      setUser(authJson?.user ?? null);
+      setOrders(Array.isArray(ordersJson) ? ordersJson : []);
+    } catch {
+      setError("Erro ao carregar pedidos.");
+    } finally {
       setLoading(false);
     }
-
-    loadOrders();
   }, []);
 
-  if (loading) {
-    return <div style={{ padding: 24 }}>Carregando pedidos...</div>;
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const sortedOrders = useMemo(() => {
+    return [...orders].sort((a, b) => {
+      const an = Number(a.number ?? 0);
+      const bn = Number(b.number ?? 0);
+
+      if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) {
+        return bn - an;
+      }
+
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [orders]);
+
+  async function handleDelete(order: Order) {
+    const number = formatOrderNumber(order.number, order.id);
+
+    const confirmed = window.confirm(
+      `Tem certeza que deseja excluir definitivamente o pedido ${number}?\n\nEssa ação vai devolver o estoque e apagar financeiro, recebimentos, repasses e itens do pedido.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(order.id);
+      setError(null);
+
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: "DELETE",
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Erro ao excluir pedido.");
+      }
+
+      setOrders((current) => current.filter((item) => item.id !== order.id));
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao excluir pedido.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   const btnStyle = actionButtonStyle(theme);
+  const deleteBtnStyle: React.CSSProperties = {
+    ...btnStyle,
+    border: "1px solid #fecaca",
+    background: "#fee2e2",
+    color: "#b91c1c",
+  };
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ marginBottom: 20 }}>
-        <Link href="/orders/new">Novo pedido</Link>
+    <div
+      style={{
+        background: theme.pageBg,
+        color: theme.text,
+        minHeight: "100%",
+        padding: 28,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: 22,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: theme.subtext,
+              marginBottom: 10,
+            }}
+          >
+            🏠 / Pedidos
+          </div>
+
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 900,
+              letterSpacing: -0.4,
+            }}
+          >
+            Pedidos
+          </div>
+
+          <div
+            style={{
+              marginTop: 6,
+              color: theme.subtext,
+              fontSize: 14,
+            }}
+          >
+            Consulte pedidos, baixe PDFs e gerencie vendas.
+          </div>
+        </div>
+
+        <Link
+          href="/orders/new"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: 40,
+            padding: "0 16px",
+            borderRadius: 12,
+            border: "none",
+            background: theme.primary,
+            color: "#ffffff",
+            textDecoration: "none",
+            fontSize: 14,
+            fontWeight: 900,
+            boxShadow: "0 8px 20px rgba(37, 99, 235, 0.25)",
+          }}
+        >
+          Novo pedido
+        </Link>
       </div>
 
-      <table style={{ width: "100%" }}>
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>Pedido</th>
-            <th>Cliente</th>
-            <th>Região</th>
-            <th>Pagamento</th>
-            <th>Financeiro</th>
-            <th>Valor</th>
-            <th></th>
-          </tr>
-        </thead>
+      <div
+        style={{
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 18,
+          padding: 22,
+          boxShadow: theme.isDark
+            ? "0 10px 30px rgba(2,6,23,0.35)"
+            : "0 8px 24px rgba(15,23,42,0.06)",
+        }}
+      >
+        {error ? (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #fecaca",
+              background: "#fee2e2",
+              color: "#991b1b",
+              fontWeight: 700,
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
 
-        <tbody>
-          {orders.map((order) => {
-            const financialLabel = financialStatusLabel(order);
-
-            return (
-              <tr key={order.id}>
-                <td>{formatDateBR(order.createdAt)}</td>
-
-                <td>{formatOrderNumber(order.number, order.id)}</td>
-
-                <td>{order.client?.name ?? "-"}</td>
-
-                <td>{order.region?.name ?? order.client?.region?.name ?? "-"}</td>
-
-                <td>{paymentMethodLabel(order.paymentMethod)}</td>
-
-                <td
-                  style={{
-                    color: financialStatusColor(financialLabel),
-                    fontWeight: 700,
-                  }}
-                >
-                  {financialLabel}
-                </td>
-
-                <td>{formatMoneyBRFromCents(order.totalCents)}</td>
-
-                <td>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <Link href={`/orders/${order.id}`} style={btnStyle}>
-                      Abrir
-                    </Link>
-
-                    <a
-                      href={`/api/orders/${order.id}/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={btnStyle}
+        {loading ? (
+          <div style={{ color: theme.subtext, fontWeight: 700 }}>
+            Carregando pedidos...
+          </div>
+        ) : sortedOrders.length === 0 ? (
+          <div style={{ color: theme.subtext, fontWeight: 700 }}>
+            Nenhum pedido encontrado.
+          </div>
+        ) : (
+          <div style={{ width: "100%", overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "separate",
+                borderSpacing: 0,
+                minWidth: 980,
+              }}
+            >
+              <thead>
+                <tr>
+                  {[
+                    "Data",
+                    "Pedido",
+                    "Cliente",
+                    "Região",
+                    "Pagamento",
+                    "Financeiro",
+                    "Valor",
+                    "Ações",
+                  ].map((head) => (
+                    <th
+                      key={head}
+                      style={{
+                        textAlign: "left",
+                        padding: "0 12px 14px",
+                        color: theme.subtext,
+                        fontSize: 12,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        borderBottom: `1px solid ${theme.border}`,
+                        whiteSpace: "nowrap",
+                      }}
                     >
-                      Baixar PDF
-                    </a>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                      {head}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {sortedOrders.map((order) => {
+                  const financialLabel = financialStatusLabel(order);
+
+                  return (
+                    <tr key={order.id}>
+                      <td
+                        style={{
+                          padding: "16px 12px",
+                          borderBottom: `1px solid ${theme.border}`,
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatDateBR(order.createdAt)}
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "16px 12px",
+                          borderBottom: `1px solid ${theme.border}`,
+                          fontWeight: 900,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatOrderNumber(order.number, order.id)}
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "16px 12px",
+                          borderBottom: `1px solid ${theme.border}`,
+                          fontWeight: 800,
+                          minWidth: 180,
+                        }}
+                      >
+                        {order.client?.name ?? "-"}
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "16px 12px",
+                          borderBottom: `1px solid ${theme.border}`,
+                          color: theme.subtext,
+                          fontWeight: 700,
+                          minWidth: 160,
+                        }}
+                      >
+                        {order.region?.name ?? order.client?.region?.name ?? "-"}
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "16px 12px",
+                          borderBottom: `1px solid ${theme.border}`,
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {paymentMethodLabel(order.paymentMethod)}
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "16px 12px",
+                          borderBottom: `1px solid ${theme.border}`,
+                          color: financialStatusColor(financialLabel),
+                          fontWeight: 900,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {financialLabel}
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "16px 12px",
+                          borderBottom: `1px solid ${theme.border}`,
+                          fontWeight: 900,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatMoneyBRFromCents(order.totalCents)}
+                      </td>
+
+                      <td
+                        style={{
+                          padding: "16px 12px",
+                          borderBottom: `1px solid ${theme.border}`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <Link href={`/orders/${order.id}`} style={btnStyle}>
+                            Abrir
+                          </Link>
+
+                          <a
+                            href={`/api/orders/${order.id}/pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={btnStyle}
+                          >
+                            Baixar PDF
+                          </a>
+
+                          {isAdmin ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(order)}
+                              disabled={deletingId === order.id}
+                              style={{
+                                ...deleteBtnStyle,
+                                opacity: deletingId === order.id ? 0.65 : 1,
+                                cursor:
+                                  deletingId === order.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                              }}
+                            >
+                              {deletingId === order.id ? "Excluindo..." : "Excluir"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

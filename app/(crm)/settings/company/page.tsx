@@ -507,12 +507,12 @@ export default function CompanySettingsPage() {
       />
     </Field>
 
-    <Field label="Token Nuvem Fiscal" theme={theme}>
+    <Field label="Token Focus NFe" theme={theme}>
       <input
         style={inputStyle(theme, inputBg)}
         value={form.nfeToken || ""}
         onChange={(e) => updateField("nfeToken", e.target.value)}
-        placeholder="Token da API"
+        placeholder="Token de homologação/produção da Focus NFe"
       />
     </Field>
   </div>

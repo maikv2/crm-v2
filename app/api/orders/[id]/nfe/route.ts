@@ -16,7 +16,7 @@ function numberOrDefault(value: unknown, fallback: number) {
 }
 
 function basicAuth(token: string) {
-  return `Basic ${Buffer.from(`${token}:`).toString("base64")}`;
+  return `Basic ${Buffer.from(`${token.trim()}:`).toString("base64")}`;
 }
 
 function cleanText(value?: string | null, fallback = "") {
@@ -183,7 +183,7 @@ export async function POST(
           numero_item: index + 1,
           codigo_produto: item.product?.sku || item.productId,
           descricao: item.product?.name || "Produto",
-          ncm: item.ncm || item.product?.ncm,
+          codigo_ncm: item.ncm || item.product?.ncm,
           cest: item.product?.cest || undefined,
           cfop: item.cfop || item.product?.cfop || "5104",
           unidade_comercial: item.unit || item.product?.commercialUnit || "QU",
@@ -207,8 +207,13 @@ export async function POST(
       }),
     };
 
-    const response = await fetch(
-      `https://api.focusnfe.com.br/v2/nfe?ref=${encodeURIComponent(ref)}`,
+    const focusBaseUrl =
+  company.nfeEnvironment === "production"
+    ? "https://api.focusnfe.com.br"
+    : "https://homologacao.focusnfe.com.br";
+
+const response = await fetch(
+  `${focusBaseUrl}/v2/nfe?ref=${encodeURIComponent(ref)}`,
       {
         method: "POST",
         headers: {

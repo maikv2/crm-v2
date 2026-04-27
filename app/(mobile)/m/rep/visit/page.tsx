@@ -64,15 +64,15 @@ function MobileRepVisitPageContent() {
         throw new Error(data?.error || "Erro ao carregar clientes.");
       }
 
-      setClients(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Erro ao carregar clientes.");
-      setClients([]);
-    } finally {
-      setLoading(false);
-    }
+       setClients(Array.isArray(data?.items) ? data.items : []);
+  } catch (err: any) {
+    console.error(err);
+    setError(err?.message || "Erro ao carregar clientes.");
+    setClients([]);
+  } finally {
+    setLoading(false);
   }
+}
 
   useEffect(() => {
     loadClients();

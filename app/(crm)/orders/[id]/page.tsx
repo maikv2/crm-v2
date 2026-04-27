@@ -598,7 +598,8 @@ export default function OrderDetailPage() {
         const data = await res.json();
 
         if (!res.ok) {
-          alert(data?.error || "Erro ao emitir NF-e");
+          console.error("Erro NF-e:", data);
+          alert(JSON.stringify(data, null, 2));
           return;
         }
 

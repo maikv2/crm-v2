@@ -193,7 +193,7 @@ if (!cepDestinatario) {
           descricao: item.product?.name || "Produto",
           codigo_ncm: item.ncm || item.product?.ncm,
           ...(item.product?.cest ? { cest: item.product.cest } : {}),
-          cfop: item.cfop || item.product?.cfop || "5102",
+          cfop: emitenteUf === destinatarioUf ? "5102" : "6102",
           unidade_comercial: item.unit || item.product?.commercialUnit || "QU",
           quantidade_comercial: item.qty,
           valor_unitario_comercial: unitValue,

@@ -436,7 +436,13 @@ function NFeBlock({
 
   async function handleSync() {
     try {
-      await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
+      const syncRes = await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
+      if (!syncRes.ok) {
+        const errData = await syncRes.json().catch(() => ({}));
+        alert(`Erro ao sincronizar: ${errData?.error || syncRes.status}`);
+        return;
+      }
+      // Só recarrega o pedido se o sync foi bem-sucedido
       await onReload();
     } catch (err) {
       console.error("Erro ao sincronizar NF-e:", err);
@@ -757,10 +763,18 @@ export default function OrderDetailPage() {
 
   async function reloadOrder() {
     if (!id) return;
-    const res = await fetch(`/api/orders/${id}`, { cache: "no-store" });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || "Erro ao carregar pedido.");
-    setOrder(data);
+    try {
+      const res = await fetch(`/api/orders/${id}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("Erro ao recarregar pedido:", data?.error);
+        return; // mantém os dados atuais na tela, não limpa
+      }
+      setOrder(data);
+    } catch (err) {
+      console.error("Erro ao recarregar pedido:", err);
+      // mantém os dados atuais na tela, não limpa
+    }
   }
 
   async function receiveInstallment(installmentId: string) {

@@ -63,7 +63,13 @@ type OrderDetail = {
   totalCents?: number | null;
   notes?: string | null;
 
-  // Campo fiscal — pode vir como `nfe` ou `nfeInfo` dependendo da sua API
+  // Campos fiscais flat que vêm do Prisma
+  nfeStatus?: string | null;
+  nfeNumber?: string | null;
+  nfeKey?: string | null;
+  nfeXmlUrl?: string | null;
+
+  // Objeto nfe montado pelo frontend a partir dos campos flat acima
   nfe?: NFeInfo | null;
 
   client?: {
@@ -743,6 +749,32 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [receivingId, setReceivingId] = useState<string | null>(null);
 
+  // Monta o objeto `nfe` a partir dos campos flat que a API retorna do Prisma
+  function mapOrderNfe(data: any): OrderDetail {
+    const raw: string | null = data?.nfeStatus ?? null;
+    let mappedStatus: NFeStatus = null;
+    if (raw === "AUTHORIZED") mappedStatus = "ISSUED";
+    else if (raw === "PROCESSING") mappedStatus = "PROCESSING";
+    else if (raw === "WAITING")    mappedStatus = "WAITING";
+    else if (raw === "ISSUED")     mappedStatus = "ISSUED";
+    else if (raw === "ERROR")      mappedStatus = "ERROR";
+    else if (raw === "REJECTED")   mappedStatus = "REJECTED";
+
+    const nfe: NFeInfo | null =
+      mappedStatus || data?.nfeNumber || data?.nfeKey
+        ? {
+            status:    mappedStatus,
+            number:    data?.nfeNumber ?? null,
+            accessKey: data?.nfeKey    ?? null,
+            xmlUrl:    data?.nfeXmlUrl ?? null,
+            pdfUrl:    null,
+            issuedAt:  mappedStatus === "ISSUED" ? (data?.updatedAt ?? null) : null,
+          }
+        : null;
+
+    return { ...data, nfe };
+  }
+
   useEffect(() => {
     async function loadOrder() {
       if (!id) return;
@@ -750,7 +782,7 @@ export default function OrderDetailPage() {
         const res = await fetch(`/api/orders/${id}`, { cache: "no-store" });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Erro ao carregar pedido.");
-        setOrder(data);
+        setOrder(mapOrderNfe(data));
       } catch (error) {
         console.error(error);
         setOrder(null);
@@ -770,7 +802,7 @@ export default function OrderDetailPage() {
         console.error("Erro ao recarregar pedido:", data?.error);
         return; // mantém os dados atuais na tela, não limpa
       }
-      setOrder(data);
+      setOrder(mapOrderNfe(data));
     } catch (err) {
       console.error("Erro ao recarregar pedido:", err);
       // mantém os dados atuais na tela, não limpa

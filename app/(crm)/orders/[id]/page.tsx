@@ -420,34 +420,24 @@ function NFeBlock({
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  function handleSendWhatsApp() {
-    const orderNum = formatOrderNumber(order.number, order.id);
-    const accessKey = nfe?.accessKey ?? "";
-    const nfeNum = nfe?.number ? ` nº ${nfe.number}` : "";
-    const raw = order.client?.whatsapp || order.client?.phone || "";
-    const digits = raw.replace(/\D/g, "");
-    const phone = digits.startsWith("55") ? digits : `55${digits}`;
-    const absolutePdf = `${window.location.origin}/api/orders/${order.id}/nfe/pdf`;
-    const msg = encodeURIComponent(
-      `Olá, ${order.client?.name ?? "cliente"}! 😊
-
-` +
-      `Segue a NF-e${nfeNum} referente ao pedido *${orderNum}*.
-
-` +
-      `📄 PDF da NF-e: ${absolutePdf}
-` +
-      (accessKey ? `
-🔑 Chave de acesso:
-${accessKey}
-` : "") +
-      `
-Qualquer dúvida, estamos à disposição!`
-    );
-    const waUrl = phone
-      ? `https://wa.me/${phone}?text=${msg}`
-      : `https://wa.me/?text=${msg}`;
-    window.open(waUrl, "_blank", "noopener,noreferrer");
+  async function handleSendWhatsApp() {
+    if (!order?.id) return;
+    try {
+      const res = await fetch("/api/whatsapp/send-nfe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Erro ao enviar: ${data?.error || res.status}`);
+        return;
+      }
+      alert(data?.message || "NF-e enviada pelo WhatsApp.");
+    } catch (err) {
+      console.error("Erro ao enviar NF-e por WhatsApp:", err);
+      alert("Erro ao enviar NF-e por WhatsApp.");
+    }
   }
 
   const canDownload = status === "ISSUED";
@@ -962,22 +952,24 @@ export default function OrderDetailPage() {
             color="#16a34a"
             primary
             disabled={!order?.client?.whatsapp && !order?.client?.phone}
-            onClick={() => {
-              if (!order) return;
-              const orderNum = formatOrderNumber(order.number, order.id);
-              const raw = order.client?.whatsapp || order.client?.phone || "";
-              const digits = raw.replace(/\D/g, "");
-              const phone = digits.startsWith("55") ? digits : `55${digits}`;
-              const absolutePdf = `${window.location.origin}${pdfUrl}`;
-              const msg = encodeURIComponent(
-                `Olá, ${order.client?.name ?? "cliente"}! 😊
-
-Segue o PDF do pedido *${orderNum}*: ${absolutePdf}`
-              );
-              const waUrl = phone
-                ? `https://wa.me/${phone}?text=${msg}`
-                : `https://wa.me/?text=${msg}`;
-              window.open(waUrl, "_blank", "noopener,noreferrer");
+            onClick={async () => {
+              if (!order?.id) return;
+              try {
+                const res = await fetch("/api/whatsapp/send-order-pdf", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orderId: order.id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                  alert(`Erro ao enviar: ${data?.error || res.status}`);
+                  return;
+                }
+                alert(data?.message || "Pedido enviado pelo WhatsApp.");
+              } catch (err) {
+                console.error("Erro ao enviar pedido por WhatsApp:", err);
+                alert("Erro ao enviar pedido por WhatsApp.");
+              }
             }}
           />
           <ActionButton

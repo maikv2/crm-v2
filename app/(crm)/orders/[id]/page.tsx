@@ -425,15 +425,39 @@ function NFeBlock({
     const accessKey = nfe?.accessKey ?? "";
     const nfeNum = nfe?.number ? ` nº ${nfe.number}` : "";
 
-    const msg =
-      `Olá, ${order.client?.name ?? "cliente"}! 😊\n\n` +
-      `Segue a NF-e${nfeNum} referente ao pedido *${orderNum}*.\n` +
-      (accessKey ? `\n🔑 Chave de acesso:\n${accessKey}\n` : "") +
-      `\nVocê pode consultar sua nota em: https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx\n\n` +
-      `Qualquer dúvida, estamos à disposição!`;
+    // 1. Baixa o PDF da NF-e automaticamente no computador do usuário
+    const a = document.createElement("a");
+    a.href = `/api/orders/${order.id}/nfe/pdf`;
+    a.download = `nfe-${orderNum}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 
-    const url = buildWhatsAppUrl(msg);
-    window.open(url, "_blank", "noopener,noreferrer");
+    // 2. Aguarda 800ms e abre o WhatsApp Web direto na conversa do cliente
+    setTimeout(() => {
+      const raw = order.client?.whatsapp || order.client?.phone || "";
+      const digits = raw.replace(/\D/g, "");
+      const phone = digits.startsWith("55") ? digits : `55${digits}`;
+
+      const msg =
+        `Olá, ${order.client?.name ?? "cliente"}! 😊
+
+` +
+        `Segue em anexo o PDF da NF-e${nfeNum} referente ao pedido *${orderNum}*.
+` +
+        (accessKey ? `
+🔑 Chave de acesso:
+${accessKey}
+` : "") +
+        `
+Qualquer dúvida, estamos à disposição!`;
+
+      const waUrl = phone
+        ? `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
+        : `https://web.whatsapp.com/`;
+
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+    }, 800);
   }
 
   const canDownload = status === "ISSUED";
@@ -941,6 +965,44 @@ export default function OrderDetailPage() {
             label="Baixar PDF"
             theme={theme}
             onClick={() => window.open(pdfUrl, "_blank", "noopener,noreferrer")}
+          />
+          <ActionButton
+            label="📲 Enviar pedido"
+            theme={theme}
+            color="#16a34a"
+            primary
+            disabled={!order?.client?.whatsapp && !order?.client?.phone}
+            onClick={() => {
+              if (!order) return;
+              const orderNum = formatOrderNumber(order.number, order.id);
+
+              // 1. Baixa o PDF do pedido
+              const a = document.createElement("a");
+              a.href = pdfUrl;
+              a.download = `pedido-${orderNum}.pdf`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+
+              // 2. Abre WhatsApp Web com o cliente
+              setTimeout(() => {
+                const raw = order.client?.whatsapp || order.client?.phone || "";
+                const digits = raw.replace(/\D/g, "");
+                const phone = digits.startsWith("55") ? digits : `55${digits}`;
+                const msg =
+                  `Olá, ${order.client?.name ?? "cliente"}! 😊
+
+` +
+                  `Segue em anexo o PDF do pedido *${orderNum}*.
+
+` +
+                  `Qualquer dúvida, estamos à disposição!`;
+                const waUrl = phone
+                  ? `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
+                  : `https://web.whatsapp.com/`;
+                window.open(waUrl, "_blank", "noopener,noreferrer");
+              }, 800);
+            }}
           />
           <ActionButton
             label="Emitir NF-e"

@@ -432,7 +432,7 @@ function NFeBlock({
 
   const canDownload = status === "ISSUED";
   const hasWhatsApp = !!(order.client?.whatsapp || order.client?.phone);
-  const canSync = !!status; // só mostra sync se já foi emitida alguma vez
+  const canSync = true; // sempre visível para buscar o status no Focus
 
   async function handleSync() {
     try {
@@ -700,13 +700,11 @@ function NFeBlock({
             disabled={!canDownload || !hasWhatsApp}
             onClick={handleSendWhatsApp}
           />
-          {canSync && (
-            <ActionButton
-              label="🔄 Sincronizar status"
-              theme={theme}
-              onClick={handleSync}
-            />
-          )}
+          <ActionButton
+            label="🔄 Sincronizar status"
+            theme={theme}
+            onClick={handleSync}
+          />
         </div>
 
         {/* Aviso quando WhatsApp não está cadastrado */}

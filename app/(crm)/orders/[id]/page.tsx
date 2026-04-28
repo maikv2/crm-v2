@@ -432,6 +432,17 @@ function NFeBlock({
 
   const canDownload = status === "ISSUED";
   const hasWhatsApp = !!(order.client?.whatsapp || order.client?.phone);
+  const canSync = !!status; // só mostra sync se já foi emitida alguma vez
+
+  async function handleSync() {
+    try {
+      await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
+      await onReload();
+    } catch (err) {
+      console.error("Erro ao sincronizar NF-e:", err);
+      alert("Erro ao sincronizar status com o Focus NFe.");
+    }
+  }
 
   return (
     <Block
@@ -689,6 +700,13 @@ function NFeBlock({
             disabled={!canDownload || !hasWhatsApp}
             onClick={handleSendWhatsApp}
           />
+          {canSync && (
+            <ActionButton
+              label="🔄 Sincronizar status"
+              theme={theme}
+              onClick={handleSync}
+            />
+          )}
         </div>
 
         {/* Aviso quando WhatsApp não está cadastrado */}
@@ -878,10 +896,16 @@ export default function OrderDetailPage() {
                 const data = await res.json();
                 if (!res.ok) {
                   console.error("Erro NF-e:", data);
-                  alert(JSON.stringify(data, null, 2));
+                  alert(
+                    data?.error
+                      ? `Erro: ${data.error}${data.detalhes ? "\n\n" + JSON.stringify(data.detalhes, null, 2) : ""}`
+                      : JSON.stringify(data, null, 2)
+                  );
                   return;
                 }
-                alert("NF-e enviada para processamento");
+                // Aguarda 2 segundos e consulta o status atualizado no Focus
+                await new Promise((r) => setTimeout(r, 2000));
+                await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
                 await reloadOrder();
               } catch (err) {
                 console.error(err);

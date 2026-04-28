@@ -192,8 +192,8 @@ if (!cepDestinatario) {
           codigo_produto: item.product?.sku || item.productId,
           descricao: item.product?.name || "Produto",
           codigo_ncm: item.ncm || item.product?.ncm,
-          cest: item.product?.cest || undefined,
-          cfop: item.cfop || item.product?.cfop || "5104",
+          ...(item.product?.cest ? { cest: item.product.cest } : {}),
+          cfop: item.cfop || item.product?.cfop || "5102",
           unidade_comercial: item.unit || item.product?.commercialUnit || "QU",
           quantidade_comercial: item.qty,
           valor_unitario_comercial: unitValue,
@@ -201,6 +201,7 @@ if (!cepDestinatario) {
           unidade_tributavel: item.unit || item.product?.commercialUnit || "QU",
           quantidade_tributavel: item.qty,
           valor_bruto: totalValue,
+         
 
           icms_situacao_tributaria:
   String(company.taxRegime) === "1"
@@ -212,8 +213,8 @@ if (!cepDestinatario) {
           icms_aliquota: icmsRate,
           icms_valor: Number(((totalValue * icmsRate) / 100).toFixed(2)),
 
-          pis_situacao_tributaria: "07",
-          cofins_situacao_tributaria: "07",
+          pis_situacao_tributaria: "01",
+          cofins_situacao_tributaria: "01",
         };
       }),
     };

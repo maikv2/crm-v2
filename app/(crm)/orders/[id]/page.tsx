@@ -448,8 +448,21 @@ function NFeBlock({
         alert(`Erro ao sincronizar: ${errData?.error || syncRes.status}`);
         return;
       }
-      // Só recarrega o pedido se o sync foi bem-sucedido
-      await onReload();
+      // Atualiza os campos nfe diretamente com o retorno do sync
+      const syncData = await syncRes.json();
+      if (syncData?.nfeStatus) {
+        // Remonta o objeto nfe com os dados atualizados
+        const updated = {
+          ...order,
+          nfeStatus: syncData.nfeStatus,
+          nfeNumber: syncData.nfeNumber ?? order.nfeStatus,
+          nfeKey:    syncData.nfeKey    ?? order.nfeKey,
+          nfeXmlUrl: syncData.nfeXmlUrl ?? order.nfeXmlUrl,
+        };
+        onReload && await onReload();
+      } else {
+        await onReload();
+      }
     } catch (err) {
       console.error("Erro ao sincronizar NF-e:", err);
       alert("Erro ao sincronizar status com o Focus NFe.");

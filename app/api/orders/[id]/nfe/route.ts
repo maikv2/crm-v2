@@ -92,26 +92,59 @@ export async function GET(
 
     const focusData: any = await focusRes.json();
 
-    // Mapeamento do status do Focus para o status interno
-    // Focus status: autorizado | processando_autorizacao | erro_autorizacao | cancelado | denegado
+    // Log para diagnóstico — ver todos os campos retornados pelo Focus
+    console.log("[NF-e sync] focusData:", JSON.stringify(focusData));
+
+    // Mapeamento do status do Focus para o status interno.
+    // O Focus pode retornar:
+    //   - status textual em `situacao`: "autorizado", "processando_autorizacao", etc.
+    //   - código numérico em `status_sefaz`: 100=autorizado, 102=cancelado, etc.
+    //   - status textual em `status`: mesmo que `situacao`
     function mapFocusStatus(s: string | undefined, fallback: string): string {
+      if (!s) return fallback;
+      // Textual
       switch (s) {
         case "autorizado":                return "AUTHORIZED";
         case "processando_autorizacao":   return "PROCESSING";
         case "erro_autorizacao":          return "ERROR";
         case "cancelado":                 return "ERROR";
         case "denegado":                  return "REJECTED";
-        default:                          return fallback;
       }
+      // Numérico (código SEFAZ)
+      switch (String(s)) {
+        case "100": return "AUTHORIZED"; // Autorizado o uso da NF-e
+        case "101": return "ERROR";      // Cancelamento homologado
+        case "102": return "ERROR";      // Inutilização homologado
+        case "110": return "REJECTED";   // Uso Denegado
+        case "135": return "AUTHORIZED"; // Evento registrado
+        case "150": return "AUTHORIZED"; // Autorizado fora do prazo
+        case "301": return "REJECTED";
+        case "302": return "REJECTED";
+      }
+      return fallback;
     }
 
+    // O Focus pode usar "situacao", "status" ou "status_sefaz" dependendo do endpoint
+    const focusStatusRaw =
+      focusData?.situacao ??
+      focusData?.status ??
+      focusData?.status_sefaz;
+
     const newStatus = mapFocusStatus(
-      focusData?.status_sefaz ?? focusData?.status,
+      String(focusStatusRaw ?? ""),
       order.nfeStatus ?? "PROCESSING"
     );
-    const newNumber    = focusData?.numero ? String(focusData.numero) : order.nfeNumber;
-    const newKey       = focusData?.chave_nfe ?? focusData?.chave ?? order.nfeKey;
-    const newXmlUrl    = focusData?.caminho_xml_nota_fiscal ?? focusData?.url_xml ?? order.nfeXmlUrl;
+    const newNumber = focusData?.numero
+      ? String(focusData.numero)
+      : order.nfeNumber;
+    const newKey =
+      focusData?.chave_nfe ??
+      focusData?.chave ??
+      order.nfeKey;
+    const newXmlUrl =
+      focusData?.caminho_xml_nota_fiscal ??
+      focusData?.url_xml ??
+      order.nfeXmlUrl;
 
     // Persiste no banco se mudou alguma coisa
     if (

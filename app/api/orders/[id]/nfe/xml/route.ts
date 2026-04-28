@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminUser } from "@/lib/admin-auth";
-
 function basicAuth(token: string) {
   return `Basic ${Buffer.from(`${token.trim()}:`).toString("base64")}`;
 }
@@ -11,8 +9,6 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminUser();
-
     const { id } = await context.params;
 
     const [company, order] = await Promise.all([
@@ -31,26 +27,21 @@ export async function GET(
       return NextResponse.json({ error: "Token Focus NFe não configurado." }, { status: 400 });
     }
 
-    if (!order.nfeKey && order.nfeStatus !== "AUTHORIZED") {
-      return NextResponse.json({ error: "NF-e ainda não autorizada." }, { status: 400 });
+    if (!order.nfeXmlUrl) {
+      return NextResponse.json({ error: "NF-e ainda não autorizada ou URL não disponível." }, { status: 400 });
     }
 
-    const ref = `crm-v2-order-${order.id}`;
     const focusBaseUrl =
       company.nfeEnvironment === "production"
         ? "https://api.focusnfe.com.br"
         : "https://homologacao.focusnfe.com.br";
 
-    // Busca o XML da NF-e diretamente do Focus
-    const focusRes = await fetch(
-      `${focusBaseUrl}/v2/nfe/${encodeURIComponent(ref)}/xml`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: basicAuth(company.nfeToken),
-        },
-      }
-    );
+    const focusRes = await fetch(`${focusBaseUrl}${order.nfeXmlUrl}`, {
+      method: "GET",
+      headers: {
+        Authorization: basicAuth(company.nfeToken),
+      },
+    });
 
     if (!focusRes.ok) {
       const text = await focusRes.text().catch(() => "");
@@ -75,12 +66,6 @@ export async function GET(
   } catch (error: any) {
     console.error("GET /api/orders/[id]/nfe/xml error:", error);
     const msg: string = error?.message ?? "";
-    if (msg.includes("autenticado") || msg === "UNAUTHORIZED") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    }
-    if (msg.includes("administrador") || msg.includes("Acesso")) {
-      return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
-    }
     return NextResponse.json({ error: msg || "Erro ao buscar XML da NF-e." }, { status: 500 });
   }
 }

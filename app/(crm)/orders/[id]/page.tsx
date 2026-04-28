@@ -424,40 +424,30 @@ function NFeBlock({
     const orderNum = formatOrderNumber(order.number, order.id);
     const accessKey = nfe?.accessKey ?? "";
     const nfeNum = nfe?.number ? ` nº ${nfe.number}` : "";
-
-    // 1. Baixa o PDF da NF-e automaticamente no computador do usuário
-    const a = document.createElement("a");
-    a.href = `/api/orders/${order.id}/nfe/pdf`;
-    a.download = `nfe-${orderNum}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    // 2. Aguarda 800ms e abre o WhatsApp Web direto na conversa do cliente
-    setTimeout(() => {
-      const raw = order.client?.whatsapp || order.client?.phone || "";
-      const digits = raw.replace(/\D/g, "");
-      const phone = digits.startsWith("55") ? digits : `55${digits}`;
-
-      const msg =
-        `Olá, ${order.client?.name ?? "cliente"}! 😊
+    const raw = order.client?.whatsapp || order.client?.phone || "";
+    const digits = raw.replace(/\D/g, "");
+    const phone = digits.startsWith("55") ? digits : `55${digits}`;
+    const absolutePdf = `${window.location.origin}/api/orders/${order.id}/nfe/pdf`;
+    const msg = encodeURIComponent(
+      `Olá, ${order.client?.name ?? "cliente"}! 😊
 
 ` +
-        `Segue em anexo o PDF da NF-e${nfeNum} referente ao pedido *${orderNum}*.
+      `Segue a NF-e${nfeNum} referente ao pedido *${orderNum}*.
+
 ` +
-        (accessKey ? `
+      `📄 PDF da NF-e: ${absolutePdf}
+` +
+      (accessKey ? `
 🔑 Chave de acesso:
 ${accessKey}
 ` : "") +
-        `
-Qualquer dúvida, estamos à disposição!`;
-
-      const waUrl = phone
-        ? `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
-        : `https://web.whatsapp.com/`;
-
-      window.open(waUrl, "_blank", "noopener,noreferrer");
-    }, 800);
+      `
+Qualquer dúvida, estamos à disposição!`
+    );
+    const waUrl = phone
+      ? `https://wa.me/${phone}?text=${msg}`
+      : `https://wa.me/?text=${msg}`;
+    window.open(waUrl, "_blank", "noopener,noreferrer");
   }
 
   const canDownload = status === "ISSUED";
@@ -975,33 +965,19 @@ export default function OrderDetailPage() {
             onClick={() => {
               if (!order) return;
               const orderNum = formatOrderNumber(order.number, order.id);
+              const raw = order.client?.whatsapp || order.client?.phone || "";
+              const digits = raw.replace(/\D/g, "");
+              const phone = digits.startsWith("55") ? digits : `55${digits}`;
+              const absolutePdf = `${window.location.origin}${pdfUrl}`;
+              const msg = encodeURIComponent(
+                `Olá, ${order.client?.name ?? "cliente"}! 😊
 
-              // 1. Baixa o PDF do pedido
-              const a = document.createElement("a");
-              a.href = pdfUrl;
-              a.download = `pedido-${orderNum}.pdf`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-
-              // 2. Abre WhatsApp Web com o cliente
-              setTimeout(() => {
-                const raw = order.client?.whatsapp || order.client?.phone || "";
-                const digits = raw.replace(/\D/g, "");
-                const phone = digits.startsWith("55") ? digits : `55${digits}`;
-                const msg =
-                  `Olá, ${order.client?.name ?? "cliente"}! 😊
-
-` +
-                  `Segue em anexo o PDF do pedido *${orderNum}*.
-
-` +
-                  `Qualquer dúvida, estamos à disposição!`;
-                const waUrl = phone
-                  ? `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
-                  : `https://web.whatsapp.com/`;
-                window.open(waUrl, "_blank", "noopener,noreferrer");
-              }, 800);
+Segue o PDF do pedido *${orderNum}*: ${absolutePdf}`
+              );
+              const waUrl = phone
+                ? `https://wa.me/${phone}?text=${msg}`
+                : `https://wa.me/?text=${msg}`;
+              window.open(waUrl, "_blank", "noopener,noreferrer");
             }}
           />
           <ActionButton

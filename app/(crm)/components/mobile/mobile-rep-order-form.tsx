@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   CheckCircle2,
@@ -220,6 +220,7 @@ function ProductQtyControl({
 
 export default function MobileRepOrderForm() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
@@ -679,7 +680,11 @@ export default function MobileRepOrderForm() {
 
       alert("Pedido realizado com sucesso!");
 
-      router.push(`/m/rep/orders/${createdOrderId}`);
+      const targetPath = pathname.startsWith("/m/")
+  ? `/m/rep/orders/${createdOrderId}`
+  : `/rep/orders/${createdOrderId}`;
+
+router.push(targetPath);
       
     } catch (err) {
       console.error(err);

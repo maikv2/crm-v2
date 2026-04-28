@@ -676,6 +676,11 @@ export default function MobileRepOrderForm() {
 
       setSavedOrderId(createdOrderId);
       setSavedOrderNumber(createdOrderNumber);
+
+      alert("Pedido realizado com sucesso!");
+
+      router.push(`/m/rep/orders/${createdOrderId}`);
+      
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Erro ao salvar pedido.");

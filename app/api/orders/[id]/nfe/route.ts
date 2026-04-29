@@ -24,14 +24,179 @@ function cleanText(value?: string | null, fallback = "") {
   return text || fallback;
 }
 
+function getFocusBaseUrl(environment?: string | null) {
+  return environment === "production"
+    ? "https://api.focusnfe.com.br"
+    : "https://homologacao.focusnfe.com.br";
+}
+
+function getNfeRef(orderId: string) {
+  return `crm-v2-order-${orderId}`;
+}
+
+function pickFirstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value))
+      return String(value);
+  }
+  return null;
+}
+
+function mapFocusStatus(data: any) {
+  const raw = String(data?.status ?? data?.codigo_status ?? "").toLowerCase();
+  const mensagem = String(
+    data?.mensagem ?? data?.mensagem_sefaz ?? "",
+  ).toLowerCase();
+
+  if (raw.includes("autoriz") || mensagem.includes("autoriz"))
+    return "AUTHORIZED";
+  if (raw.includes("cancel")) return "CANCELLED";
+  if (
+    raw.includes("erro") ||
+    raw.includes("rejeit") ||
+    mensagem.includes("rejei")
+  )
+    return "REJECTED";
+  if (raw.includes("process")) return "PROCESSING";
+
+  if (
+    data?.chave_nfe ||
+    data?.chave ||
+    data?.caminho_xml_nota_fiscal ||
+    data?.url_xml
+  ) {
+    return "AUTHORIZED";
+  }
+
+  return "PROCESSING";
+}
+
+function buildOrderNfeUpdate(data: any, fallbackNumber?: string | null) {
+  return {
+    nfeStatus: mapFocusStatus(data),
+    nfeNumber: pickFirstString(data?.numero, data?.numero_nfe, fallbackNumber),
+    nfeKey: pickFirstString(data?.chave_nfe, data?.chave),
+    nfeXmlUrl: pickFirstString(data?.caminho_xml_nota_fiscal, data?.url_xml),
+  };
+}
+
 function ieValida(ie?: string | null): boolean {
   const digits = onlyDigits(ie);
   return digits.length >= 8;
 }
 
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params;
+    await requireOrderAccess(id);
+
+    const [company, order] = await Promise.all([
+      prisma.companyProfile.findFirst({ orderBy: { createdAt: "asc" } }),
+      prisma.order.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          number: true,
+          nfeStatus: true,
+          nfeNumber: true,
+          nfeKey: true,
+          nfeXmlUrl: true,
+        },
+      }),
+    ]);
+
+    if (!order) {
+      return NextResponse.json(
+        { error: "Pedido não encontrado." },
+        { status: 404 },
+      );
+    }
+
+    if (!company?.nfeToken) {
+      return NextResponse.json(
+        { error: "Token Focus NFe não configurado." },
+        { status: 400 },
+      );
+    }
+
+    const ref = getNfeRef(order.id);
+    const focusBaseUrl = getFocusBaseUrl(company.nfeEnvironment);
+
+    const response = await fetch(
+      `${focusBaseUrl}/v2/nfe/${encodeURIComponent(ref)}?completa=1`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: basicAuth(company.nfeToken),
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      },
+    );
+
+    const responseText = await response.text();
+
+    let data: any = null;
+    try {
+      data = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      data = { raw: responseText };
+    }
+
+    if (!response.ok) {
+      return NextResponse.json(
+        {
+          error: `Erro ao consultar NF-e na Focus NFe (${response.status}).`,
+          status: response.status,
+          detalhes: data,
+        },
+        { status: response.status === 404 ? 404 : 400 },
+      );
+    }
+
+    const update = buildOrderNfeUpdate(data, order.nfeNumber);
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: order.id },
+      data: update,
+      select: {
+        id: true,
+        nfeStatus: true,
+        nfeNumber: true,
+        nfeKey: true,
+        nfeXmlUrl: true,
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      ref,
+      ...updatedOrder,
+      data,
+    });
+  } catch (error: any) {
+    if (error instanceof OrderAccessError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
+    console.error("GET /api/orders/[id]/nfe error:", error);
+    return NextResponse.json(
+      { error: error?.message || "Erro interno ao consultar NF-e." },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(
   _request: Request,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params;
@@ -44,14 +209,14 @@ export async function POST(
     if (!company) {
       return NextResponse.json(
         { error: "Cadastre os dados da empresa antes de emitir NF-e." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!company.nfeToken) {
       return NextResponse.json(
         { error: "Informe o token da Focus NFe no cadastro da empresa." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -61,7 +226,7 @@ export async function POST(
           error:
             "Complete CNPJ, Inscrição Estadual e Regime Tributário no cadastro da empresa.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -78,26 +243,23 @@ export async function POST(
     if (!order) {
       return NextResponse.json(
         { error: "Pedido não encontrado." },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     if (!order.client) {
       return NextResponse.json(
         { error: "Pedido sem cliente vinculado." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!order.items.length) {
-      return NextResponse.json(
-        { error: "Pedido sem itens." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Pedido sem itens." }, { status: 400 });
     }
 
     const missingFiscalItems = order.items.filter(
-      (item) => !item.ncm && !item.product?.ncm
+      (item) => !item.ncm && !item.product?.ncm,
     );
 
     if (missingFiscalItems.length > 0) {
@@ -110,14 +272,14 @@ export async function POST(
             sku: item.product?.sku,
           })),
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const client: any = order.client;
 
     const cepDestinatario = onlyDigits(
-      client.zipCode || client.cep || client.postalCode
+      client.zipCode || client.cep || client.postalCode,
     );
 
     if (!cepDestinatario) {
@@ -126,7 +288,7 @@ export async function POST(
           error:
             "Cliente sem CEP válido. Corrija o cadastro do cliente antes de emitir NF-e.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -143,10 +305,12 @@ export async function POST(
     const valorDesconto = moneyFromCents(order.discountCents);
     const valorTotal = moneyFromCents(order.totalCents);
 
-    const ref = `crm-v2-order-${order.id}`;
+    const ref = getNfeRef(order.id);
 
     const payload = {
       natureza_operacao: "Venda de Mercadorias / Produtos",
+      numero: company.nfeNextNumber || 1,
+      serie: company.nfeSeries || "1",
       data_emissao: new Date().toISOString(),
       data_entrada_saida: new Date().toISOString(),
       tipo_documento: 1,
@@ -158,7 +322,7 @@ export async function POST(
       nome_emitente: cleanText(company.legalName, company.tradeName),
       nome_fantasia_emitente: cleanText(
         company.tradeName,
-        company.legalName || company.tradeName
+        company.legalName || company.tradeName,
       ),
       logradouro_emitente: cleanText(company.street),
       numero_emitente: cleanText(company.number, "S/N"),
@@ -199,12 +363,12 @@ export async function POST(
           emitenteUf === destinatarioUf
             ? 17
             : [1, 2, 3, 8].includes(origem)
-            ? 4
-            : 12;
+              ? 4
+              : 12;
 
         const icmsCst =
           String(company.taxRegime) === "1"
-            ? (item.cst || item.product?.cst || "200")
+            ? item.cst || item.product?.cst || "200"
             : "00";
 
         return {
@@ -214,13 +378,11 @@ export async function POST(
           codigo_ncm: item.ncm || item.product?.ncm,
           ...(item.product?.cest ? { cest: item.product.cest } : {}),
           cfop: emitenteUf === destinatarioUf ? "5102" : "6102",
-          unidade_comercial:
-            item.unit || item.product?.commercialUnit || "QU",
+          unidade_comercial: item.unit || item.product?.commercialUnit || "QU",
           quantidade_comercial: item.qty,
           valor_unitario_comercial: unitValue,
           valor_unitario_tributavel: unitValue,
-          unidade_tributavel:
-            item.unit || item.product?.commercialUnit || "QU",
+          unidade_tributavel: item.unit || item.product?.commercialUnit || "QU",
           quantidade_tributavel: item.qty,
           valor_bruto: totalValue,
           icms_situacao_tributaria: icmsCst,
@@ -241,10 +403,7 @@ export async function POST(
       }),
     };
 
-    const focusBaseUrl =
-      company.nfeEnvironment === "production"
-        ? "https://api.focusnfe.com.br"
-        : "https://homologacao.focusnfe.com.br";
+    const focusBaseUrl = getFocusBaseUrl(company.nfeEnvironment);
 
     const response = await fetch(
       `${focusBaseUrl}/v2/nfe?ref=${encodeURIComponent(ref)}`,
@@ -256,7 +415,7 @@ export async function POST(
           Accept: "application/json",
         },
         body: JSON.stringify(payload),
-      }
+      },
     );
 
     const responseText = await response.text();
@@ -289,21 +448,18 @@ export async function POST(
           status: response.status,
           detalhes: data,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
+    const update = buildOrderNfeUpdate(
+      data,
+      String(company.nfeNextNumber || ""),
+    );
+
     await prisma.order.update({
       where: { id: order.id },
-      data: {
-        nfeStatus: response.status === 201 ? "AUTHORIZED" : "PROCESSING",
-        nfeNumber: data?.numero
-          ? String(data.numero)
-          : String(company.nfeNextNumber || ""),
-        nfeKey: data?.chave_nfe || data?.chave || null,
-        nfeXmlUrl:
-          data?.caminho_xml_nota_fiscal || data?.url_xml || null,
-      },
+      data: update,
     });
 
     await prisma.companyProfile.update({
@@ -327,13 +483,13 @@ export async function POST(
     if (error instanceof OrderAccessError) {
       return NextResponse.json(
         { error: error.message },
-        { status: error.status }
+        { status: error.status },
       );
     }
     console.error("POST /api/orders/[id]/nfe error:", error);
     return NextResponse.json(
       { error: error?.message || "Erro interno ao emitir NF-e." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

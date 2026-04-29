@@ -3,9 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth-user";
 import { TransferStatus } from "@prisma/client";
 
-function toInt(value: unknown, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+function normalizeIds(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+  }
+
+  const single = String(value || "").trim();
+  return single ? [single] : [];
 }
 
 export async function GET() {
@@ -45,19 +51,38 @@ export async function GET() {
           transferredAt: true,
           status: true,
           notes: true,
+          createdAt: true,
           receipt: {
             select: {
               id: true,
               amountCents: true,
               receivedAt: true,
+              paymentMethod: true,
+              order: {
+                select: {
+                  id: true,
+                  number: true,
+                  issuedAt: true,
+                  totalCents: true,
+                  paymentMethod: true,
+                  paymentStatus: true,
+                  client: {
+                    select: {
+                      id: true,
+                      name: true,
+                      tradeName: true,
+                    },
+                  },
+                },
+              },
             },
           },
         },
         orderBy: [
-          { transferredAt: "desc" },
+          { status: "asc" },
           { createdAt: "desc" },
         ],
-        take: 200,
+        take: 300,
       }),
     ]);
 
@@ -93,88 +118,71 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json();
-
-    const amountCents = Math.max(0, toInt(body?.amountCents, 0));
+    const body = await request.json().catch(() => ({}));
+    const transferIds = normalizeIds(body?.transferIds ?? body?.transferId ?? body?.id);
     const notes =
       body?.notes === null || body?.notes === undefined
         ? null
         : String(body.notes).trim() || null;
 
-    if (amountCents <= 0) {
+    if (!transferIds.length) {
       return NextResponse.json(
-        { error: "Informe um valor de repasse válido." },
+        { error: "Selecione pelo menos um pedido para repassar." },
         { status: 400 }
       );
     }
 
-    const pendingReceipt = await prisma.receipt.findFirst({
-      where: {
-        regionId: user.regionId,
-        paymentMethod: "CASH",
-        transfers: {
-          none: {},
-        },
-      },
-      orderBy: {
-        receivedAt: "desc",
-      },
-      select: {
-        id: true,
-        amountCents: true,
-      },
-    });
+    const uniqueIds = Array.from(new Set(transferIds));
 
-    const transfer = await prisma.cashTransfer.create({
-      data: {
-        receiptId: pendingReceipt?.id ?? (
-          await prisma.receipt.create({
-            data: {
-              accountsReceivableId: (
-                await prisma.accountsReceivable.findFirst({
-                  where: {
-                    regionId: user.regionId,
-                  },
-                  select: { id: true },
-                  orderBy: { createdAt: "desc" },
-                })
-              )?.id ?? (() => {
-                throw new Error(
-                  "Não foi possível registrar o repasse porque não existe uma conta a receber base na região."
-                );
-              })(),
-              regionId: user.regionId,
-              receivedById: user.id,
-              amountCents,
-              paymentMethod: "CASH",
-              receivedAt: new Date(),
-              location: "REGION",
-              notes: "Recibo técnico criado automaticamente para registrar repasse à matriz.",
-            },
-            select: {
-              id: true,
-            },
-          })
-        ).id,
-        regionId: user.regionId,
-        transferredById: user.id,
-        amountCents,
-        transferredAt: new Date(),
-        status: TransferStatus.TRANSFERRED,
-        notes,
-      },
-      select: {
-        id: true,
-        amountCents: true,
-        transferredAt: true,
-        status: true,
-        notes: true,
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      const pendingTransfers = await tx.cashTransfer.findMany({
+        where: {
+          id: { in: uniqueIds },
+          regionId: user.regionId,
+          status: TransferStatus.PENDING,
+        },
+        select: {
+          id: true,
+          amountCents: true,
+        },
+      });
+
+      if (pendingTransfers.length !== uniqueIds.length) {
+        throw new Error(
+          "Um ou mais pedidos selecionados não estão pendentes ou não pertencem à sua região. Atualize a tela e tente novamente."
+        );
+      }
+
+      const now = new Date();
+      const totalCents = pendingTransfers.reduce(
+        (sum, item) => sum + Number(item.amountCents || 0),
+        0
+      );
+
+      await tx.cashTransfer.updateMany({
+        where: {
+          id: { in: uniqueIds },
+          regionId: user.regionId,
+          status: TransferStatus.PENDING,
+        },
+        data: {
+          transferredById: user.id,
+          transferredAt: now,
+          status: TransferStatus.TRANSFERRED,
+          notes: notes || "Repasse realizado pelo representante.",
+        },
+      });
+
+      return {
+        count: pendingTransfers.length,
+        totalCents,
+        transferredAt: now,
+      };
     });
 
     return NextResponse.json({
       ok: true,
-      item: transfer,
+      ...result,
     });
   } catch (error) {
     console.error("REP FINANCE TRANSFERS POST ERROR:", error);

@@ -15,7 +15,11 @@ function formatDateBR(value?: string | null) {
   if (!value) return "-";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("pt-BR");
+  return d.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 type TransferItem = {
@@ -24,10 +28,25 @@ type TransferItem = {
   transferredAt?: string | null;
   status?: string | null;
   notes?: string | null;
+  createdAt?: string | null;
   receipt?: {
     id: string;
     amountCents?: number | null;
     receivedAt?: string | null;
+    paymentMethod?: string | null;
+    order?: {
+      id: string;
+      number?: number | null;
+      issuedAt?: string | null;
+      totalCents?: number | null;
+      paymentMethod?: string | null;
+      paymentStatus?: string | null;
+      client?: {
+        id: string;
+        name?: string | null;
+        tradeName?: string | null;
+      } | null;
+    } | null;
   } | null;
 };
 
@@ -38,6 +57,30 @@ type TransfersResponse = {
   } | null;
   items: TransferItem[];
 };
+
+function isPendingStatus(status?: string | null) {
+  return String(status ?? "").trim().toUpperCase() === "PENDING";
+}
+
+function statusLabel(status?: string | null) {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  if (normalized === "TRANSFERRED") return "Repassado";
+  if (normalized === "PENDING") return "Pendente";
+  return status || "Sem status";
+}
+
+function orderTitle(item: TransferItem) {
+  const number = item.receipt?.order?.number;
+  return number ? `Pedido #${number}` : "Pedido sem número";
+}
+
+function clientName(item: TransferItem) {
+  return (
+    item.receipt?.order?.client?.tradeName ||
+    item.receipt?.order?.client?.name ||
+    "Cliente não informado"
+  );
+}
 
 export default function RepFinanceTransfersPage() {
   const { theme: mode } = useTheme();
@@ -52,9 +95,8 @@ export default function RepFinanceTransfersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   async function loadData() {
     try {
@@ -71,10 +113,18 @@ export default function RepFinanceTransfersPage() {
         throw new Error(json?.error || "Erro ao carregar repasses.");
       }
 
+      const items = Array.isArray(json?.items) ? json.items : [];
+
       setData({
         region: json?.region ?? null,
-        items: Array.isArray(json?.items) ? json.items : [],
+        items,
       });
+
+      setSelectedIds((current) =>
+        current.filter((id) =>
+          items.some((item: TransferItem) => item.id === id && isPendingStatus(item.status))
+        )
+      );
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Erro ao carregar repasses.");
@@ -88,54 +138,16 @@ export default function RepFinanceTransfersPage() {
     loadData();
   }, []);
 
-  async function handleCreateTransfer(e: React.FormEvent) {
-    e.preventDefault();
+  const pendingItems = useMemo(() => {
+    return (data?.items || []).filter((item) => isPendingStatus(item.status));
+  }, [data]);
 
-    try {
-      setSaving(true);
-      setError(null);
-
-      const numericAmount = Number(amount.replace(",", "."));
-
-      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-        throw new Error("Informe um valor de repasse válido.");
-      }
-
-      const payload = {
-        amountCents: Math.round(numericAmount * 100),
-        notes: notes.trim() || null,
-      };
-
-      const res = await fetch("/api/rep/finance/transfers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(json?.error || "Erro ao registrar repasse.");
-      }
-
-      setAmount("");
-      setNotes("");
-      await loadData();
-      alert("Repasse registrado com sucesso.");
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Erro ao registrar repasse.");
-    } finally {
-      setSaving(false);
-    }
-  }
+  const historyItems = useMemo(() => {
+    return (data?.items || []).filter((item) => !isPendingStatus(item.status));
+  }, [data]);
 
   const summary = useMemo(() => {
-    const items = data?.items || [];
-
-    return items.reduce(
+    return (data?.items || []).reduce(
       (acc, item) => {
         acc.total += item.amountCents ?? 0;
 
@@ -156,6 +168,69 @@ export default function RepFinanceTransfersPage() {
       }
     );
   }, [data]);
+
+  const selectedTotalCents = useMemo(() => {
+    return pendingItems.reduce((sum, item) => {
+      if (selectedIds.includes(item.id)) {
+        return sum + Number(item.amountCents || 0);
+      }
+      return sum;
+    }, 0);
+  }, [pendingItems, selectedIds]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id]
+    );
+  }
+
+  function toggleAll() {
+    if (selectedIds.length === pendingItems.length) {
+      setSelectedIds([]);
+      return;
+    }
+
+    setSelectedIds(pendingItems.map((item) => item.id));
+  }
+
+  async function handleTransfer(transferIds: string[]) {
+    try {
+      setSaving(true);
+      setError(null);
+
+      if (!transferIds.length) {
+        throw new Error("Selecione pelo menos um pedido para repassar.");
+      }
+
+      const res = await fetch("/api/rep/finance/transfers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          transferIds,
+          notes: notes.trim() || null,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Erro ao registrar repasse.");
+      }
+
+      setNotes("");
+      setSelectedIds([]);
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Erro ao registrar repasse.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const card: React.CSSProperties = {
     border: `1px solid ${border}`,
@@ -220,7 +295,7 @@ export default function RepFinanceTransfersPage() {
         color: theme.text,
       }}
     >
-      <div style={{ maxWidth: 1100 }}>
+      <div style={{ maxWidth: 1180 }}>
         <div
           style={{
             display: "flex",
@@ -264,153 +339,207 @@ export default function RepFinanceTransfersPage() {
             marginBottom: 16,
           }}
         >
-          <SummaryCard
-            label="Total registrado"
-            value={money(summary.total)}
-            theme={theme}
-          />
-          <SummaryCard
-            label="Transferido"
-            value={money(summary.transferred)}
-            theme={theme}
-          />
-          <SummaryCard
-            label="Pendente"
-            value={money(summary.pending)}
-            theme={theme}
-          />
+          <SummaryCard label="Total registrado" value={money(summary.total)} theme={theme} />
+          <SummaryCard label="Transferido" value={money(summary.transferred)} theme={theme} />
+          <SummaryCard label="Pendente" value={money(summary.pending)} theme={theme} />
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1.2fr",
-            gap: 16,
-            alignItems: "start",
-          }}
-        >
-          <form onSubmit={handleCreateTransfer} style={card}>
-            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>
-              Registrar novo repasse
+        <div style={{ ...card, marginBottom: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 12,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 900 }}>
+                Pedidos pendentes de repasse
+              </div>
+              <div style={{ color: muted, fontSize: 13, marginTop: 4 }}>
+                Selecione um ou mais pedidos. O valor é somado automaticamente, sem digitação manual.
+              </div>
             </div>
 
-            <div style={{ display: "grid", gap: 12 }}>
-              <div>
-                <label
+            <button
+              type="button"
+              onClick={toggleAll}
+              disabled={!pendingItems.length}
+              style={{
+                ...btnSecondary,
+                opacity: pendingItems.length ? 1 : 0.65,
+              }}
+            >
+              {selectedIds.length === pendingItems.length && pendingItems.length
+                ? "Limpar seleção"
+                : "Selecionar todos"}
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 220px 220px",
+              gap: 12,
+              alignItems: "end",
+              marginBottom: 14,
+            }}
+          >
+            <div>
+              <label style={{ fontSize: 13, color: muted, fontWeight: 700 }}>
+                Observação opcional
+              </label>
+              <input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                style={{ ...inputStyle, marginTop: 6 }}
+                placeholder="Ex: dinheiro recebido hoje"
+              />
+            </div>
+
+            <div
+              style={{
+                border: `1px solid ${border}`,
+                borderRadius: 12,
+                padding: "10px 12px",
+              }}
+            >
+              <div style={{ fontSize: 12, color: muted }}>Selecionado</div>
+              <div style={{ fontSize: 20, fontWeight: 900 }}>
+                {money(selectedTotalCents)}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleTransfer(selectedIds)}
+              disabled={saving || selectedIds.length === 0}
+              style={{
+                ...btnPrimary,
+                minHeight: 44,
+                opacity: saving || selectedIds.length === 0 ? 0.65 : 1,
+                cursor:
+                  saving || selectedIds.length === 0 ? "not-allowed" : "pointer",
+              }}
+            >
+              {saving ? "Repassando..." : "Repassar selecionados"}
+            </button>
+          </div>
+
+          {!pendingItems.length ? (
+            <div style={{ color: muted }}>Nenhum pedido pendente de repasse.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={th(theme)}></th>
+                    <th style={th(theme)}>Pedido</th>
+                    <th style={th(theme)}>Cliente</th>
+                    <th style={th(theme)}>Recebido em</th>
+                    <th style={th(theme)}>Valor</th>
+                    <th style={th(theme)}>Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingItems.map((item) => {
+                    const checked = selectedIds.includes(item.id);
+
+                    return (
+                      <tr key={item.id}>
+                        <td style={td(theme)}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleSelected(item.id)}
+                          />
+                        </td>
+                        <td style={td(theme)}>{orderTitle(item)}</td>
+                        <td style={td(theme)}>{clientName(item)}</td>
+                        <td style={td(theme)}>{formatDateBR(item.receipt?.receivedAt)}</td>
+                        <td style={td(theme)}>{money(item.amountCents ?? 0)}</td>
+                        <td style={td(theme)}>
+                          <button
+                            type="button"
+                            onClick={() => handleTransfer([item.id])}
+                            disabled={saving}
+                            style={{
+                              ...btnPrimary,
+                              padding: "8px 10px",
+                              opacity: saving ? 0.7 : 1,
+                            }}
+                          >
+                            Repassar
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div style={card}>
+          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>
+            Histórico de repasses
+          </div>
+
+          {!historyItems.length ? (
+            <div style={{ color: muted }}>Nenhum repasse concluído.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {historyItems.map((item) => (
+                <div
+                  key={item.id}
                   style={{
-                    display: "block",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    marginBottom: 8,
+                    border: `1px solid ${border}`,
+                    borderRadius: 12,
+                    padding: 12,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
                   }}
                 >
-                  Valor do repasse
-                </label>
-                <input
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  style={inputStyle}
-                  placeholder="Ex: 1250,00"
-                />
-              </div>
+                  <div>
+                    <div style={{ fontWeight: 900 }}>
+                      {orderTitle(item)} • {money(item.amountCents ?? 0)}
+                    </div>
+                    <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>
+                      Cliente: {clientName(item)}
+                    </div>
+                    <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>
+                      Repassado em: {formatDateBR(item.transferredAt)}
+                    </div>
+                    {item.notes ? (
+                      <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>
+                        Obs: {item.notes}
+                      </div>
+                    ) : null}
+                  </div>
 
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    marginBottom: 8,
-                  }}
-                >
-                  Observações
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    minHeight: 110,
-                    resize: "vertical",
-                  }}
-                  placeholder="Ex: repasse semanal da região"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  ...btnPrimary,
-                  opacity: saving ? 0.7 : 1,
-                }}
-              >
-                {saving ? "Registrando..." : "Registrar repasse"}
-              </button>
-            </div>
-          </form>
-
-          <div style={card}>
-            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>
-              Histórico de repasses
-            </div>
-
-            {!data?.items?.length ? (
-              <div style={{ color: muted }}>Nenhum repasse registrado.</div>
-            ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {data.items.map((item) => (
                   <div
-                    key={item.id}
                     style={{
-                      border: `1px solid ${border}`,
-                      borderRadius: 12,
-                      padding: 12,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      flexWrap: "wrap",
+                      fontWeight: 800,
+                      color:
+                        item.status === "TRANSFERRED"
+                          ? "#22c55e"
+                          : item.status === "PENDING"
+                          ? "#f59e0b"
+                          : theme.text,
                     }}
                   >
-                    <div>
-                      <div style={{ fontWeight: 900 }}>
-                        {money(item.amountCents ?? 0)}
-                      </div>
-                      <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>
-                        Data: {formatDateBR(item.transferredAt)}
-                      </div>
-                      <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>
-                        Status: {item.status || "-"}
-                      </div>
-                      {item.notes ? (
-                        <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>
-                          Obs: {item.notes}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        color:
-                          item.status === "TRANSFERRED"
-                            ? "#22c55e"
-                            : item.status === "PENDING"
-                            ? "#f59e0b"
-                            : theme.text,
-                      }}
-                    >
-                      {item.status === "TRANSFERRED"
-                        ? "Transferido"
-                        : item.status === "PENDING"
-                        ? "Pendente"
-                        : item.status || "-"}
-                    </div>
+                    {statusLabel(item.status)}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -442,4 +571,26 @@ function SummaryCard({
       <div style={{ fontSize: 24, fontWeight: 900, marginTop: 6 }}>{value}</div>
     </div>
   );
+}
+
+function th(theme: any): React.CSSProperties {
+  return {
+    textAlign: "left",
+    padding: "10px 8px",
+    fontSize: 12,
+    color: theme.subtext,
+    borderBottom: `1px solid ${theme.border}`,
+    whiteSpace: "nowrap",
+  };
+}
+
+function td(theme: any): React.CSSProperties {
+  return {
+    padding: "12px 8px",
+    borderBottom: `1px solid ${theme.border}`,
+    fontSize: 14,
+    color: theme.text,
+    verticalAlign: "middle",
+    whiteSpace: "nowrap",
+  };
 }

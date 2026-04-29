@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminUser } from "@/lib/admin-auth";
+import { requireOrderAccess, OrderAccessError } from "@/lib/order-auth";
 import {
   sendDocument,
   ZApiConfigError,
@@ -24,8 +24,6 @@ function buildCaption(orderNumber: number, clientName: string | null) {
 
 export async function POST(request: Request, _context: RouteContext) {
   try {
-    await requireAdminUser();
-
     const url = new URL(request.url);
     const idFromQuery = url.searchParams.get("id");
 
@@ -44,6 +42,8 @@ export async function POST(request: Request, _context: RouteContext) {
         { status: 400 }
       );
     }
+
+    await requireOrderAccess(orderId);
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
@@ -124,8 +124,17 @@ export async function POST(request: Request, _context: RouteContext) {
       zapi: result,
     });
   } catch (error: any) {
+    if (error instanceof OrderAccessError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status }
+      );
+    }
     if (error instanceof ZApiConfigError) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
     }
     if (error instanceof ZApiRequestError) {
       return NextResponse.json(
@@ -134,15 +143,6 @@ export async function POST(request: Request, _context: RouteContext) {
       );
     }
     console.error("POST /api/whatsapp/send-order-pdf error:", error);
-    if (error?.message === "Usuário não autenticado") {
-      return NextResponse.json(
-        { error: "Usuário não autenticado." },
-        { status: 401 }
-      );
-    }
-    if (error?.message?.includes("Acesso permitido")) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
     return NextResponse.json(
       { error: error?.message || "Erro ao enviar PDF do pedido." },
       { status: 500 }

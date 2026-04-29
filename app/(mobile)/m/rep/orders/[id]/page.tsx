@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
@@ -40,10 +40,15 @@ type OrderDetail = {
   totalCents?: number | null;
   issuedAt?: string | null;
   createdAt?: string | null;
+  nfeStatus?: string | null;
+  nfeNumber?: string | null;
+  nfeKey?: string | null;
   client?: {
     id: string;
     name?: string | null;
     legalName?: string | null;
+    whatsapp?: string | null;
+    phone?: string | null;
     street?: string | null;
     number?: string | null;
     district?: string | null;
@@ -51,14 +56,8 @@ type OrderDetail = {
     state?: string | null;
     cep?: string | null;
   } | null;
-  region?: {
-    id: string;
-    name?: string | null;
-  } | null;
-  seller?: {
-    id: string;
-    name?: string | null;
-  } | null;
+  region?: { id: string; name?: string | null } | null;
+  seller?: { id: string; name?: string | null } | null;
   items?: OrderItem[];
 };
 
@@ -95,10 +94,21 @@ function getPaymentMethodLabel(value?: string | null) {
   return map[value || ""] || value || "-";
 }
 
+function getNfeStatusLabel(value?: string | null) {
+  const map: Record<string, string> = {
+    AUTHORIZED: "Autorizada",
+    ISSUED: "Autorizada",
+    PROCESSING: "Processando",
+    WAITING: "Aguardando",
+    REJECTED: "Rejeitada",
+    ERROR: "Erro",
+  };
+  return map[value || ""] || value || "Não emitida";
+}
+
 function buildAddress(order?: OrderDetail | null) {
   const client = order?.client;
   if (!client) return "-";
-
   const parts = [
     client.street,
     client.number,
@@ -107,9 +117,10 @@ function buildAddress(order?: OrderDetail | null) {
     client.state,
     client.cep ? `CEP: ${client.cep}` : null,
   ].filter(Boolean);
-
   return parts.length ? parts.join(" - ") : "-";
 }
+
+type BusyAction = null | "send-order" | "emit-nfe" | "send-nfe";
 
 export default function MobileRepOrderDetailsPage() {
   const params = useParams<{ id: string }>();
@@ -120,52 +131,33 @@ export default function MobileRepOrderDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [busy, setBusy] = useState<BusyAction>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const authRes = await fetch("/api/auth/me", { cache: "no-store" });
+      if (authRes.status === 401) {
+        router.push(`/login?redirect=/m/rep/orders/${params.id}`);
+        return;
+      }
+
+      const res = await fetch(`/api/orders/${params.id}`, { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "Erro ao carregar pedido.");
+      setOrder(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao carregar pedido.");
+    } finally {
+      setLoading(false);
+    }
+  }, [params?.id, router]);
 
   useEffect(() => {
-    let active = true;
-
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const authRes = await fetch("/api/auth/me", { cache: "no-store" });
-        if (authRes.status === 401) {
-          router.push(`/login?redirect=/m/rep/orders/${params.id}`);
-          return;
-        }
-
-        const res = await fetch(`/api/orders/${params.id}`, {
-          cache: "no-store",
-        });
-        const json = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          throw new Error(json?.error || "Erro ao carregar pedido.");
-        }
-
-        if (active) {
-          setOrder(json);
-        }
-      } catch (err) {
-        if (active) {
-          setError(
-            err instanceof Error ? err.message : "Erro ao carregar pedido."
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    if (params?.id) {
-      loadData();
-    }
-
-    return () => {
-      active = false;
-    };
-  }, [params?.id, router]);
+    if (params?.id) load();
+  }, [params?.id, load]);
 
   const summary = useMemo(() => {
     const items = order?.items ?? [];
@@ -174,6 +166,81 @@ export default function MobileRepOrderDetailsPage() {
       units: items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
     };
   }, [order]);
+
+  const hasWhatsApp = !!(order?.client?.whatsapp || order?.client?.phone);
+  const nfeAuthorized =
+    order?.nfeStatus === "AUTHORIZED" || order?.nfeStatus === "ISSUED";
+
+  async function handleSendOrder() {
+    if (!order?.id) return;
+    setBusy("send-order");
+    try {
+      const res = await fetch("/api/whatsapp/send-order-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      alert(res.ok ? data?.message || "Pedido enviado pelo WhatsApp." : `Erro: ${data?.error || res.status}`);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao enviar pedido por WhatsApp.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleEmitNfe() {
+    if (!order?.id) return;
+    if (!confirm("Emitir NF-e deste pedido? A SEFAZ é acionada de verdade (em produção).")) return;
+    setBusy("emit-nfe");
+    try {
+      const res = await fetch(`/api/orders/${order.id}/nfe`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Erro NF-e: ${data?.error || res.status}${data?.detalhes ? "\n\n" + JSON.stringify(data.detalhes, null, 2) : ""}`);
+      } else {
+        alert(data?.message || "NF-e enviada.");
+        await load();
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao emitir NF-e.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleSendNfe() {
+    if (!order?.id) return;
+    setBusy("send-nfe");
+    try {
+      const res = await fetch("/api/whatsapp/send-nfe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      alert(res.ok ? data?.message || "NF-e enviada pelo WhatsApp." : `Erro: ${data?.error || res.status}`);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao enviar NF-e por WhatsApp.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const buttonBase: React.CSSProperties = {
+    minHeight: 42,
+    borderRadius: 12,
+    border: "none",
+    padding: "0 14px",
+    fontSize: 13,
+    fontWeight: 900,
+    color: "#ffffff",
+    cursor: busy ? "not-allowed" : "pointer",
+    opacity: busy ? 0.6 : 1,
+  };
 
   return (
     <MobileRepPageFrame
@@ -204,11 +271,13 @@ export default function MobileRepOrderDetailsPage() {
               <div>Status: {getStatusLabel(order.status)}</div>
               <div>Pagamento: {getPaymentStatusLabel(order.paymentStatus)}</div>
               <div>Forma: {getPaymentMethodLabel(order.paymentMethod)}</div>
+              <div>NF-e: {getNfeStatusLabel(order.nfeStatus)}</div>
               <div>Emissão: {formatDateTimeBR(order.issuedAt || order.createdAt)}</div>
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              <a
+            <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              
+            <a
                 href={`/api/orders/${order.id}/pdf`}
                 target="_blank"
                 rel="noreferrer"
@@ -233,6 +302,46 @@ export default function MobileRepOrderDetailsPage() {
                   Baixar PDF
                 </div>
               </a>
+
+              <button
+                disabled={busy !== null || !hasWhatsApp}
+                onClick={handleSendOrder}
+                style={{
+                  ...buttonBase,
+                  background: "#16a34a",
+                  opacity: busy || !hasWhatsApp ? 0.6 : 1,
+                  cursor: busy || !hasWhatsApp ? "not-allowed" : "pointer",
+                }}
+                title={hasWhatsApp ? "" : "Cliente sem WhatsApp cadastrado"}
+              >
+                {busy === "send-order" ? "Enviando..." : "📲 Enviar pedido"}
+              </button>
+
+              {!nfeAuthorized && (
+                <button
+                  disabled={busy !== null}
+                  onClick={handleEmitNfe}
+                  style={{ ...buttonBase, background: "#7c3aed" }}
+                >
+                  {busy === "emit-nfe" ? "Emitindo..." : "🧾 Emitir NF-e"}
+                </button>
+              )}
+
+              {nfeAuthorized && (
+                <button
+                  disabled={busy !== null || !hasWhatsApp}
+                  onClick={handleSendNfe}
+                  style={{
+                    ...buttonBase,
+                    background: "#0ea5e9",
+                    opacity: busy || !hasWhatsApp ? 0.6 : 1,
+                    cursor: busy || !hasWhatsApp ? "not-allowed" : "pointer",
+                  }}
+                  title={hasWhatsApp ? "" : "Cliente sem WhatsApp cadastrado"}
+                >
+                  {busy === "send-nfe" ? "Enviando..." : "📲 Enviar NF-e"}
+                </button>
+              )}
             </div>
           </MobileCard>
 
@@ -245,55 +354,27 @@ export default function MobileRepOrderDetailsPage() {
           >
             <MobileStatCard label="Itens" value={String(summary.skuCount)} />
             <MobileStatCard label="Unidades" value={String(summary.units)} />
-            <MobileStatCard
-              label="Total"
-              value={formatMoneyBR(order.totalCents ?? 0)}
-            />
+            <MobileStatCard label="Total" value={formatMoneyBR(order.totalCents ?? 0)} />
           </div>
 
           <MobileCard>
             <MobileSectionTitle title="Dados do cliente" />
-            <MobileInfoRow
-              title="Cliente"
-              subtitle={order.client?.name || "-"}
-            />
-            <MobileInfoRow
-              title="Razão social"
-              subtitle={order.client?.legalName || "-"}
-            />
-            <MobileInfoRow
-              title="Endereço"
-              subtitle={buildAddress(order)}
-            />
-            <MobileInfoRow
-              title="Região"
-              subtitle={order.region?.name || "-"}
-            />
-            <MobileInfoRow
-              title="Vendedor"
-              subtitle={order.seller?.name || "-"}
-            />
+            <MobileInfoRow title="Cliente" subtitle={order.client?.name || "-"} />
+            <MobileInfoRow title="Razão social" subtitle={order.client?.legalName || "-"} />
+            <MobileInfoRow title="Endereço" subtitle={buildAddress(order)} />
+            <MobileInfoRow title="Região" subtitle={order.region?.name || "-"} />
+            <MobileInfoRow title="Vendedor" subtitle={order.seller?.name || "-"} />
           </MobileCard>
 
           <MobileCard>
             <MobileSectionTitle title="Valores" />
-            <MobileInfoRow
-              title="Subtotal"
-              right={formatMoneyBR(order.subtotalCents ?? 0)}
-            />
-            <MobileInfoRow
-              title="Desconto"
-              right={formatMoneyBR(order.discountCents ?? 0)}
-            />
-            <MobileInfoRow
-              title="Total"
-              right={formatMoneyBR(order.totalCents ?? 0)}
-            />
+            <MobileInfoRow title="Subtotal" right={formatMoneyBR(order.subtotalCents ?? 0)} />
+            <MobileInfoRow title="Desconto" right={formatMoneyBR(order.discountCents ?? 0)} />
+            <MobileInfoRow title="Total" right={formatMoneyBR(order.totalCents ?? 0)} />
           </MobileCard>
 
           <MobileCard>
             <MobileSectionTitle title="Itens do pedido" />
-
             {!order.items?.length ? (
               <div style={{ fontSize: 13, color: colors.subtext }}>
                 Nenhum item encontrado.
@@ -326,8 +407,7 @@ export default function MobileRepOrderDetailsPage() {
                       <div>Quantidade: {item.qty}</div>
                       <div>Unitário: {formatMoneyBR(item.unitCents ?? 0)}</div>
                       <div>
-                        Total:{" "}
-                        {formatMoneyBR((item.qty || 0) * (item.unitCents || 0))}
+                        Total: {formatMoneyBR((item.qty || 0) * (item.unitCents || 0))}
                       </div>
                     </div>
                   </div>

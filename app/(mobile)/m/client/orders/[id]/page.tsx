@@ -36,6 +36,10 @@ type PortalOrder = {
   discountCents?: number | null;
   paymentMethod?: string | null;
   notes?: string | null;
+  nfeStatus?: string | null;
+  nfeNumber?: string | null;
+  nfeKey?: string | null;
+  nfeXmlUrl?: string | null;
   items?: PortalOrderItem[];
 };
 
@@ -57,6 +61,14 @@ function statusLabel(status?: string | null) {
     default:
       return status || "-";
   }
+}
+
+function hasNfe(order: PortalOrder) {
+  return (
+    Boolean(order.nfeXmlUrl) ||
+    order.nfeStatus === "AUTHORIZED" ||
+    order.nfeStatus === "AUTORIZADA"
+  );
 }
 
 function paymentMethodLabel(value?: string | null) {
@@ -175,7 +187,14 @@ export default function MobileClientOrderDetailsPage() {
               <div>Forma de pagamento: {paymentMethodLabel(order.paymentMethod)}</div>
             </div>
 
-            <div style={{ marginTop: 14 }}>
+            <div
+              style={{
+                marginTop: 14,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
               <a
                 href={`/api/orders/${order.id}/pdf`}
                 target="_blank"
@@ -201,6 +220,34 @@ export default function MobileClientOrderDetailsPage() {
                   Baixar PDF
                 </div>
               </a>
+
+              {hasNfe(order) ? (
+                <a
+                  href={`/api/orders/${order.id}/nfe/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ textDecoration: "none" }}
+                >
+                  <div
+                    style={{
+                      minHeight: 42,
+                      borderRadius: 12,
+                      background: "#16a34a",
+                      color: "#ffffff",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      padding: "0 14px",
+                      fontSize: 13,
+                      fontWeight: 900,
+                    }}
+                  >
+                    <Download size={14} />
+                    Baixar NF-e
+                  </div>
+                </a>
+              ) : null}
             </div>
           </MobileCard>
 

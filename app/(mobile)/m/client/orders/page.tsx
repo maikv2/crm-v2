@@ -19,6 +19,10 @@ type Order = {
   status: string;
   issuedAt: string;
   totalCents: number;
+  nfeStatus?: string | null;
+  nfeNumber?: string | null;
+  nfeKey?: string | null;
+  nfeXmlUrl?: string | null;
 };
 
 function money(cents: number) {
@@ -30,6 +34,14 @@ function money(cents: number) {
 
 function dateBR(date: string) {
   return new Date(date).toLocaleDateString("pt-BR");
+}
+
+function hasNfe(order: Order) {
+  return (
+    Boolean(order.nfeXmlUrl) ||
+    order.nfeStatus === "AUTHORIZED" ||
+    order.nfeStatus === "AUTORIZADA"
+  );
 }
 
 function statusLabel(status: string) {
@@ -175,35 +187,68 @@ export default function MobileClientOrdersPage() {
                       </div>
                     </Link>
 
-                    <a
-                      href={`/api/orders/${order.id}/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
+                    <div
                       style={{
                         marginTop: 12,
-                        textDecoration: "none",
-                        display: "inline-flex",
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
                       }}
                     >
-                      <div
-                        style={{
-                          minHeight: 40,
-                          padding: "0 14px",
-                          borderRadius: 12,
-                          background: "#2563eb",
-                          color: "#ffffff",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 8,
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
+                      <a
+                        href={`/api/orders/${order.id}/pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ textDecoration: "none", display: "inline-flex" }}
                       >
-                        <Download size={14} />
-                        Baixar PDF
-                      </div>
-                    </a>
+                        <div
+                          style={{
+                            minHeight: 40,
+                            padding: "0 14px",
+                            borderRadius: 12,
+                            background: "#2563eb",
+                            color: "#ffffff",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 8,
+                            fontSize: 12,
+                            fontWeight: 800,
+                          }}
+                        >
+                          <Download size={14} />
+                          Baixar PDF
+                        </div>
+                      </a>
+
+                      {hasNfe(order) ? (
+                        <a
+                          href={`/api/orders/${order.id}/nfe/pdf`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ textDecoration: "none", display: "inline-flex" }}
+                        >
+                          <div
+                            style={{
+                              minHeight: 40,
+                              padding: "0 14px",
+                              borderRadius: 12,
+                              background: "#16a34a",
+                              color: "#ffffff",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 8,
+                              fontSize: 12,
+                              fontWeight: 800,
+                            }}
+                          >
+                            <Download size={14} />
+                            Baixar NF-e
+                          </div>
+                        </a>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>

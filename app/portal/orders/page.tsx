@@ -12,6 +12,10 @@ type Order = {
   status: string;
   issuedAt: string;
   totalCents: number;
+  nfeStatus?: string | null;
+  nfeNumber?: string | null;
+  nfeKey?: string | null;
+  nfeXmlUrl?: string | null;
 };
 
 function money(cents: number) {
@@ -38,6 +42,14 @@ function statusLabel(status: string) {
     default:
       return status;
   }
+}
+
+function hasNfe(order: Order) {
+  return (
+    Boolean(order.nfeXmlUrl) ||
+    order.nfeStatus === "AUTHORIZED" ||
+    order.nfeStatus === "AUTORIZADA"
+  );
 }
 
 function statusColors(status: string, isDark: boolean) {
@@ -415,6 +427,34 @@ export default function PortalOrdersPage() {
                           Baixar PDF
                         </div>
                       </a>
+
+                      {hasNfe(order) ? (
+                        <a
+                          href={`/api/orders/${order.id}/nfe/pdf`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ textDecoration: "none" }}
+                        >
+                          <div
+                            style={{
+                              minHeight: 42,
+                              padding: "0 14px",
+                              borderRadius: 12,
+                              background: "#16a34a",
+                              color: "#ffffff",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 8,
+                              fontSize: 13,
+                              fontWeight: 800,
+                            }}
+                          >
+                            <FileText size={15} />
+                            Baixar NF-e
+                          </div>
+                        </a>
+                      ) : null}
 
                       <div
                         style={{

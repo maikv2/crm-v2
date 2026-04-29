@@ -43,6 +43,10 @@ export async function GET() {
         discountCents: true,
         paymentMethod: true,
         notes: true,
+        nfeStatus: true,
+        nfeNumber: true,
+        nfeKey: true,
+        nfeXmlUrl: true,
         items: {
           select: {
             id: true,

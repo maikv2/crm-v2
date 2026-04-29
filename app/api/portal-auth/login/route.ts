@@ -20,7 +20,82 @@ function onlyDigits(value: string) {
 }
 
 function normalizeText(value: unknown) {
-  return String(value || "").trim();
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeEmail(value: string) {
+  return normalizeText(value).toLowerCase();
+}
+
+type PortalClientLoginCandidate = {
+  id: string;
+  name: string;
+  tradeName: string | null;
+  code: string | null;
+  portalEnabled: boolean;
+  portalPasswordHash: string | null;
+  active: boolean;
+};
+
+const clientSelect = {
+  id: true,
+  name: true,
+  tradeName: true,
+  code: true,
+  portalEnabled: true,
+  portalPasswordHash: true,
+  active: true,
+};
+
+async function findClientByExactIdentifier(
+  username: string,
+  normalizedEmail: string,
+  normalizedDigits: string
+): Promise<PortalClientLoginCandidate | null> {
+  return prisma.client.findFirst({
+    where: {
+      portalEnabled: true,
+      active: true,
+      OR: [
+        { code: username },
+        { email: normalizedEmail },
+        { billingEmail: normalizedEmail },
+        ...(normalizedDigits
+          ? [{ cnpj: normalizedDigits }, { cpf: normalizedDigits }]
+          : []),
+      ],
+    },
+    select: clientSelect,
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+}
+
+async function findClientByExactName(
+  username: string
+): Promise<PortalClientLoginCandidate | null | "AMBIGUOUS"> {
+  const clients = await prisma.client.findMany({
+    where: {
+      portalEnabled: true,
+      active: true,
+      OR: [
+        { name: { equals: username, mode: "insensitive" } },
+        { tradeName: { equals: username, mode: "insensitive" } },
+      ],
+    },
+    select: clientSelect,
+    orderBy: {
+      createdAt: "asc",
+    },
+    take: 2,
+  });
+
+  if (clients.length > 1) {
+    return "AMBIGUOUS";
+  }
+
+  return clients[0] || null;
 }
 
 export async function POST(request: Request) {
@@ -37,34 +112,27 @@ export async function POST(request: Request) {
       );
     }
 
-    const normalizedEmail = username.toLowerCase();
+    const normalizedEmail = normalizeEmail(username);
     const normalizedDigits = onlyDigits(username);
 
-    const client = await prisma.client.findFirst({
-      where: {
-        portalEnabled: true,
-        active: true,
-        OR: [
-          { code: username },
-          { email: normalizedEmail },
-          { billingEmail: normalizedEmail },
-          ...(normalizedDigits
-            ? [{ cnpj: normalizedDigits }, { cpf: normalizedDigits }]
-            : []),
-          { name: { contains: username, mode: "insensitive" } },
-          { tradeName: { contains: username, mode: "insensitive" } },
-        ],
-      },
-      select: {
-        id: true,
-        name: true,
-        tradeName: true,
-        code: true,
-        portalEnabled: true,
-        portalPasswordHash: true,
-        active: true,
-      },
-    });
+    const clientByIdentifier = await findClientByExactIdentifier(
+      username,
+      normalizedEmail,
+      normalizedDigits
+    );
+
+    const client =
+      clientByIdentifier || (await findClientByExactName(username));
+
+    if (client === "AMBIGUOUS") {
+      return NextResponse.json(
+        {
+          error:
+            "Encontramos mais de um cliente com esse nome. Use o código do cliente, CPF/CNPJ ou e-mail para acessar.",
+        },
+        { status: 409 }
+      );
+    }
 
     if (!client || !client.portalPasswordHash) {
       return NextResponse.json(
@@ -73,7 +141,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const validPassword = await bcrypt.compare(password, client.portalPasswordHash);
+    const validPassword = await bcrypt.compare(
+      password,
+      client.portalPasswordHash
+    );
 
     if (!validPassword) {
       return NextResponse.json(

@@ -308,6 +308,73 @@ function FilterButton({
   );
 }
 
+
+function SidebarFilterRow({
+  label,
+  value,
+  active,
+  theme,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  active: boolean;
+  theme: ThemeShape;
+  onClick: () => void;
+}) {
+  const border = active ? "#2563eb" : theme.isDark ? "#1e293b" : theme.border;
+  const subtleCard = active ? "rgba(37,99,235,0.12)" : theme.isDark ? "#0b1324" : "#f8fafc";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: 12,
+        border: `1px solid ${border}`,
+        borderRadius: 12,
+        background: subtleCard,
+        gap: 12,
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "all 0.15s ease",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 800,
+          color: active ? "#2563eb" : theme.text,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          minWidth: 34,
+          height: 34,
+          borderRadius: 999,
+          background: active ? "#2563eb" : theme.isDark ? "#111827" : "#ffffff",
+          border: `1px solid ${active ? "#2563eb" : theme.isDark ? "#1e293b" : theme.border}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 900,
+          color: active ? "#ffffff" : theme.text,
+          padding: "0 10px",
+        }}
+      >
+        {value}
+      </div>
+    </button>
+  );
+}
+
 function AlertCard({
   item,
   theme,
@@ -489,6 +556,8 @@ export default function AlertsPage() {
     "all" | AlertSeverity
   >("all");
   const [statusFilter, setStatusFilter] = useState<"all" | AlertStatus>("all");
+  const [kindFilter, setKindFilter] = useState<string>("all");
+  const [regionFilter, setRegionFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
   async function loadAlerts() {
@@ -529,6 +598,13 @@ export default function AlertsPage() {
       const matchesStatus =
         statusFilter === "all" ? true : item.status === statusFilter;
 
+      const matchesKind = kindFilter === "all" ? true : item.kind === kindFilter;
+
+      const matchesRegion =
+        regionFilter === "all"
+          ? true
+          : (item.regionName ?? "Sem região") === regionFilter;
+
       const haystack = [
         item.title,
         item.description,
@@ -542,9 +618,28 @@ export default function AlertsPage() {
         ? haystack.includes(normalizedSearch)
         : true;
 
-      return matchesSeverity && matchesStatus && matchesSearch;
+      return (
+        matchesSeverity &&
+        matchesStatus &&
+        matchesKind &&
+        matchesRegion &&
+        matchesSearch
+      );
     });
-  }, [data, search, severityFilter, statusFilter]);
+  }, [data, search, severityFilter, statusFilter, kindFilter, regionFilter]);
+
+  const hasActiveListFilter = kindFilter !== "all" || regionFilter !== "all";
+  const activeListFilterLabel = [
+    kindFilter !== "all" ? formatKindLabel(kindFilter) : null,
+    regionFilter !== "all" ? regionFilter : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
+
+  function clearListFilters() {
+    setKindFilter("all");
+    setRegionFilter("all");
+  }
 
   if (loading) {
     return (
@@ -935,10 +1030,36 @@ export default function AlertsPage() {
                 color: muted,
               }}
             >
-              Atualizado em {data?.generatedAt ? formatDateTime(data.generatedAt) : "-"}
+              {hasActiveListFilter
+                ? `Filtro: ${activeListFilterLabel}`
+                : `Atualizado em ${data?.generatedAt ? formatDateTime(data.generatedAt) : "-"}`}
             </div>
           }
         >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 14,
+            }}
+          >
+            <div style={{ fontSize: 13, color: muted, fontWeight: 700 }}>
+              {hasActiveListFilter
+                ? `Mostrando: ${activeListFilterLabel}`
+                : "Mostrando todos os avisos"}
+            </div>
+
+            <FilterButton
+              label="Todos os avisos"
+              active={!hasActiveListFilter}
+              theme={theme}
+              onClick={clearListFilters}
+            />
+          </div>
+
           <div
             style={{
               display: "grid",
@@ -983,96 +1104,46 @@ export default function AlertsPage() {
         >
           <Block title="Tipos de aviso" theme={theme}>
             <div style={{ display: "grid", gap: 10 }}>
-              {(data?.byKind ?? []).slice(0, 10).map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: 12,
-                    border: `1px solid ${border}`,
-                    borderRadius: 12,
-                    background: subtleCard,
-                    gap: 12,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: theme.text,
-                    }}
-                  >
-                    {formatKindLabel(item.label)}
-                  </div>
+              <SidebarFilterRow
+                label="Todos os avisos"
+                value={data?.summary.total ?? 0}
+                active={kindFilter === "all"}
+                theme={theme}
+                onClick={() => setKindFilter("all")}
+              />
 
-                  <div
-                    style={{
-                      minWidth: 34,
-                      height: 34,
-                      borderRadius: 999,
-                      background: theme.isDark ? "#111827" : "#ffffff",
-                      border: `1px solid ${border}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 900,
-                      color: theme.text,
-                      padding: "0 10px",
-                    }}
-                  >
-                    {item.value}
-                  </div>
-                </div>
+              {(data?.byKind ?? []).slice(0, 10).map((item) => (
+                <SidebarFilterRow
+                  key={item.label}
+                  label={formatKindLabel(item.label)}
+                  value={item.value}
+                  active={kindFilter === item.label}
+                  theme={theme}
+                  onClick={() => setKindFilter(item.label)}
+                />
               ))}
             </div>
           </Block>
 
-          <Block title="Regiões com mais avisos" theme={theme}>
+          <Block title="Regiões" theme={theme}>
             <div style={{ display: "grid", gap: 10 }}>
-              {(data?.byRegion ?? []).slice(0, 10).map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: 12,
-                    border: `1px solid ${border}`,
-                    borderRadius: 12,
-                    background: subtleCard,
-                    gap: 12,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: theme.text,
-                    }}
-                  >
-                    {item.label}
-                  </div>
+              <SidebarFilterRow
+                label="Todas as regiões"
+                value={data?.summary.total ?? 0}
+                active={regionFilter === "all"}
+                theme={theme}
+                onClick={() => setRegionFilter("all")}
+              />
 
-                  <div
-                    style={{
-                      minWidth: 34,
-                      height: 34,
-                      borderRadius: 999,
-                      background: theme.isDark ? "#111827" : "#ffffff",
-                      border: `1px solid ${border}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 900,
-                      color: theme.text,
-                      padding: "0 10px",
-                    }}
-                  >
-                    {item.value}
-                  </div>
-                </div>
+              {(data?.byRegion ?? []).slice(0, 10).map((item) => (
+                <SidebarFilterRow
+                  key={item.label}
+                  label={item.label}
+                  value={item.value}
+                  active={regionFilter === item.label}
+                  theme={theme}
+                  onClick={() => setRegionFilter(item.label)}
+                />
               ))}
             </div>
           </Block>

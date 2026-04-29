@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import {
@@ -43,6 +43,7 @@ type OrderDetail = {
   nfeStatus?: string | null;
   nfeNumber?: string | null;
   nfeKey?: string | null;
+  nfeXmlUrl?: string | null;
   client?: {
     id: string;
     name?: string | null;
@@ -120,7 +121,7 @@ function buildAddress(order?: OrderDetail | null) {
   return parts.length ? parts.join(" - ") : "-";
 }
 
-type BusyAction = null | "send-order" | "emit-nfe" | "send-nfe";
+type BusyAction = null | "send-order" | "emit-nfe" | "send-nfe" | "sync-nfe";
 
 export default function MobileRepOrderDetailsPage() {
   const params = useParams<{ id: string }>();
@@ -144,7 +145,9 @@ export default function MobileRepOrderDetailsPage() {
         return;
       }
 
-      const res = await fetch(`/api/orders/${params.id}`, { cache: "no-store" });
+      const res = await fetch(`/api/orders/${params.id}`, {
+        cache: "no-store",
+      });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.error || "Erro ao carregar pedido.");
       setOrder(json);
@@ -170,6 +173,12 @@ export default function MobileRepOrderDetailsPage() {
   const hasWhatsApp = !!(order?.client?.whatsapp || order?.client?.phone);
   const nfeAuthorized =
     order?.nfeStatus === "AUTHORIZED" || order?.nfeStatus === "ISSUED";
+  const hasNfeStarted = !!(
+    order?.nfeStatus ||
+    order?.nfeNumber ||
+    order?.nfeKey
+  );
+  const canDownloadNfe = nfeAuthorized;
 
   async function handleSendOrder() {
     if (!order?.id) return;
@@ -181,7 +190,11 @@ export default function MobileRepOrderDetailsPage() {
         body: JSON.stringify({ orderId: order.id }),
       });
       const data = await res.json().catch(() => ({}));
-      alert(res.ok ? data?.message || "Pedido enviado pelo WhatsApp." : `Erro: ${data?.error || res.status}`);
+      alert(
+        res.ok
+          ? data?.message || "Pedido enviado pelo WhatsApp."
+          : `Erro: ${data?.error || res.status}`,
+      );
     } catch (err) {
       console.error(err);
       alert("Erro ao enviar pedido por WhatsApp.");
@@ -192,13 +205,22 @@ export default function MobileRepOrderDetailsPage() {
 
   async function handleEmitNfe() {
     if (!order?.id) return;
-    if (!confirm("Emitir NF-e deste pedido? A SEFAZ é acionada de verdade (em produção).")) return;
+    if (
+      !confirm(
+        "Emitir NF-e deste pedido? A SEFAZ é acionada de verdade (em produção).",
+      )
+    )
+      return;
     setBusy("emit-nfe");
     try {
-      const res = await fetch(`/api/orders/${order.id}/nfe`, { method: "POST" });
+      const res = await fetch(`/api/orders/${order.id}/nfe`, {
+        method: "POST",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(`Erro NF-e: ${data?.error || res.status}${data?.detalhes ? "\n\n" + JSON.stringify(data.detalhes, null, 2) : ""}`);
+        alert(
+          `Erro NF-e: ${data?.error || res.status}${data?.detalhes ? "\n\n" + JSON.stringify(data.detalhes, null, 2) : ""}`,
+        );
       } else {
         alert(data?.message || "NF-e enviada.");
         await load();
@@ -221,13 +243,55 @@ export default function MobileRepOrderDetailsPage() {
         body: JSON.stringify({ orderId: order.id }),
       });
       const data = await res.json().catch(() => ({}));
-      alert(res.ok ? data?.message || "NF-e enviada pelo WhatsApp." : `Erro: ${data?.error || res.status}`);
+      alert(
+        res.ok
+          ? data?.message || "NF-e enviada pelo WhatsApp."
+          : `Erro: ${data?.error || res.status}`,
+      );
     } catch (err) {
       console.error(err);
       alert("Erro ao enviar NF-e por WhatsApp.");
     } finally {
       setBusy(null);
     }
+  }
+
+  async function handleSyncNfe() {
+    if (!order?.id) return;
+    setBusy("sync-nfe");
+    try {
+      const res = await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Erro ao atualizar status: ${data?.error || res.status}`);
+        return;
+      }
+      await load();
+      alert(data?.message || "Status da NF-e atualizado.");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao atualizar status da NF-e.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function handleDownloadNfePdf() {
+    if (!order?.id) return;
+    window.open(
+      `/api/orders/${order.id}/nfe/pdf`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
+
+  function handleDownloadNfeXml() {
+    if (!order?.id) return;
+    window.open(
+      order.nfeXmlUrl || `/api/orders/${order.id}/nfe/xml`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   }
 
   const buttonBase: React.CSSProperties = {
@@ -267,17 +331,27 @@ export default function MobileRepOrderDetailsPage() {
               Pedido #{order.number ?? "-"}
             </div>
 
-            <div style={{ fontSize: 13, opacity: 0.92, display: "grid", gap: 4 }}>
+            <div
+              style={{ fontSize: 13, opacity: 0.92, display: "grid", gap: 4 }}
+            >
               <div>Status: {getStatusLabel(order.status)}</div>
               <div>Pagamento: {getPaymentStatusLabel(order.paymentStatus)}</div>
               <div>Forma: {getPaymentMethodLabel(order.paymentMethod)}</div>
               <div>NF-e: {getNfeStatusLabel(order.nfeStatus)}</div>
-              <div>Emissão: {formatDateTimeBR(order.issuedAt || order.createdAt)}</div>
+              <div>
+                Emissão: {formatDateTimeBR(order.issuedAt || order.createdAt)}
+              </div>
             </div>
 
-            <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              
-            <a
+            <div
+              style={{
+                marginTop: 14,
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <a
                 href={`/api/orders/${order.id}/pdf`}
                 target="_blank"
                 rel="noreferrer"
@@ -345,6 +419,126 @@ export default function MobileRepOrderDetailsPage() {
             </div>
           </MobileCard>
 
+          <MobileCard>
+            <MobileSectionTitle title="Nota Fiscal Eletrônica (NF-e)" />
+
+            <div style={{ display: "grid", gap: 10 }}>
+              <MobileInfoRow
+                title="Status"
+                subtitle={getNfeStatusLabel(order.nfeStatus)}
+              />
+
+              {order.nfeNumber ? (
+                <MobileInfoRow
+                  title="Número da NF-e"
+                  subtitle={String(order.nfeNumber)}
+                />
+              ) : null}
+
+              {order.nfeKey ? (
+                <div
+                  style={{
+                    borderRadius: 14,
+                    border: `1px solid ${colors.border}`,
+                    padding: 12,
+                    background: colors.isDark ? "#111827" : "#f8fafc",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: colors.subtext,
+                    }}
+                  >
+                    Chave de acesso
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: colors.text,
+                      fontFamily: "monospace",
+                      wordBreak: "break-all",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {order.nfeKey}
+                  </div>
+                </div>
+              ) : hasNfeStarted ? (
+                <div style={{ fontSize: 12, color: colors.subtext }}>
+                  A chave aparecerá aqui assim que a NF-e retornar autorizada.
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: colors.subtext }}>
+                  Nenhuma NF-e emitida para este pedido ainda.
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  marginTop: 4,
+                }}
+              >
+                <button
+                  disabled={busy !== null || !canDownloadNfe}
+                  onClick={handleDownloadNfePdf}
+                  style={{
+                    ...buttonBase,
+                    background: "#2563eb",
+                    opacity: busy || !canDownloadNfe ? 0.6 : 1,
+                    cursor: busy || !canDownloadNfe ? "not-allowed" : "pointer",
+                  }}
+                  title={
+                    canDownloadNfe
+                      ? ""
+                      : "Disponível após a NF-e ser autorizada"
+                  }
+                >
+                  ⬇ Baixar NF-e
+                </button>
+
+                <button
+                  disabled={busy !== null || !canDownloadNfe}
+                  onClick={handleDownloadNfeXml}
+                  style={{
+                    ...buttonBase,
+                    background: "#475569",
+                    opacity: busy || !canDownloadNfe ? 0.6 : 1,
+                    cursor: busy || !canDownloadNfe ? "not-allowed" : "pointer",
+                  }}
+                  title={
+                    canDownloadNfe
+                      ? ""
+                      : "Disponível após a NF-e ser autorizada"
+                  }
+                >
+                  ⬇ Baixar XML
+                </button>
+
+                <button
+                  disabled={busy !== null}
+                  onClick={handleSyncNfe}
+                  style={{
+                    ...buttonBase,
+                    background: "#f97316",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  {busy === "sync-nfe" ? "Atualizando..." : "Atualizar status"}
+                </button>
+              </div>
+            </div>
+          </MobileCard>
+
           <div
             style={{
               display: "grid",
@@ -354,23 +548,47 @@ export default function MobileRepOrderDetailsPage() {
           >
             <MobileStatCard label="Itens" value={String(summary.skuCount)} />
             <MobileStatCard label="Unidades" value={String(summary.units)} />
-            <MobileStatCard label="Total" value={formatMoneyBR(order.totalCents ?? 0)} />
+            <MobileStatCard
+              label="Total"
+              value={formatMoneyBR(order.totalCents ?? 0)}
+            />
           </div>
 
           <MobileCard>
             <MobileSectionTitle title="Dados do cliente" />
-            <MobileInfoRow title="Cliente" subtitle={order.client?.name || "-"} />
-            <MobileInfoRow title="Razão social" subtitle={order.client?.legalName || "-"} />
+            <MobileInfoRow
+              title="Cliente"
+              subtitle={order.client?.name || "-"}
+            />
+            <MobileInfoRow
+              title="Razão social"
+              subtitle={order.client?.legalName || "-"}
+            />
             <MobileInfoRow title="Endereço" subtitle={buildAddress(order)} />
-            <MobileInfoRow title="Região" subtitle={order.region?.name || "-"} />
-            <MobileInfoRow title="Vendedor" subtitle={order.seller?.name || "-"} />
+            <MobileInfoRow
+              title="Região"
+              subtitle={order.region?.name || "-"}
+            />
+            <MobileInfoRow
+              title="Vendedor"
+              subtitle={order.seller?.name || "-"}
+            />
           </MobileCard>
 
           <MobileCard>
             <MobileSectionTitle title="Valores" />
-            <MobileInfoRow title="Subtotal" right={formatMoneyBR(order.subtotalCents ?? 0)} />
-            <MobileInfoRow title="Desconto" right={formatMoneyBR(order.discountCents ?? 0)} />
-            <MobileInfoRow title="Total" right={formatMoneyBR(order.totalCents ?? 0)} />
+            <MobileInfoRow
+              title="Subtotal"
+              right={formatMoneyBR(order.subtotalCents ?? 0)}
+            />
+            <MobileInfoRow
+              title="Desconto"
+              right={formatMoneyBR(order.discountCents ?? 0)}
+            />
+            <MobileInfoRow
+              title="Total"
+              right={formatMoneyBR(order.totalCents ?? 0)}
+            />
           </MobileCard>
 
           <MobileCard>
@@ -391,7 +609,13 @@ export default function MobileRepOrderDetailsPage() {
                       background: colors.isDark ? "#111827" : "#f8fafc",
                     }}
                   >
-                    <div style={{ fontSize: 14, fontWeight: 900, color: colors.text }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 900,
+                        color: colors.text,
+                      }}
+                    >
                       {item.product?.name || "Produto"}
                     </div>
                     <div
@@ -407,7 +631,8 @@ export default function MobileRepOrderDetailsPage() {
                       <div>Quantidade: {item.qty}</div>
                       <div>Unitário: {formatMoneyBR(item.unitCents ?? 0)}</div>
                       <div>
-                        Total: {formatMoneyBR((item.qty || 0) * (item.unitCents || 0))}
+                        Total:{" "}
+                        {formatMoneyBR((item.qty || 0) * (item.unitCents || 0))}
                       </div>
                     </div>
                   </div>
@@ -419,7 +644,9 @@ export default function MobileRepOrderDetailsPage() {
           {order.notes ? (
             <MobileCard>
               <MobileSectionTitle title="Observações" />
-              <div style={{ fontSize: 13, color: colors.text }}>{order.notes}</div>
+              <div style={{ fontSize: 13, color: colors.text }}>
+                {order.notes}
+              </div>
             </MobileCard>
           ) : null}
 

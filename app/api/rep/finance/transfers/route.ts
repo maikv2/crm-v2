@@ -44,6 +44,11 @@ export async function GET() {
       prisma.cashTransfer.findMany({
         where: {
           regionId: user.regionId,
+          receipt: {
+            orderId: {
+              not: null,
+            },
+          },
         },
         select: {
           id: true,
@@ -58,6 +63,7 @@ export async function GET() {
               amountCents: true,
               receivedAt: true,
               paymentMethod: true,
+              orderId: true,
               order: {
                 select: {
                   id: true,
@@ -119,7 +125,9 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const transferIds = normalizeIds(body?.transferIds ?? body?.transferId ?? body?.id);
+    const transferIds = normalizeIds(
+      body?.transferIds ?? body?.transferId ?? body?.id
+    );
     const notes =
       body?.notes === null || body?.notes === undefined
         ? null
@@ -140,16 +148,80 @@ export async function POST(request: Request) {
           id: { in: uniqueIds },
           regionId: user.regionId,
           status: TransferStatus.PENDING,
+          receipt: {
+            orderId: {
+              not: null,
+            },
+          },
         },
         select: {
           id: true,
           amountCents: true,
+          receipt: {
+            select: {
+              id: true,
+              orderId: true,
+              order: {
+                select: {
+                  number: true,
+                },
+              },
+            },
+          },
         },
       });
 
       if (pendingTransfers.length !== uniqueIds.length) {
         throw new Error(
-          "Um ou mais pedidos selecionados não estão pendentes ou não pertencem à sua região. Atualize a tela e tente novamente."
+          "Um ou mais pedidos selecionados não estão pendentes, não pertencem à sua região ou não possuem vínculo com pedido. Atualize a tela e tente novamente."
+        );
+      }
+
+      const orderIds = pendingTransfers
+        .map((item) => item.receipt.orderId)
+        .filter((orderId): orderId is string => Boolean(orderId));
+
+      const uniqueOrderIds = Array.from(new Set(orderIds));
+
+      if (uniqueOrderIds.length !== orderIds.length) {
+        throw new Error(
+          "Você selecionou mais de um repasse para o mesmo pedido. Selecione apenas um repasse por pedido."
+        );
+      }
+
+      const alreadyTransferred = await tx.cashTransfer.findFirst({
+        where: {
+          id: {
+            notIn: uniqueIds,
+          },
+          regionId: user.regionId,
+          status: TransferStatus.TRANSFERRED,
+          receipt: {
+            orderId: {
+              in: uniqueOrderIds,
+            },
+          },
+        },
+        select: {
+          id: true,
+          receipt: {
+            select: {
+              order: {
+                select: {
+                  number: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (alreadyTransferred) {
+        const number = alreadyTransferred.receipt.order?.number;
+        throw new Error(
+          number
+            ? `O pedido PED-${String(number).padStart(4, "0")} já foi repassado anteriormente.`
+            : "Um dos pedidos selecionados já foi repassado anteriormente."
         );
       }
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth-user";
-import { PaymentStatus } from "@prisma/client";
+import { PaymentReceiver, PaymentStatus, TransferStatus } from "@prisma/client";
 
 export async function GET() {
   try {
@@ -39,6 +39,20 @@ export async function GET() {
             name: true,
           },
         },
+        receipts: {
+          select: {
+            id: true,
+            orderId: true,
+            amountCents: true,
+            transfers: {
+              select: {
+                id: true,
+                status: true,
+                transferredAt: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: "desc",
@@ -57,12 +71,24 @@ export async function GET() {
 
       let status: "AVAILABLE" | "AWAITING_TRANSFER" | "AWAITING_PAYMENT";
 
-      if (order.paymentStatus === PaymentStatus.PAID) {
-        status = "AWAITING_TRANSFER";
-        awaitingTransfer += commission;
-      } else {
+      const hasTransferredToMatrix = order.receipts.some((receipt) =>
+        receipt.transfers.some(
+          (transfer) => transfer.status === TransferStatus.TRANSFERRED
+        )
+      );
+
+      if (order.paymentStatus !== PaymentStatus.PAID) {
         status = "AWAITING_PAYMENT";
         awaitingPayment += commission;
+      } else if (order.paymentReceiver === PaymentReceiver.MATRIX) {
+        status = "AVAILABLE";
+        available += commission;
+      } else if (hasTransferredToMatrix) {
+        status = "AVAILABLE";
+        available += commission;
+      } else {
+        status = "AWAITING_TRANSFER";
+        awaitingTransfer += commission;
       }
 
       return {
@@ -84,7 +110,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error(error);
+    console.error("Erro ao carregar comissões:", error);
 
     return NextResponse.json(
       { error: "Erro ao carregar comissões." },

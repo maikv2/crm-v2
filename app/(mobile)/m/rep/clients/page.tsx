@@ -185,27 +185,38 @@ export default function MobileRepClientsPage() {
               return (
                 <div key={client.id} style={{ position: "relative" }}>
                   
-                  {/* BOTÃO EDITAR */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      router.push(`/clients/${client.id}/edit`);
-                    }}
-                    style={{
-                      position: "absolute",
-                      top: 10,
-                      right: 10,
-                      background: colors.primary,
-                      border: "none",
-                      borderRadius: 10,
-                      padding: "6px 8px",
-                      cursor: "pointer",
-                      zIndex: 2,
-                    }}
-                  >
-                    <Pencil size={14} color="#fff" />
-                  </button>
+                  <div
+  style={{
+    marginBottom: 10,
+    display: "flex",
+    justifyContent: "flex-end",
+  }}
+>
+  <button
+    type="button"
+    onClick={(e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      router.push(`/clients/${client.id}/edit`);
+    }}
+    style={{
+      border: `1px solid ${colors.primary}`,
+      background: colors.primary,
+      color: "#fff",
+      borderRadius: 10,
+      padding: "7px 10px",
+      fontSize: 12,
+      fontWeight: 800,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+    }}
+  >
+    <Pencil size={14} />
+    Editar cliente
+  </button>
+</div>
 
                   <Link
                     href={`/m/rep/clients/${client.id}`}

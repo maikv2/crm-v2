@@ -335,26 +335,27 @@ export default function MobileRepClientDetailsPage() {
                   Visita
                 </div>
               </Link>
-            <button
-                onClick={() => router.push(`/clients/${id}/edit`)}
-                style={{
-                minHeight: 42,
-               borderRadius: 12,
-               border: `1px solid ${colors.border}`,
-               background: colors.cardBg,
-               display: "flex",
-               alignItems: "center",
-               justifyContent: "center",
-               gap: 6,
-               fontSize: 12,
-               fontWeight: 800,
-               color: colors.text,
-               cursor: "pointer",
-               }}
-             >
-              <Pencil size={14} />
-                    Editar
-                    </button>
+
+                 <div
+  style={{
+    minHeight: 42,
+    borderRadius: 12,
+    border: `1px solid ${colors.border}`,
+    background: colors.cardBg,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 800,
+    color: colors.text,
+    cursor: "pointer",
+  }}
+  onClick={() => router.push(`/clients/${id}/edit`)}
+>
+  <Pencil size={14} />
+  Editar
+</div>
             </div>
           </MobileCard>
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { prisma } from "@/lib/prisma";
 
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"];
 
@@ -62,17 +63,9 @@ function buildAliases(sku: string, name: string) {
   aliases.add(normalizedName);
   nameTokens.forEach((token) => aliases.add(token));
 
-  if (skuPrefix === "CB") {
-    aliases.add("cabo");
-  }
-
-  if (skuPrefix === "CR") {
-    aliases.add("carregador");
-  }
-
-  if (skuPrefix === "FN") {
-    aliases.add("fone");
-  }
+  if (skuPrefix === "CB") aliases.add("cabo");
+  if (skuPrefix === "CR") aliases.add("carregador");
+  if (skuPrefix === "FN") aliases.add("fone");
 
   if (normalizedName.includes("veicular")) {
     aliases.add("veicular");
@@ -157,62 +150,25 @@ function scoreFile(fileName: string, sku: string, name: string) {
     if (!alias) continue;
     const normalizedAlias = normalize(alias);
 
-    if (normalizedFile === normalizedAlias) {
-      score += 200;
-    } else if (normalizedFile.includes(normalizedAlias)) {
-      score += 80;
-    }
+    if (normalizedFile === normalizedAlias) score += 200;
+    else if (normalizedFile.includes(normalizedAlias)) score += 80;
   }
 
   for (const token of nameTokens) {
-    if (fileTokens.includes(token)) {
-      score += 25;
-    }
+    if (fileTokens.includes(token)) score += 25;
   }
 
-  if (skuPrefix === "CB" && normalizedFile.includes("cabo")) {
-    score += 40;
-  }
-
-  if (skuPrefix === "CR" && normalizedFile.includes("carregador")) {
-    score += 40;
-  }
-
-  if (skuPrefix === "FN" && normalizedFile.includes("fone")) {
-    score += 40;
-  }
-
-  if (normalizedFile.includes("veicular") && normalize(name).includes("veicular")) {
-    score += 60;
-  }
-
-  if (normalizedFile.includes("tomada") && normalize(name).includes("tomada")) {
-    score += 60;
-  }
-
-  if (normalizedFile.includes("bluetooth") && normalize(name).includes("bluetooth")) {
-    score += 60;
-  }
-
-  if (normalizedFile.includes("premium") && normalize(name).includes("premium")) {
-    score += 40;
-  }
-
-  if (normalizedFile.includes("p2") && normalize(name).includes("p2")) {
-    score += 50;
-  }
-
-  if (normalizedFile.includes("v8") && normalize(name).includes("v8")) {
-    score += 50;
-  }
-
-  if (normalizedFile.includes("tc") && normalize(name).includes("tc")) {
-    score += 50;
-  }
-
-  if (normalizedFile.includes("ios") && normalize(name).includes("ios")) {
-    score += 50;
-  }
+  if (skuPrefix === "CB" && normalizedFile.includes("cabo")) score += 40;
+  if (skuPrefix === "CR" && normalizedFile.includes("carregador")) score += 40;
+  if (skuPrefix === "FN" && normalizedFile.includes("fone")) score += 40;
+  if (normalizedFile.includes("veicular") && normalize(name).includes("veicular")) score += 60;
+  if (normalizedFile.includes("tomada") && normalize(name).includes("tomada")) score += 60;
+  if (normalizedFile.includes("bluetooth") && normalize(name).includes("bluetooth")) score += 60;
+  if (normalizedFile.includes("premium") && normalize(name).includes("premium")) score += 40;
+  if (normalizedFile.includes("p2") && normalize(name).includes("p2")) score += 50;
+  if (normalizedFile.includes("v8") && normalize(name).includes("v8")) score += 50;
+  if (normalizedFile.includes("tc") && normalize(name).includes("tc")) score += 50;
+  if (normalizedFile.includes("ios") && normalize(name).includes("ios")) score += 50;
 
   return score;
 }
@@ -234,43 +190,68 @@ async function findBestImageFile(sku: string, name: string) {
     }
   }
 
-  if (!bestMatch || bestMatch.score <= 0) {
-    return null;
-  }
+  if (!bestMatch || bestMatch.score <= 0) return null;
 
   return path.join(productsDir, bestMatch.file);
+}
+
+async function findImageByProductId(productId: string) {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+  });
+
+  if (!product) return null;
+
+  const productData = product as any;
+  const rawImagePath =
+    productData.imageUrl ||
+    productData.image ||
+    productData.photoUrl ||
+    productData.photo ||
+    productData.pictureUrl ||
+    productData.picture ||
+    null;
+
+  if (!rawImagePath || typeof rawImagePath !== "string") return null;
+  if (rawImagePath.startsWith("http://") || rawImagePath.startsWith("https://")) return null;
+
+  const normalizedPath = rawImagePath.startsWith("/") ? rawImagePath.slice(1) : rawImagePath;
+  return path.join(process.cwd(), "public", normalizedPath);
 }
 
 function getContentType(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
 
   switch (ext) {
-    case ".png":
-      return "image/png";
+    case ".png": return "image/png";
     case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".webp":
-      return "image/webp";
-    case ".gif":
-      return "image/gif";
-    case ".svg":
-      return "image/svg+xml";
-    default:
-      return "application/octet-stream";
+    case ".jpeg": return "image/jpeg";
+    case ".webp": return "image/webp";
+    case ".gif": return "image/gif";
+    case ".svg": return "image/svg+xml";
+    default: return "application/octet-stream";
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
+    const id = String(request.nextUrl.searchParams.get("id") ?? "").trim();
     const sku = String(request.nextUrl.searchParams.get("sku") ?? "").trim();
     const name = String(request.nextUrl.searchParams.get("name") ?? "").trim();
 
-    if (!sku && !name) {
+    if (!id && !sku && !name) {
       return new NextResponse("Parâmetros ausentes", { status: 400 });
     }
 
-    const foundPath = await findBestImageFile(sku, name);
+    let foundPath: string | null = null;
+
+    if (id) {
+      foundPath = await findImageByProductId(id);
+    }
+
+    if (!foundPath && (sku || name)) {
+      foundPath = await findBestImageFile(sku, name);
+    }
 
     if (!foundPath) {
       return new NextResponse("Imagem não encontrada", { status: 404 });

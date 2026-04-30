@@ -19,9 +19,15 @@ function normalizeText(value: string | null | undefined) {
   return value ?? null;
 }
 
-function buildProductImageUrl(baseUrl: string, sku: string | null, name: string | null) {
+function buildProductImageUrl(
+  baseUrl: string,
+  productId: string | null,
+  sku: string | null,
+  name: string | null
+) {
   const params = new URLSearchParams();
 
+  if (productId) params.set("id", productId);
   if (sku) params.set("sku", sku);
   if (name) params.set("name", name);
 
@@ -153,6 +159,7 @@ export async function GET(request: Request, context: RouteContext) {
         subtotalCents: item.qty * item.unitCents,
         imageUrl: buildProductImageUrl(
           baseUrl,
+          item.product.id,
           item.product.sku ?? null,
           item.product.name ?? null
         ),

@@ -44,6 +44,14 @@ function removeLeadingTimestamp(fileName: string) {
   return fileName.replace(/^\d+\s*-\s*/i, "").trim();
 }
 
+function removeExtension(fileName: string) {
+  return fileName.replace(/\.[^.]+$/, "").trim();
+}
+
+function cleanImageName(fileName: string) {
+  return removeExtension(removeLeadingTimestamp(fileName));
+}
+
 function isImageFile(fileName: string) {
   const lower = fileName.toLowerCase();
   return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
@@ -136,8 +144,9 @@ function buildAliases(sku: string, name: string) {
 }
 
 function scoreFile(fileName: string, sku: string, name: string) {
-  const cleanFileName = removeLeadingTimestamp(fileName).replace(/\.[^.]+$/, "");
+  const cleanFileName = cleanImageName(fileName);
   const normalizedFile = normalize(cleanFileName);
+  const normalizedName = normalize(name);
   const fileTokens = tokenize(cleanFileName);
 
   const aliases = buildAliases(sku, name);
@@ -145,6 +154,29 @@ function scoreFile(fileName: string, sku: string, name: string) {
   const skuPrefix = getSkuPrefix(sku);
 
   let score = 0;
+
+  /*
+    Regra mais importante:
+    quando o arquivo é "timestamp-NOME DO PRODUTO.png",
+    o nome limpo do arquivo precisa bater exatamente com o nome do produto.
+    Isso evita o erro FN004 pegando a imagem do FN005.
+  */
+  if (normalizedName && normalizedFile === normalizedName) {
+    score += 10000;
+  }
+
+  /*
+    Segunda prioridade:
+    se algum dia você renomear arquivos para conter o SKU,
+    o SKU exato também ganha prioridade alta.
+  */
+  if (sku && normalizedFile === normalize(sku)) {
+    score += 9000;
+  }
+
+  if (sku && normalizedFile.includes(normalize(sku))) {
+    score += 3000;
+  }
 
   for (const alias of aliases) {
     if (!alias) continue;
@@ -173,12 +205,58 @@ function scoreFile(fileName: string, sku: string, name: string) {
   return score;
 }
 
+async function findExactImageByName(name: string) {
+  if (!name) return null;
+
+  const productsDir = path.join(process.cwd(), "public", "products");
+  const files = await fs.readdir(productsDir);
+  const imageFiles = files.filter(isImageFile);
+  const normalizedTarget = normalize(name);
+
+  const exactMatch = imageFiles.find((file) => {
+    const normalizedFile = normalize(cleanImageName(file));
+    return normalizedFile === normalizedTarget;
+  });
+
+  if (!exactMatch) return null;
+
+  return path.join(productsDir, exactMatch);
+}
+
+async function findExactImageBySku(sku: string) {
+  if (!sku) return null;
+
+  const productsDir = path.join(process.cwd(), "public", "products");
+  const files = await fs.readdir(productsDir);
+  const imageFiles = files.filter(isImageFile);
+  const normalizedSku = normalize(sku);
+
+  const exactMatch = imageFiles.find((file) => {
+    const normalizedFile = normalize(cleanImageName(file));
+    return normalizedFile === normalizedSku || normalizedFile.includes(normalizedSku);
+  });
+
+  if (!exactMatch) return null;
+
+  return path.join(productsDir, exactMatch);
+}
+
 async function findBestImageFile(sku: string, name: string) {
   const productsDir = path.join(process.cwd(), "public", "products");
   const files = await fs.readdir(productsDir);
   const imageFiles = files.filter(isImageFile);
 
   if (!imageFiles.length) return null;
+
+  /*
+    Antes de usar pontuação/heurística, tenta correspondência exata.
+    Isso preserva o código grande antigo, mas impede a troca errada de imagens.
+  */
+  const exactByName = await findExactImageByName(name);
+  if (exactByName) return exactByName;
+
+  const exactBySku = await findExactImageBySku(sku);
+  if (exactBySku) return exactBySku;
 
   let bestMatch: { file: string; score: number } | null = null;
 
@@ -249,6 +327,11 @@ export async function GET(request: NextRequest) {
       foundPath = await findImageByProductId(id);
     }
 
+    /*
+      Como atualmente o Product não possui campo de imagem no banco,
+      normalmente a busca por id vai retornar null.
+      Então usamos name/sku como fallback, com prioridade para nome exato do arquivo.
+    */
     if (!foundPath && (sku || name)) {
       foundPath = await findBestImageFile(sku, name);
     }

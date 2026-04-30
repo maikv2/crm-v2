@@ -12,6 +12,42 @@ function onlyDigits(value?: string | null) {
   return String(value ?? "").replace(/\D/g, "");
 }
 
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+
+    const prospect = await prisma.prospect.findUnique({
+      where: { id },
+      include: {
+        region: {
+          select: { id: true, name: true },
+        },
+        representative: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+
+    if (!prospect) {
+      return NextResponse.json(
+        { error: "Prospecto não encontrado" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(prospect);
+  } catch (error) {
+    console.error("GET /api/prospects/[id] error:", error);
+    return NextResponse.json(
+      { error: "Não foi possível carregar o prospecto" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> }
@@ -33,7 +69,9 @@ export async function PATCH(
         ? undefined
         : normalizeText(body.email)?.toLowerCase() ?? null;
     const rawContactName =
-      body.contactName === undefined ? undefined : normalizeText(body.contactName);
+      body.contactName === undefined
+        ? undefined
+        : normalizeText(body.contactName);
     const rawCep =
       body.cep === undefined ? undefined : onlyDigits(body.cep) || null;
     const rawStreet =
@@ -52,6 +90,12 @@ export async function PATCH(
       body.notes === undefined ? undefined : normalizeText(body.notes);
     const rawStatus =
       body.status === undefined ? undefined : normalizeText(body.status);
+    const rawRegionId =
+      body.regionId === undefined ? undefined : normalizeText(body.regionId);
+    const rawRepresentativeId =
+      body.representativeId === undefined
+        ? undefined
+        : normalizeText(body.representativeId);
 
     if (rawName === null) {
       return NextResponse.json(
@@ -80,65 +124,67 @@ export async function PATCH(
       parsedStatus = rawStatus as ProspectStatus;
     }
 
+    // Latitude/longitude manual
+    const rawLatitude =
+      body.latitude === undefined
+        ? undefined
+        : body.latitude === null
+        ? null
+        : Number(body.latitude);
+    const rawLongitude =
+      body.longitude === undefined
+        ? undefined
+        : body.longitude === null
+        ? null
+        : Number(body.longitude);
+
+    const hasManualCoords =
+      rawLatitude !== undefined &&
+      rawLongitude !== undefined &&
+      rawLatitude !== null &&
+      rawLongitude !== null &&
+      !isNaN(rawLatitude) &&
+      !isNaN(rawLongitude);
+
     let geocoded:
-      | {
-          latitude: number;
-          longitude: number;
-        }
+      | { latitude: number; longitude: number }
       | null
       | undefined = undefined;
 
-    const addressTouched =
-      body.street !== undefined ||
-      body.number !== undefined ||
-      body.district !== undefined ||
-      body.city !== undefined ||
-      body.state !== undefined ||
-      body.cep !== undefined;
+    if (!hasManualCoords) {
+      const addressTouched =
+        body.street !== undefined ||
+        body.number !== undefined ||
+        body.district !== undefined ||
+        body.city !== undefined ||
+        body.state !== undefined ||
+        body.cep !== undefined;
 
-    if (addressTouched) {
-      const current = await prisma.prospect.findUnique({
-        where: { id },
-      });
+      if (addressTouched) {
+        const current = await prisma.prospect.findUnique({ where: { id } });
 
-      if (!current) {
-        return NextResponse.json(
-          { error: "Prospecto não encontrado" },
-          { status: 404 }
-        );
+        if (!current) {
+          return NextResponse.json(
+            { error: "Prospecto não encontrado" },
+            { status: 404 }
+          );
+        }
+
+        const fullAddress = buildAddress([
+          rawStreet !== undefined ? rawStreet : current.street,
+          rawNumber !== undefined ? rawNumber : current.number,
+          rawDistrict !== undefined ? rawDistrict : current.district,
+          rawCity !== undefined ? rawCity : current.city,
+          rawState !== undefined ? rawState : current.state,
+          rawCep !== undefined ? rawCep : current.cep,
+          "Brasil",
+        ]);
+
+        geocoded = await geocodeAddress(fullAddress);
       }
-
-      const fullAddress = buildAddress([
-        rawStreet !== undefined ? rawStreet : current.street,
-        rawNumber !== undefined ? rawNumber : current.number,
-        rawDistrict !== undefined ? rawDistrict : current.district,
-        rawCity !== undefined ? rawCity : current.city,
-        rawState !== undefined ? rawState : current.state,
-        rawCep !== undefined ? rawCep : current.cep,
-        "Brasil",
-      ]);
-
-      geocoded = await geocodeAddress(fullAddress);
     }
 
-    const data: {
-      name?: string;
-      tradeName?: string | null;
-      cnpj?: string | null;
-      phone?: string | null;
-      email?: string | null;
-      contactName?: string | null;
-      cep?: string | null;
-      street?: string | null;
-      number?: string | null;
-      district?: string | null;
-      city?: string | null;
-      state?: string | null;
-      notes?: string | null;
-      status?: ProspectStatus;
-      latitude?: number | null;
-      longitude?: number | null;
-    } = {};
+    const data: Record<string, unknown> = {};
 
     if (rawName !== undefined) data.name = rawName;
     if (rawTradeName !== undefined) data.tradeName = rawTradeName;
@@ -154,8 +200,14 @@ export async function PATCH(
     if (rawState !== undefined) data.state = rawState;
     if (rawNotes !== undefined) data.notes = rawNotes;
     if (parsedStatus !== undefined) data.status = parsedStatus;
+    if (rawRegionId !== undefined) data.regionId = rawRegionId;
+    if (rawRepresentativeId !== undefined)
+      data.representativeId = rawRepresentativeId;
 
-    if (geocoded) {
+    if (hasManualCoords) {
+      data.latitude = rawLatitude;
+      data.longitude = rawLongitude;
+    } else if (geocoded) {
       data.latitude = geocoded.latitude;
       data.longitude = geocoded.longitude;
     }
@@ -164,26 +216,14 @@ export async function PATCH(
       where: { id },
       data,
       include: {
-        region: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        representative: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        region: { select: { id: true, name: true } },
+        representative: { select: { id: true, name: true, email: true } },
       },
     });
 
     return NextResponse.json(updated);
   } catch (error) {
     console.error("PATCH /api/prospects/[id] error:", error);
-
     return NextResponse.json(
       { error: "Não foi possível atualizar o prospecto" },
       { status: 500 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   CalendarDays,
   ChevronRight,
@@ -12,6 +12,7 @@ import {
   Phone,
   Store,
   User2,
+  Pencil
 } from "lucide-react";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import {
@@ -93,6 +94,7 @@ function fullAddress(client: ClientDetails | null) {
 
 export default function MobileRepClientDetailsPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params?.id;
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
@@ -230,7 +232,7 @@ export default function MobileRepClientDetailsPage() {
               style={{
                 marginTop: 14,
                 display: "grid",
-                gridTemplateColumns: "repeat(4, minmax(0,1fr))",
+                gridTemplateColumns: "repeat(5, minmax(0,1fr))",
                 gap: 8,
               }}
             >
@@ -333,6 +335,26 @@ export default function MobileRepClientDetailsPage() {
                   Visita
                 </div>
               </Link>
+            <button
+                onClick={() => router.push(`/clients/${id}/edit`)}
+                style={{
+                minHeight: 42,
+               borderRadius: 12,
+               border: `1px solid ${colors.border}`,
+               background: colors.cardBg,
+               display: "flex",
+               alignItems: "center",
+               justifyContent: "center",
+               gap: 6,
+               fontSize: 12,
+               fontWeight: 800,
+               color: colors.text,
+               cursor: "pointer",
+               }}
+             >
+              <Pencil size={14} />
+                    Editar
+                    </button>
             </div>
           </MobileCard>
 

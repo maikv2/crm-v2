@@ -368,6 +368,13 @@ export default function RepClientsPage() {
                     </button>
 
                     <button
+                      style={btnSecondary}
+                      onClick={() => router.push(`/clients/${client.id}/edit`)}
+                    >
+                      Editar cliente
+                    </button>
+
+                    <button
                       style={btnPrimary}
                       onClick={() =>
                         router.push(`/rep/orders/new?clientId=${client.id}`)

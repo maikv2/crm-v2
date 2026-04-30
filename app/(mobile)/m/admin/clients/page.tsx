@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, MapPin, Phone, Search, Users } from "lucide-react";
+import { ChevronRight, MapPin, Phone, Search, Users, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
 import MobilePageFrame from "@/app/components/mobile/mobile-page-frame";
 import {
   MobileCard,
@@ -42,6 +43,7 @@ function resolveClients(data: ClientsResponse | null): ClientItem[] {
 export default function MobileAdminClientsPage() {
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -171,30 +173,13 @@ export default function MobileAdminClientsPage() {
         </div>
 
         {loading ? (
-          <div
-            style={{
-              fontSize: 14,
-              color: colors.subtext,
-            }}
-          >
+          <div style={{ fontSize: 14, color: colors.subtext }}>
             Carregando clientes...
           </div>
         ) : error ? (
-          <div
-            style={{
-              fontSize: 14,
-              color: "#dc2626",
-            }}
-          >
-            {error}
-          </div>
+          <div style={{ fontSize: 14, color: "#dc2626" }}>{error}</div>
         ) : filteredClients.length === 0 ? (
-          <div
-            style={{
-              fontSize: 14,
-              color: colors.subtext,
-            }}
-          >
+          <div style={{ fontSize: 14, color: colors.subtext }}>
             Nenhum cliente encontrado.
           </div>
         ) : (
@@ -211,124 +196,148 @@ export default function MobileAdminClientsPage() {
                 client.legalName?.trim() || client.name?.trim() || null;
 
               return (
-                <Link
-                  key={client.id}
-                  href={`/m/admin/clients/${client.id}`}
-                  style={{ textDecoration: "none" }}
-                >
-                  <div
-                    style={{
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: 16,
-                      padding: 14,
-                      background: colors.cardBg,
+                <div key={client.id} style={{ position: "relative" }}>
+
+                  {/* BOTÃO EDITAR */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      router.push(`/clients/${client.id}/edit`);
                     }}
+                    style={{
+                      position: "absolute",
+                      top: 10,
+                      right: 10,
+                      background: colors.primary,
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "6px 8px",
+                      cursor: "pointer",
+                      zIndex: 2,
+                    }}
+                  >
+                    <Pencil size={14} color="#fff" />
+                  </button>
+
+                  <Link
+                    href={`/m/admin/clients/${client.id}`}
+                    style={{ textDecoration: "none" }}
                   >
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: 12,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 16,
+                        padding: 14,
+                        background: colors.cardBg,
                       }}
                     >
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            marginBottom: 6,
-                          }}
-                        >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <div
                             style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 12,
-                              background: colors.isDark ? "#111827" : "#e8f0ff",
-                              color: colors.primary,
                               display: "flex",
                               alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
+                              gap: 8,
+                              marginBottom: 6,
                             }}
                           >
-                            <Users size={16} />
+                            <div
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 12,
+                                background: colors.isDark ? "#111827" : "#e8f0ff",
+                                color: colors.primary,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Users size={16} />
+                            </div>
+
+                            <div
+                              style={{
+                                fontSize: 15,
+                                fontWeight: 900,
+                                color: colors.text,
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              {displayName}
+                            </div>
                           </div>
+
+                          {legalDisplay &&
+                          legalDisplay !== displayName ? (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: colors.subtext,
+                                marginBottom: 8,
+                              }}
+                            >
+                              Razão social: {legalDisplay}
+                            </div>
+                          ) : null}
 
                           <div
                             style={{
-                              fontSize: 15,
-                              fontWeight: 900,
-                              color: colors.text,
-                              lineHeight: 1.2,
-                            }}
-                          >
-                            {displayName}
-                          </div>
-                        </div>
-
-                        {legalDisplay &&
-                        legalDisplay !== displayName ? (
-                          <div
-                            style={{
+                              display: "grid",
+                              gap: 6,
                               fontSize: 12,
                               color: colors.subtext,
-                              marginBottom: 8,
                             }}
                           >
-                            Razão social: {legalDisplay}
+                            {client.city ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                <MapPin size={13} />
+                                <span>
+                                  {client.city}
+                                  {client.neighborhood
+                                    ? ` • ${client.neighborhood}`
+                                    : client.district
+                                    ? ` • ${client.district}`
+                                    : ""}
+                                </span>
+                              </div>
+                            ) : null}
+
+                            {client.phone ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}
+                              >
+                                <Phone size={13} />
+                                <span>{client.phone}</span>
+                              </div>
+                            ) : null}
                           </div>
-                        ) : null}
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 6,
-                            fontSize: 12,
-                            color: colors.subtext,
-                          }}
-                        >
-                          {client.city ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                              }}
-                            >
-                              <MapPin size={13} />
-                              <span>
-                                {client.city}
-                                {client.neighborhood
-                                  ? ` • ${client.neighborhood}`
-                                  : client.district
-                                  ? ` • ${client.district}`
-                                  : ""}
-                              </span>
-                            </div>
-                          ) : null}
-
-                          {client.phone ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                              }}
-                            >
-                              <Phone size={13} />
-                              <span>{client.phone}</span>
-                            </div>
-                          ) : null}
                         </div>
-                      </div>
 
-                      <ChevronRight size={16} color={colors.subtext} />
+                        <ChevronRight size={16} color={colors.subtext} />
+                      </div>
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+                </div>
               );
             })}
           </div>

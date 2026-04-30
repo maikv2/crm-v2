@@ -1,9 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { useEffect, useMemo, useState } from "react";
 import { getThemeColors } from "../../../lib/theme";
 
 export type CommercialMapPoint = {
@@ -27,6 +24,14 @@ export type CommercialMapPoint = {
 type DisplayPoint = CommercialMapPoint & {
   displayLatitude: number;
   displayLongitude: number;
+};
+
+type LeafletModules = {
+  MapContainer: any;
+  Marker: any;
+  Popup: any;
+  TileLayer: any;
+  L: any;
 };
 
 function formatDateBR(value?: string | null) {
@@ -58,7 +63,7 @@ function getMarkerColor(point: CommercialMapPoint) {
   }
 }
 
-function createMarkerIcon(color: string) {
+function createMarkerIcon(L: any, color: string) {
   return L.divIcon({
     className: "",
     html: `
@@ -127,6 +132,36 @@ export default function CommercialMapView({
   points: CommercialMapPoint[];
   themeMode: "light" | "dark";
 }) {
+  const [leafletModules, setLeafletModules] =
+    useState<LeafletModules | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLeaflet() {
+      const [reactLeaflet, leaflet] = await Promise.all([
+        import("react-leaflet"),
+        import("leaflet"),
+      ]);
+
+      if (!active) return;
+
+      setLeafletModules({
+        MapContainer: reactLeaflet.MapContainer,
+        Marker: reactLeaflet.Marker,
+        Popup: reactLeaflet.Popup,
+        TileLayer: reactLeaflet.TileLayer,
+        L: leaflet.default,
+      });
+    }
+
+    loadLeaflet();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const safePoints = Array.isArray(points) ? points : [];
   const displayPoints = useMemo(() => spreadPoints(safePoints), [safePoints]);
   const theme = getThemeColors(themeMode);
@@ -136,17 +171,27 @@ export default function CommercialMapView({
   const center = useMemo<[number, number]>(() => {
     if (displayPoints.length > 0) {
       const avgLat =
-        displayPoints.reduce((sum, item) => sum + item.latitude, 0) /
-        displayPoints.length;
-      const avgLng =
-        displayPoints.reduce((sum, item) => sum + item.longitude, 0) /
-        displayPoints.length;
-
+      displayPoints.reduce((sum, item) => sum + item.displayLatitude, 0) /
+      displayPoints.length;
+  const avgLng =
+      displayPoints.reduce((sum, item) => sum + item.displayLongitude, 0) /
+      displayPoints.length;
       return [avgLat, avgLng];
     }
 
     return [-27.1004, -52.6152];
   }, [displayPoints]);
+
+  const mapStyle = {
+    height: "calc(100vh - 360px)",
+    width: "100%",
+    minHeight: 540,
+  };
+
+  const MapContainerComponent = leafletModules?.MapContainer;
+  const MarkerComponent = leafletModules?.Marker;
+  const PopupComponent = leafletModules?.Popup;
+  const TileLayerComponent = leafletModules?.TileLayer;
 
   return (
     <div>
@@ -160,70 +205,11 @@ export default function CommercialMapView({
           fontSize: 13,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 999,
-              background: "#2563eb",
-              display: "inline-block",
-            }}
-          />
-          Cliente
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 999,
-              background: "#eab308",
-              display: "inline-block",
-            }}
-          />
-          Prospecto pendente
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 999,
-              background: "#a855f7",
-              display: "inline-block",
-            }}
-          />
-          Voltar
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 999,
-              background: "#ef4444",
-              display: "inline-block",
-            }}
-          />
-          Não voltar
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 999,
-              background: "#22c55e",
-              display: "inline-block",
-            }}
-          />
-          Convertido
-        </div>
+        <Legend color="#2563eb" label="Cliente" />
+        <Legend color="#eab308" label="Prospecto pendente" />
+        <Legend color="#a855f7" label="Voltar" />
+        <Legend color="#ef4444" label="Não voltar" />
+        <Legend color="#22c55e" label="Convertido" />
       </div>
 
       <div
@@ -234,74 +220,78 @@ export default function CommercialMapView({
           background: theme.isDark ? "#0b1324" : "#f8fafc",
         }}
       >
-        <MapContainer
-          center={center}
-          zoom={11}
-          style={{
-            height: "calc(100vh - 360px)",
-            width: "100%",
-            minHeight: 540,
-          }}
-        >
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+        {!leafletModules ||
+        !MapContainerComponent ||
+        !MarkerComponent ||
+        !PopupComponent ||
+        !TileLayerComponent ? (
+          <div
+            style={{
+              ...mapStyle,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: theme.subtext,
+              fontSize: 14,
+            }}
+          >
+            Carregando mapa...
+          </div>
+        ) : (
+          <MapContainerComponent center={center} zoom={11} style={mapStyle}>
+            <TileLayerComponent
+              attribution="&copy; OpenStreetMap contributors"
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
 
-          {displayPoints.map((point) => {
-            const color = getMarkerColor(point);
-            const icon = createMarkerIcon(color);
+            {displayPoints.map((point) => {
+              const color = getMarkerColor(point);
+              const icon = createMarkerIcon(leafletModules.L, color);
 
-            return (
-              <Marker
-                key={`${point.kind}-${point.id}`}
-                position={[point.displayLatitude, point.displayLongitude]}
-                icon={icon}
-              >
-                <Popup>
-                  <div style={{ minWidth: 240 }}>
-                    <div
-                      style={{
-                        fontSize: 16,
-                        fontWeight: 800,
-                        marginBottom: 6,
-                      }}
-                    >
-                      {point.tradeName || point.name}
+              return (
+                <MarkerComponent
+                  key={`${point.kind}-${point.id}`}
+                  position={[point.displayLatitude, point.displayLongitude]}
+                  icon={icon}
+                >
+                  <PopupComponent>
+                    <div style={{ minWidth: 240 }}>
+                      <div
+                        style={{
+                          fontSize: 16,
+                          fontWeight: 800,
+                          marginBottom: 6,
+                        }}
+                      >
+                        {point.tradeName || point.name}
+                      </div>
+
+                      <Info label="Tipo">
+                        {point.kind === "CLIENT" ? "Cliente" : "Prospecto"}
+                      </Info>
+
+                      <Info label="Cidade">
+                        {point.city || "-"} / {point.state || "-"}
+                      </Info>
+
+                      <Info label="Região">
+                        {point.region?.name || "-"}
+                      </Info>
+
+                      <Info label="Status">{point.status}</Info>
+
+                      <Info label="Última visita">
+                        {formatDateBR(point.lastVisitAt)}
+                      </Info>
+
+                      <Info label="Observação">{point.notes || "-"}</Info>
                     </div>
-
-                    <div style={{ fontSize: 13, marginBottom: 4 }}>
-                      <strong>Tipo:</strong>{" "}
-                      {point.kind === "CLIENT" ? "Cliente" : "Prospecto"}
-                    </div>
-
-                    <div style={{ fontSize: 13, marginBottom: 4 }}>
-                      <strong>Cidade:</strong> {point.city || "-"} /{" "}
-                      {point.state || "-"}
-                    </div>
-
-                    <div style={{ fontSize: 13, marginBottom: 4 }}>
-                      <strong>Região:</strong> {point.region?.name || "-"}
-                    </div>
-
-                    <div style={{ fontSize: 13, marginBottom: 4 }}>
-                      <strong>Status:</strong> {point.status}
-                    </div>
-
-                    <div style={{ fontSize: 13, marginBottom: 4 }}>
-                      <strong>Última visita:</strong>{" "}
-                      {formatDateBR(point.lastVisitAt)}
-                    </div>
-
-                    <div style={{ fontSize: 13 }}>
-                      <strong>Observação:</strong> {point.notes || "-"}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
-        </MapContainer>
+                  </PopupComponent>
+                </MarkerComponent>
+              );
+            })}
+          </MapContainerComponent>
+        )}
       </div>
 
       {displayPoints.length === 0 ? (
@@ -315,6 +305,37 @@ export default function CommercialMapView({
           Nenhum ponto encontrado com os filtros selecionados.
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: 999,
+          background: color,
+          display: "inline-block",
+        }}
+      />
+      {label}
+    </div>
+  );
+}
+
+function Info({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ fontSize: 13, marginBottom: 4 }}>
+      <strong>{label}:</strong> {children}
     </div>
   );
 }

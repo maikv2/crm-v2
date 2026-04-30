@@ -282,7 +282,8 @@ export default function AdminProspectsPage() {
       });
 
       const data = await res.json();
-      setRegions(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+      setRegions(list);
     } catch (error) {
       console.error(error);
       setRegions([]);

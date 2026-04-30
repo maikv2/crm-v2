@@ -74,7 +74,10 @@ export async function GET(request: NextRequest) {
         longitude: client.longitude as number,
         status: "CLIENT",
         notes: client.notes,
-        lastVisitAt: client.lastVisitAt,
+        // Serializa Date → string ISO para evitar discrepâncias de tipo no cliente
+        lastVisitAt: client.lastVisitAt
+          ? client.lastVisitAt.toISOString()
+          : null,
         region: client.region,
       })),
       ...prospects.map((prospect) => ({

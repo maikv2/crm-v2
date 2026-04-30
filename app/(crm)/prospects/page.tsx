@@ -14,14 +14,13 @@ type Prospect = {
   id: string;
   name: string;
   tradeName?: string | null;
-  cnpj?: string | null;
   phone?: string | null;
   email?: string | null;
   contactName?: string | null;
   city?: string | null;
   state?: string | null;
-  notes?: string | null;
   status: "PENDING" | "RETURN" | "NO_RETURN" | "CONVERTED";
+  createdAt: string;
   updatedAt: string;
   region?: { id: string; name: string } | null;
   representative?: { id: string; name: string; email: string } | null;
@@ -51,96 +50,11 @@ function getStatusColors(status: Prospect["status"], isDark: boolean) {
   }
 }
 
-function ActionButton({
-  label,
-  theme,
-  onClick,
-  variant = "default",
-}: {
-  label: string;
-  theme: ThemeShape;
-  onClick?: () => void;
-  variant?: "default" | "primary" | "danger";
-}) {
-  const [hover, setHover] = useState(false);
-
-  const bg = () => {
-    if (variant === "primary") return hover ? "#1d4ed8" : "#2563eb";
-    if (variant === "danger") return hover ? "#b91c1c" : "#ef4444";
-    return hover ? theme.primary : theme.cardBg;
-  };
-
-  const color = () => {
-    if (variant === "primary" || variant === "danger") return "#ffffff";
-    return hover ? "#ffffff" : theme.text;
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        height: 34,
-        padding: "0 12px",
-        borderRadius: 10,
-        border: variant === "default" ? `1px solid ${theme.border}` : "none",
-        background: bg(),
-        color: color(),
-        fontWeight: 700,
-        fontSize: 13,
-        cursor: "pointer",
-        whiteSpace: "nowrap",
-        transition: "all 0.15s ease",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function Block({
-  title,
-  children,
-  theme,
-  right,
-}: {
-  title: string;
-  children: React.ReactNode;
-  theme: ThemeShape;
-  right?: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        background: theme.cardBg,
-        border: `1px solid ${theme.border}`,
-        borderRadius: 18,
-        padding: 22,
-        boxShadow: theme.isDark
-          ? "0 10px 30px rgba(2,6,23,0.35)"
-          : "0 8px 24px rgba(15,23,42,0.06)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ fontSize: 18, fontWeight: 800, color: theme.text }}>
-          {title}
-        </div>
-        {right}
-      </div>
-      {children}
-    </div>
-  );
+function formatDateBR(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("pt-BR");
 }
 
 export default function AdminProspectsPage() {
@@ -149,14 +63,16 @@ export default function AdminProspectsPage() {
   const theme = getThemeColors(mode);
 
   const inputBg = theme.isDark ? "#0f172a" : "#ffffff";
-  const subtleCard = theme.isDark ? "#0e1728" : "#f8fafc";
+  const headerBg = theme.isDark ? "#0b1324" : "#f1f5f9";
+  const rowHover = theme.isDark ? "#0f1a2e" : "#f8fafc";
+  const border = theme.isDark ? "#1e293b" : theme.border;
 
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState("ALL");
-  const [converting, setConverting] = useState<string | null>(null);
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   async function loadData() {
     try {
@@ -167,7 +83,6 @@ export default function AdminProspectsPage() {
       ]);
       const prospectsData = await prospectsRes.json();
       const regionsData = await regionsRes.json();
-
       setProspects(Array.isArray(prospectsData) ? prospectsData : []);
       const regionList = Array.isArray(regionsData)
         ? regionsData
@@ -189,24 +104,18 @@ export default function AdminProspectsPage() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return prospects.filter((p) => {
-      const regionOk =
-        regionFilter === "ALL" || p.region?.id === regionFilter;
+      const regionOk = regionFilter === "ALL" || p.region?.id === regionFilter;
       if (!regionOk) return false;
       if (!term) return true;
-      return [
-        p.name, p.tradeName, p.cnpj, p.phone,
-        p.email, p.contactName, p.city, p.state,
-        p.region?.name, p.representative?.name,
-      ]
+      return [p.name, p.tradeName, p.phone, p.email, p.contactName, p.city, p.state, p.region?.name, p.representative?.name]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(term));
     });
   }, [prospects, search, regionFilter]);
 
-  async function handleConvertToClient(prospect: Prospect) {
+  async function handleConvert(prospect: Prospect) {
     if (!confirm(`Converter "${prospect.tradeName || prospect.name}" em cliente?`)) return;
     try {
-      setConverting(prospect.id);
       const res = await fetch(`/api/prospects/${prospect.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -216,17 +125,7 @@ export default function AdminProspectsPage() {
       await loadData();
     } catch (err: any) {
       alert(err?.message || "Erro ao converter prospecto");
-    } finally {
-      setConverting(null);
     }
-  }
-
-  async function handleAddExhibitor(prospect: Prospect) {
-    router.push(
-      `/exhibitors/new?prospectId=${prospect.id}&name=${encodeURIComponent(
-        prospect.tradeName || prospect.name
-      )}`
-    );
   }
 
   return (
@@ -250,14 +149,7 @@ export default function AdminProspectsPage() {
         }}
       >
         <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: theme.subtext,
-              marginBottom: 10,
-            }}
-          >
+          <div style={{ fontSize: 14, fontWeight: 700, color: theme.subtext, marginBottom: 10 }}>
             🎯 / Prospectos
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, color: theme.text }}>
@@ -268,219 +160,253 @@ export default function AdminProspectsPage() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <ActionButton
-            label="Atualizar"
-            theme={theme}
-            onClick={loadData}
-          />
-          <ActionButton
-            label="+ Novo prospecto"
-            theme={theme}
-            variant="primary"
-            onClick={() => router.push("/prospects/new")}
-          />
-        </div>
+        <button
+          type="button"
+          onClick={() => router.push("/prospects/new")}
+          style={{
+            height: 40,
+            padding: "0 18px",
+            borderRadius: 12,
+            border: "none",
+            background: "#2563eb",
+            color: "#ffffff",
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          + Novo prospecto
+        </button>
       </div>
 
-      <Block
-        title="Lista de prospectos"
-        theme={theme}
-        right={
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {/* Filtro por região */}
-            <select
-              value={regionFilter}
-              onChange={(e) => setRegionFilter(e.target.value)}
-              style={{
-                height: 38,
-                borderRadius: 10,
-                border: `1px solid ${theme.border}`,
-                background: inputBg,
-                color: theme.text,
-                padding: "0 10px",
-                outline: "none",
-                fontSize: 13,
-              }}
-            >
-              <option value="ALL">Todas as regiões</option>
-              {regions.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-
-            {/* Pesquisa */}
-            <input
-              type="text"
-              placeholder="Pesquisar prospecto"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                height: 38,
-                width: 240,
-                borderRadius: 10,
-                border: `1px solid ${theme.border}`,
-                background: inputBg,
-                color: theme.text,
-                padding: "0 12px",
-                outline: "none",
-                fontSize: 13,
-              }}
-            />
-          </div>
-        }
+      {/* Tabela */}
+      <div
+        style={{
+          background: theme.cardBg,
+          border: `1px solid ${border}`,
+          borderRadius: 18,
+          overflow: "hidden",
+          boxShadow: theme.isDark
+            ? "0 10px 30px rgba(2,6,23,0.35)"
+            : "0 8px 24px rgba(15,23,42,0.06)",
+        }}
       >
+        {/* Barra de filtros */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "14px 20px",
+            borderBottom: `1px solid ${border}`,
+            flexWrap: "wrap",
+          }}
+        >
+          <select
+            value={regionFilter}
+            onChange={(e) => setRegionFilter(e.target.value)}
+            style={{
+              height: 36,
+              borderRadius: 8,
+              border: `1px solid ${border}`,
+              background: inputBg,
+              color: theme.text,
+              padding: "0 10px",
+              outline: "none",
+              fontSize: 13,
+            }}
+          >
+            <option value="ALL">Todas as regiões</option>
+            {regions.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+
+          <input
+            type="text"
+            placeholder="Pesquisar prospecto..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              height: 36,
+              flex: 1,
+              minWidth: 200,
+              maxWidth: 320,
+              borderRadius: 8,
+              border: `1px solid ${border}`,
+              background: inputBg,
+              color: theme.text,
+              padding: "0 12px",
+              outline: "none",
+              fontSize: 13,
+            }}
+          />
+
+          <div style={{ marginLeft: "auto", fontSize: 13, color: theme.subtext, fontWeight: 600 }}>
+            {filtered.length} prospecto(s)
+          </div>
+        </div>
+
+        {/* Cabeçalho da tabela */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "120px 1fr 160px 160px 120px 240px",
+            padding: "10px 20px",
+            background: headerBg,
+            borderBottom: `1px solid ${border}`,
+            fontSize: 12,
+            fontWeight: 700,
+            color: theme.subtext,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+          }}
+        >
+          <div>DATA</div>
+          <div>PROSPECTO</div>
+          <div>REGIÃO</div>
+          <div>REPRESENTANTE</div>
+          <div>STATUS</div>
+          <div>AÇÕES</div>
+        </div>
+
+        {/* Linhas */}
         {loading ? (
-          <div style={{ color: theme.subtext }}>Carregando prospectos...</div>
+          <div style={{ padding: "24px 20px", color: theme.subtext, fontSize: 14 }}>
+            Carregando prospectos...
+          </div>
         ) : filtered.length === 0 ? (
-          <div style={{ color: theme.subtext }}>Nenhum prospecto encontrado.</div>
+          <div style={{ padding: "24px 20px", color: theme.subtext, fontSize: 14 }}>
+            Nenhum prospecto encontrado.
+          </div>
         ) : (
-          <div style={{ display: "grid", gap: 12 }}>
-            {filtered.map((prospect) => {
-              const statusColors = getStatusColors(prospect.status, theme.isDark);
-              const displayName = prospect.tradeName || prospect.name;
+          filtered.map((prospect) => {
+            const statusColors = getStatusColors(prospect.status, theme.isDark);
+            const isHovered = hoveredRow === prospect.id;
 
-              return (
-                <div
-                  key={prospect.id}
-                  style={{
-                    background: subtleCard,
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: 14,
-                    padding: 16,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      gap: 12,
-                      marginBottom: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    {/* Nome e status */}
-                    <div style={{ flex: 1, minWidth: 200 }}>
-                      <div
-                        style={{
-                          fontSize: 17,
-                          fontWeight: 800,
-                          color: theme.text,
-                        }}
-                      >
-                        {displayName}
-                      </div>
-                      {prospect.tradeName && prospect.name !== prospect.tradeName ? (
-                        <div
-                          style={{
-                            marginTop: 3,
-                            fontSize: 13,
-                            color: theme.subtext,
-                          }}
-                        >
-                          {prospect.name}
-                        </div>
-                      ) : null}
-                    </div>
+            return (
+              <div
+                key={prospect.id}
+                onMouseEnter={() => setHoveredRow(prospect.id)}
+                onMouseLeave={() => setHoveredRow(null)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "120px 1fr 160px 160px 120px 240px",
+                  padding: "12px 20px",
+                  borderBottom: `1px solid ${border}`,
+                  background: isHovered ? rowHover : "transparent",
+                  transition: "background 0.1s ease",
+                  alignItems: "center",
+                }}
+              >
+                {/* Data */}
+                <div style={{ fontSize: 13, color: theme.subtext }}>
+                  {formatDateBR(prospect.updatedAt)}
+                </div>
 
-                    {/* Badge status + botões */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: 999,
-                          background: statusColors.bg,
-                          color: statusColors.color,
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        {getStatusLabel(prospect.status)}
-                      </span>
-
-                      <ActionButton
-                        label="Editar"
-                        theme={theme}
-                        onClick={() => router.push(`/prospects/${prospect.id}/edit`)}
-                      />
-                      <ActionButton
-                        label="Tornar cliente"
-                        theme={theme}
-                        variant="primary"
-                        onClick={() => handleConvertToClient(prospect)}
-                      />
-                      <ActionButton
-                        label="Levar expositor"
-                        theme={theme}
-                        onClick={() => handleAddExhibitor(prospect)}
-                      />
-                    </div>
+                {/* Prospecto */}
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>
+                    {prospect.tradeName || prospect.name}
                   </div>
-
-                  {/* Detalhes */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      gap: 8,
-                      fontSize: 13,
-                      color: theme.subtext,
-                    }}
-                  >
-                    <div>
-                      <strong style={{ color: theme.text }}>Região:</strong>{" "}
-                      {prospect.region?.name || "-"}
+                  {prospect.tradeName && prospect.name !== prospect.tradeName ? (
+                    <div style={{ fontSize: 12, color: theme.subtext, marginTop: 2 }}>
+                      {prospect.name}
                     </div>
-                    <div>
-                      <strong style={{ color: theme.text }}>Representante:</strong>{" "}
-                      {prospect.representative?.name || "-"}
-                    </div>
-                    <div>
-                      <strong style={{ color: theme.text }}>Contato:</strong>{" "}
-                      {prospect.contactName || "-"}
-                    </div>
-                    <div>
-                      <strong style={{ color: theme.text }}>Telefone:</strong>{" "}
-                      {prospect.phone || "-"}
-                    </div>
-                    <div>
-                      <strong style={{ color: theme.text }}>Cidade:</strong>{" "}
-                      {prospect.city || "-"} / {prospect.state || "-"}
-                    </div>
-                    <div>
-                      <strong style={{ color: theme.text }}>E-mail:</strong>{" "}
-                      {prospect.email || "-"}
-                    </div>
-                  </div>
-
-                  {prospect.notes ? (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        fontSize: 13,
-                        color: theme.subtext,
-                      }}
-                    >
-                      <strong style={{ color: theme.text }}>Observação:</strong>{" "}
-                      {prospect.notes}
+                  ) : null}
+                  {prospect.city ? (
+                    <div style={{ fontSize: 12, color: theme.subtext, marginTop: 2 }}>
+                      {prospect.city}{prospect.state ? `/${prospect.state}` : ""}
                     </div>
                   ) : null}
                 </div>
-              );
-            })}
-          </div>
+
+                {/* Região */}
+                <div style={{ fontSize: 13, color: theme.subtext }}>
+                  {prospect.region?.name || "-"}
+                </div>
+
+                {/* Representante */}
+                <div style={{ fontSize: 13, color: theme.subtext }}>
+                  {prospect.representative?.name || "-"}
+                </div>
+
+                {/* Status */}
+                <div>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: statusColors.bg,
+                      color: statusColors.color,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {getStatusLabel(prospect.status)}
+                  </span>
+                </div>
+
+                {/* Ações */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/prospects/${prospect.id}/edit`)}
+                    style={{
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: 8,
+                      border: `1px solid ${border}`,
+                      background: "transparent",
+                      color: theme.text,
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Abrir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/prospects/${prospect.id}/edit`)}
+                    style={{
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: 8,
+                      border: `1px solid ${border}`,
+                      background: "transparent",
+                      color: theme.text,
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleConvert(prospect)}
+                    style={{
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#2563eb",
+                      color: "#ffffff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Tornar cliente
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
-      </Block>
+      </div>
     </div>
   );
 }

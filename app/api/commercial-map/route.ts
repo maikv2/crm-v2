@@ -32,23 +32,15 @@ export async function GET(request: NextRequest) {
           needsReturn: true,
           notes: true,
           region: {
-            select: {
-              id: true,
-              name: true,
-            },
+            select: { id: true, name: true },
           },
         },
-        orderBy: [
-          {
-            city: "asc",
-          },
-          {
-            name: "asc",
-          },
-        ],
+        orderBy: [{ city: "asc" }, { name: "asc" }],
       }),
       prisma.prospect.findMany({
         where: {
+          // Prospectos convertidos não aparecem no mapa
+          status: { not: "CONVERTED" },
           latitude: { not: null },
           longitude: { not: null },
           ...(regionId ? { regionId } : {}),
@@ -64,10 +56,7 @@ export async function GET(request: NextRequest) {
           status: true,
           notes: true,
           region: {
-            select: {
-              id: true,
-              name: true,
-            },
+            select: { id: true, name: true },
           },
         },
       }),
@@ -83,7 +72,7 @@ export async function GET(request: NextRequest) {
         state: client.state,
         latitude: client.latitude as number,
         longitude: client.longitude as number,
-        status: client.needsReturn ? "RETURN" : client.mapStatus || "CLIENT",
+        status: "CLIENT",
         notes: client.notes,
         lastVisitAt: client.lastVisitAt,
         region: client.region,
@@ -107,7 +96,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(points);
   } catch (error) {
     console.error("GET /api/commercial-map error:", error);
-
     return NextResponse.json(
       { error: "Não foi possível carregar o mapa comercial" },
       { status: 500 }

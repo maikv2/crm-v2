@@ -17,17 +17,11 @@ type Prospect = {
   id: string;
   name: string;
   tradeName?: string | null;
-  cnpj?: string | null;
   phone?: string | null;
   email?: string | null;
   contactName?: string | null;
-  cep?: string | null;
-  street?: string | null;
-  number?: string | null;
-  district?: string | null;
   city?: string | null;
   state?: string | null;
-  notes?: string | null;
   status: "PENDING" | "RETURN" | "NO_RETURN" | "CONVERTED";
   createdAt: string;
   updatedAt: string;
@@ -35,13 +29,6 @@ type Prospect = {
 };
 
 type ThemeShape = ReturnType<typeof getThemeColors>;
-
-function formatDateBR(value?: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR");
-}
 
 function getStatusLabel(status: Prospect["status"]) {
   switch (status) {
@@ -65,89 +52,11 @@ function getStatusColors(status: Prospect["status"], isDark: boolean) {
   }
 }
 
-function ActionButton({
-  label,
-  theme,
-  onClick,
-  variant = "default",
-}: {
-  label: string;
-  theme: ThemeShape;
-  onClick?: () => void;
-  variant?: "default" | "primary";
-}) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        height: 34,
-        padding: "0 12px",
-        borderRadius: 10,
-        border: variant === "default" ? `1px solid ${theme.border}` : "none",
-        background:
-          variant === "primary"
-            ? hover ? "#1d4ed8" : "#2563eb"
-            : hover ? theme.primary : theme.cardBg,
-        color: variant === "primary" ? "#ffffff" : hover ? "#ffffff" : theme.text,
-        fontWeight: 700,
-        fontSize: 13,
-        cursor: "pointer",
-        whiteSpace: "nowrap",
-        transition: "all 0.15s ease",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function Block({
-  title,
-  children,
-  theme,
-  right,
-}: {
-  title: string;
-  children: React.ReactNode;
-  theme: ThemeShape;
-  right?: React.ReactNode;
-}) {
-  const blockBg = theme.isDark ? "#0f172a" : theme.cardBg;
-  const blockBorder = theme.isDark ? "#1e293b" : theme.border;
-  return (
-    <div
-      style={{
-        background: blockBg,
-        border: `1px solid ${blockBorder}`,
-        borderRadius: 18,
-        padding: 22,
-        boxShadow: theme.isDark
-          ? "0 10px 30px rgba(2,6,23,0.35)"
-          : "0 8px 24px rgba(15,23,42,0.06)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ fontSize: 18, fontWeight: 800, color: theme.text }}>
-          {title}
-        </div>
-        {right}
-      </div>
-      {children}
-    </div>
-  );
+function formatDateBR(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("pt-BR");
 }
 
 export default function RepresentativeProspectsPage() {
@@ -155,16 +64,16 @@ export default function RepresentativeProspectsPage() {
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
 
-  const pageBg = theme.isDark ? "#081225" : theme.pageBg;
-  const muted = theme.isDark ? "#94a3b8" : "#64748b";
-  const subtleCard = theme.isDark ? "#0b1324" : "#f8fafc";
-  const border = theme.isDark ? "#1e293b" : theme.border;
   const inputBg = theme.isDark ? "#0f172a" : "#ffffff";
+  const headerBg = theme.isDark ? "#0b1324" : "#f1f5f9";
+  const rowHover = theme.isDark ? "#0f1a2e" : "#f8fafc";
+  const border = theme.isDark ? "#1e293b" : theme.border;
 
   const [user, setUser] = useState<LoggedUser | null>(null);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   async function loadProspects(currentUser?: LoggedUser | null) {
     const activeUser = currentUser ?? user;
@@ -215,48 +124,38 @@ export default function RepresentativeProspectsPage() {
     return () => { active = false; };
   }, []);
 
-  const filteredProspects = useMemo(() => {
+  const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return prospects;
-    return prospects.filter((prospect) =>
-      [
-        prospect.name, prospect.tradeName, prospect.cnpj,
-        prospect.phone, prospect.email, prospect.contactName,
-        prospect.city, prospect.state, prospect.notes,
-      ]
+    return prospects.filter((p) =>
+      [p.name, p.tradeName, p.phone, p.email, p.contactName, p.city, p.state]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term))
+        .some((v) => String(v).toLowerCase().includes(term))
     );
   }, [prospects, search]);
 
-  async function updateStatus(prospectId: string, status: Prospect["status"]) {
+  async function handleConvert(prospect: Prospect) {
+    if (!confirm(`Converter "${prospect.tradeName || prospect.name}" em cliente?`)) return;
     try {
-      const res = await fetch(`/api/prospects/${prospectId}`, {
+      const res = await fetch(`/api/prospects/${prospect.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: "CONVERTED" }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Erro ao atualizar status");
+      if (!res.ok) throw new Error("Erro ao converter");
       await loadProspects(user);
-    } catch (error: any) {
-      alert(error?.message || "Erro ao atualizar status");
+    } catch (err: any) {
+      alert(err?.message || "Erro ao converter prospecto");
     }
-  }
-
-  async function handleConvertToClient(prospect: Prospect) {
-    if (!confirm(`Converter "${prospect.tradeName || prospect.name}" em cliente?`)) return;
-    await updateStatus(prospect.id, "CONVERTED");
   }
 
   return (
     <div
       style={{
+        background: theme.pageBg,
         color: theme.text,
-        background: pageBg,
-        minHeight: "100vh",
-        width: "100%",
-        padding: 24,
+        minHeight: "100%",
+        padding: 28,
       }}
     >
       {/* Header */}
@@ -271,45 +170,70 @@ export default function RepresentativeProspectsPage() {
         }}
       >
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: muted, marginBottom: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: theme.subtext, marginBottom: 10 }}>
             🎯 / Representante / Prospectos
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, color: theme.text }}>
             Prospectos
           </div>
-          <div style={{ marginTop: 6, fontSize: 13, color: muted }}>
+          <div style={{ marginTop: 6, fontSize: 13, color: theme.subtext }}>
             Prospectos da sua região.
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <ActionButton
-            label="Atualizar"
-            theme={theme}
-            onClick={() => loadProspects(user)}
-          />
-          <ActionButton
-            label="+ Novo prospecto"
-            theme={theme}
-            variant="primary"
-            onClick={() => router.push("/rep/prospects/new")}
-          />
-        </div>
+        <button
+          type="button"
+          onClick={() => router.push("/rep/prospects/new")}
+          style={{
+            height: 40,
+            padding: "0 18px",
+            borderRadius: 12,
+            border: "none",
+            background: "#2563eb",
+            color: "#ffffff",
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          + Novo prospecto
+        </button>
       </div>
 
-      <Block
-        title="Prospectos cadastrados"
-        theme={theme}
-        right={
+      {/* Tabela */}
+      <div
+        style={{
+          background: theme.cardBg,
+          border: `1px solid ${border}`,
+          borderRadius: 18,
+          overflow: "hidden",
+          boxShadow: theme.isDark
+            ? "0 10px 30px rgba(2,6,23,0.35)"
+            : "0 8px 24px rgba(15,23,42,0.06)",
+        }}
+      >
+        {/* Barra de filtros */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "14px 20px",
+            borderBottom: `1px solid ${border}`,
+            flexWrap: "wrap",
+          }}
+        >
           <input
             type="text"
-            placeholder="Pesquisar prospecto"
+            placeholder="Pesquisar prospecto..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
-              height: 38,
-              width: 260,
-              borderRadius: 10,
+              height: 36,
+              flex: 1,
+              minWidth: 200,
+              maxWidth: 320,
+              borderRadius: 8,
               border: `1px solid ${border}`,
               background: inputBg,
               color: theme.text,
@@ -318,142 +242,182 @@ export default function RepresentativeProspectsPage() {
               fontSize: 13,
             }}
           />
-        }
-      >
+          <button
+            type="button"
+            onClick={() => loadProspects(user)}
+            style={{
+              height: 36,
+              padding: "0 14px",
+              borderRadius: 8,
+              border: `1px solid ${border}`,
+              background: "transparent",
+              color: theme.text,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Atualizar
+          </button>
+          <div style={{ marginLeft: "auto", fontSize: 13, color: theme.subtext, fontWeight: 600 }}>
+            {filtered.length} prospecto(s)
+          </div>
+        </div>
+
+        {/* Cabeçalho da tabela */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "120px 1fr 160px 120px 220px",
+            padding: "10px 20px",
+            background: headerBg,
+            borderBottom: `1px solid ${border}`,
+            fontSize: 12,
+            fontWeight: 700,
+            color: theme.subtext,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+          }}
+        >
+          <div>DATA</div>
+          <div>PROSPECTO</div>
+          <div>REGIÃO</div>
+          <div>STATUS</div>
+          <div>AÇÕES</div>
+        </div>
+
+        {/* Linhas */}
         {loading ? (
-          <div style={{ color: muted }}>Carregando...</div>
-        ) : filteredProspects.length === 0 ? (
-          <div style={{ color: muted }}>Nenhum prospecto encontrado.</div>
+          <div style={{ padding: "24px 20px", color: theme.subtext, fontSize: 14 }}>
+            Carregando prospectos...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: "24px 20px", color: theme.subtext, fontSize: 14 }}>
+            Nenhum prospecto encontrado.
+          </div>
         ) : (
-          <div style={{ display: "grid", gap: 12 }}>
-            {filteredProspects.map((prospect) => {
-              const statusColors = getStatusColors(prospect.status, theme.isDark);
-              return (
-                <div
-                  key={prospect.id}
-                  style={{
-                    border: `1px solid ${border}`,
-                    borderRadius: 14,
-                    padding: 16,
-                    background: subtleCard,
-                  }}
-                >
-                  {/* Cabeçalho do card */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      flexWrap: "wrap",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 200 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: theme.text }}>
-                        {prospect.tradeName || prospect.name}
-                      </div>
-                      {prospect.tradeName && prospect.name !== prospect.tradeName ? (
-                        <div style={{ marginTop: 4, fontSize: 13, color: muted }}>
-                          {prospect.name}
-                        </div>
-                      ) : null}
-                    </div>
+          filtered.map((prospect) => {
+            const statusColors = getStatusColors(prospect.status, theme.isDark);
+            const isHovered = hoveredRow === prospect.id;
 
-                    <span
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        background: statusColors.bg,
-                        color: statusColors.color,
-                        fontSize: 12,
-                        fontWeight: 800,
-                        height: "fit-content",
-                      }}
-                    >
-                      {getStatusLabel(prospect.status)}
-                    </span>
+            return (
+              <div
+                key={prospect.id}
+                onMouseEnter={() => setHoveredRow(prospect.id)}
+                onMouseLeave={() => setHoveredRow(null)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "120px 1fr 160px 120px 220px",
+                  padding: "12px 20px",
+                  borderBottom: `1px solid ${border}`,
+                  background: isHovered ? rowHover : "transparent",
+                  transition: "background 0.1s ease",
+                  alignItems: "center",
+                }}
+              >
+                {/* Data */}
+                <div style={{ fontSize: 13, color: theme.subtext }}>
+                  {formatDateBR(prospect.updatedAt)}
+                </div>
+
+                {/* Prospecto */}
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>
+                    {prospect.tradeName || prospect.name}
                   </div>
-
-                  {/* Detalhes */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 8,
-                      marginBottom: 10,
-                      color: muted,
-                      fontSize: 14,
-                    }}
-                  >
-                    <div>
-                      <strong style={{ color: theme.text }}>Contato:</strong>{" "}
-                      {prospect.contactName || "-"}
-                    </div>
-                    <div>
-                      <strong style={{ color: theme.text }}>Telefone:</strong>{" "}
-                      {prospect.phone || "-"}
-                    </div>
-                    <div>
-                      <strong style={{ color: theme.text }}>Cidade:</strong>{" "}
-                      {prospect.city || "-"} / {prospect.state || "-"}
-                    </div>
-                    <div>
-                      <strong style={{ color: theme.text }}>Atualizado:</strong>{" "}
-                      {formatDateBR(prospect.updatedAt)}
-                    </div>
-                  </div>
-
-                  {prospect.notes ? (
-                    <div style={{ marginBottom: 12, color: muted, fontSize: 14 }}>
-                      <strong style={{ color: theme.text }}>Observação:</strong>{" "}
-                      {prospect.notes}
+                  {prospect.tradeName && prospect.name !== prospect.tradeName ? (
+                    <div style={{ fontSize: 12, color: theme.subtext, marginTop: 2 }}>
+                      {prospect.name}
                     </div>
                   ) : null}
-
-                  {/* Botões de ação */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <ActionButton
-                      label="Editar"
-                      theme={theme}
-                      onClick={() => router.push(`/rep/prospects/${prospect.id}/edit`)}
-                    />
-                    <ActionButton
-                      label="Tornar cliente"
-                      theme={theme}
-                      variant="primary"
-                      onClick={() => handleConvertToClient(prospect)}
-                    />
-                    <ActionButton
-                      label="Levar expositor"
-                      theme={theme}
-                      onClick={() =>
-                        router.push(
-                          `/rep/exhibitors/new?prospectId=${prospect.id}&name=${encodeURIComponent(prospect.tradeName || prospect.name)}`
-                        )
-                      }
-                    />
-                    <ActionButton
-                      label="Marcar voltar"
-                      theme={theme}
-                      onClick={() => updateStatus(prospect.id, "RETURN")}
-                    />
-                    <ActionButton
-                      label="Marcar não voltar"
-                      theme={theme}
-                      onClick={() => updateStatus(prospect.id, "NO_RETURN")}
-                    />
-                    <ActionButton
-                      label="Voltar para pendente"
-                      theme={theme}
-                      onClick={() => updateStatus(prospect.id, "PENDING")}
-                    />
-                  </div>
+                  {prospect.city ? (
+                    <div style={{ fontSize: 12, color: theme.subtext, marginTop: 2 }}>
+                      {prospect.city}{prospect.state ? `/${prospect.state}` : ""}
+                    </div>
+                  ) : null}
                 </div>
-              );
-            })}
-          </div>
+
+                {/* Região */}
+                <div style={{ fontSize: 13, color: theme.subtext }}>
+                  {prospect.region?.name || "-"}
+                </div>
+
+                {/* Status */}
+                <div>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: statusColors.bg,
+                      color: statusColors.color,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {getStatusLabel(prospect.status)}
+                  </span>
+                </div>
+
+                {/* Ações */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/rep/prospects/${prospect.id}/edit`)}
+                    style={{
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: 8,
+                      border: `1px solid ${border}`,
+                      background: "transparent",
+                      color: theme.text,
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Abrir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/rep/prospects/${prospect.id}/edit`)}
+                    style={{
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: 8,
+                      border: `1px solid ${border}`,
+                      background: "transparent",
+                      color: theme.text,
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleConvert(prospect)}
+                    style={{
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#2563eb",
+                      color: "#ffffff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Tornar cliente
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
-      </Block>
+      </div>
     </div>
   );
 }

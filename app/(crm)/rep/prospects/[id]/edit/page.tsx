@@ -1,25 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useTheme } from "../../../providers/theme-provider";
-import { getThemeColors } from "../../../../lib/theme";
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { useTheme } from "../../../../../providers/theme-provider";
+import { getThemeColors } from "../../../../../../lib/theme";
 
-type Region = { id: string; name: string };
-type Representative = { id: string; name: string; regionId?: string | null };
 type ThemeShape = ReturnType<typeof getThemeColors>;
 
 function inputStyle(inputBg: string, theme: ThemeShape): React.CSSProperties {
   return {
-    height: 42,
-    width: "100%",
-    borderRadius: 10,
+    height: 42, width: "100%", borderRadius: 10,
     border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
-    background: inputBg,
-    color: theme.text,
-    padding: "0 12px",
-    outline: "none",
-    fontSize: 14,
+    background: inputBg, color: theme.text,
+    padding: "0 12px", outline: "none", fontSize: 14,
   };
 }
 
@@ -37,7 +30,7 @@ function Label({ text, theme }: { text: string; theme: ThemeShape }) {
 function Section({ title, children, theme }: { title: string; children: React.ReactNode; theme: ThemeShape }) {
   return (
     <div style={{
-      background: theme.cardBg,
+      background: theme.isDark ? "#0f172a" : theme.cardBg,
       border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
       borderRadius: 18, padding: 22,
       boxShadow: theme.isDark ? "0 10px 30px rgba(2,6,23,0.35)" : "0 8px 24px rgba(15,23,42,0.06)",
@@ -62,28 +55,20 @@ function Grid2({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Grid3({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
-      {children}
-    </div>
-  );
-}
-
-export default function NewProspectPage() {
+export default function RepEditProspectPage() {
   const router = useRouter();
+  const params = useParams();
+  const id = params?.id as string;
+
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
   const inputBg = theme.isDark ? "#0f172a" : "#ffffff";
 
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [regions, setRegions] = useState<Region[]>([]);
-  const [representatives, setRepresentatives] = useState<Representative[]>([]);
 
   // Vínculo
-  const [regionId, setRegionId] = useState("");
-  const [representativeId, setRepresentativeId] = useState("");
   const [status, setStatus] = useState<"PENDING" | "RETURN" | "NO_RETURN" | "CONVERTED">("PENDING");
 
   // Identificação
@@ -122,38 +107,56 @@ export default function NewProspectPage() {
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    async function loadRegions() {
+    if (!id) return;
+    async function load() {
       try {
-        const res = await fetch("/api/regions", { cache: "no-store" });
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
-        setRegions(list);
-      } catch { }
-    }
-    loadRegions();
-  }, []);
+        setLoading(true);
+        const res = await fetch(`/api/prospects/${id}`, { cache: "no-store" });
+        const p = await res.json();
+        if (!res.ok) throw new Error(p?.error || "Erro ao carregar prospecto.");
 
-  useEffect(() => {
-    async function loadReps() {
-      if (!regionId) { setRepresentatives([]); setRepresentativeId(""); return; }
-      try {
-        const res = await fetch(`/api/representatives/by-region?regionId=${regionId}`, { cache: "no-store" });
-        const data = await res.json();
-        setRepresentatives(Array.isArray(data) ? data : []);
-        setRepresentativeId("");
-      } catch { setRepresentatives([]); }
+        setName(p.name ?? "");
+        setTradeName(p.tradeName ?? "");
+        setLegalName(p.legalName ?? "");
+        setCnpj(p.cnpj ?? "");
+        setCpf(p.cpf ?? "");
+        setPersonType(p.cpf ? "FISICA" : "JURIDICA");
+        setPhone(p.phone ?? "");
+        setWhatsapp(p.whatsapp ?? "");
+        setEmail(p.email ?? "");
+        setBillingEmail(p.billingEmail ?? "");
+        setContactName(p.contactName ?? "");
+        setStateRegistration(p.stateRegistration ?? "");
+        setMunicipalRegistration(p.municipalRegistration ?? "");
+        setSuframaRegistration(p.suframaRegistration ?? "");
+        setCep(p.cep ?? "");
+        setStreet(p.street ?? "");
+        setNumber(p.number ?? "");
+        setComplement(p.complement ?? "");
+        setDistrict(p.district ?? "");
+        setCity(p.city ?? "");
+        setStateValue(p.state ?? "");
+        setCountry(p.country ?? "Brasil");
+        setNotes(p.notes ?? "");
+        setStatus(p.status ?? "PENDING");
+        setLatitude(p.latitude != null ? String(p.latitude) : "");
+        setLongitude(p.longitude != null ? String(p.longitude) : "");
+      } catch (err: any) {
+        setError(err?.message || "Erro ao carregar prospecto.");
+      } finally {
+        setLoading(false);
+      }
     }
-    loadReps();
-  }, [regionId]);
+    load();
+  }, [id]);
 
   async function handleSave() {
     setError(null);
     if (!name.trim()) { setError("Informe o nome do local."); return; }
-    if (!regionId) { setError("Selecione a região."); return; }
     try {
       setSaving(true);
-      const res = await fetch("/api/prospects", {
-        method: "POST",
+      const res = await fetch(`/api/prospects/${id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
@@ -179,15 +182,13 @@ export default function NewProspectPage() {
           country: country.trim() || null,
           notes: notes.trim() || null,
           status,
-          regionId,
-          representativeId: representativeId || null,
           latitude: latitude ? parseFloat(latitude) : null,
           longitude: longitude ? parseFloat(longitude) : null,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Erro ao salvar prospecto.");
-      router.push("/prospects");
+      if (!res.ok) throw new Error(data?.error || "Erro ao salvar.");
+      router.push("/rep/prospects");
       router.refresh();
     } catch (err: any) {
       setError(err?.message || "Erro ao salvar prospecto.");
@@ -196,8 +197,19 @@ export default function NewProspectPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div style={{ background: theme.isDark ? "#081225" : theme.pageBg, minHeight: "100vh", padding: 24, color: theme.subtext, fontWeight: 700 }}>
+        Carregando prospecto...
+      </div>
+    );
+  }
+
   return (
-    <div style={{ background: theme.pageBg, color: theme.text, minHeight: "100%", padding: 28 }}>
+    <div style={{
+      background: theme.isDark ? "#081225" : theme.pageBg,
+      color: theme.text, minHeight: "100vh", width: "100%", padding: 24,
+    }}>
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "flex-start", justifyContent: "space-between",
@@ -205,17 +217,18 @@ export default function NewProspectPage() {
       }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: theme.subtext, marginBottom: 10 }}>
-            🎯 / Prospectos / Novo
+            🎯 / Representante / Prospectos / Editar
           </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: theme.text }}>Novo Prospecto</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: theme.text }}>Editar Prospecto</div>
           <div style={{ marginTop: 6, fontSize: 13, color: theme.subtext }}>
-            Preencha os dados do novo prospecto.
+            Atualize os dados do prospecto.
           </div>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <button type="button" onClick={() => router.back()} style={{
             height: 40, padding: "0 16px", borderRadius: 12,
-            border: `1px solid ${theme.border}`, background: theme.cardBg,
+            border: `1px solid ${theme.isDark ? "#1e293b" : theme.border}`,
+            background: theme.isDark ? "#0f172a" : theme.cardBg,
             color: theme.text, fontWeight: 700, fontSize: 13, cursor: "pointer",
           }}>
             Cancelar
@@ -225,7 +238,7 @@ export default function NewProspectPage() {
             background: saving ? "#93c5fd" : "#2563eb", color: "#ffffff",
             fontWeight: 800, fontSize: 13, cursor: saving ? "not-allowed" : "pointer",
           }}>
-            {saving ? "Salvando..." : "Salvar prospecto"}
+            {saving ? "Salvando..." : "Salvar alterações"}
           </button>
         </div>
       </div>
@@ -242,34 +255,17 @@ export default function NewProspectPage() {
 
       <div style={{ display: "grid", gap: 18 }}>
 
-        {/* Vínculo */}
-        <Section title="Vínculo comercial" theme={theme}>
-          <Grid3>
-            <div>
-              <Label text="Região *" theme={theme} />
-              <select value={regionId} onChange={(e) => setRegionId(e.target.value)} style={inputStyle(inputBg, theme)}>
-                <option value="">Selecione a região</option>
-                {regions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <Label text="Representante" theme={theme} />
-              <select value={representativeId} onChange={(e) => setRepresentativeId(e.target.value)}
-                disabled={!regionId} style={{ ...inputStyle(inputBg, theme), opacity: regionId ? 1 : 0.5 }}>
-                <option value="">Sem representante</option>
-                {representatives.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <Label text="Status" theme={theme} />
-              <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} style={inputStyle(inputBg, theme)}>
-                <option value="PENDING">Pendente</option>
-                <option value="RETURN">Voltar</option>
-                <option value="NO_RETURN">Não voltar</option>
-                <option value="CONVERTED">Convertido</option>
-              </select>
-            </div>
-          </Grid3>
+        {/* Status */}
+        <Section title="Status" theme={theme}>
+          <div>
+            <Label text="Status" theme={theme} />
+            <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} style={inputStyle(inputBg, theme)}>
+              <option value="PENDING">Pendente</option>
+              <option value="RETURN">Voltar</option>
+              <option value="NO_RETURN">Não voltar</option>
+              <option value="CONVERTED">Convertido</option>
+            </select>
+          </div>
         </Section>
 
         {/* Identificação */}

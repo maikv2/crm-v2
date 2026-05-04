@@ -7,7 +7,7 @@ import { getThemeColors } from "@/lib/theme";
 
 type AccessUserItem = {
   id: string;
-  type: "ADMIN" | "REPRESENTATIVE" | "INVESTOR" | "CLIENT";
+  type: "ADMIN" | "REPRESENTATIVE" | "INVESTOR" | "CLIENT" | "ADMINISTRATIVE";
   name: string;
   email: string | null;
   loginEmail: string | null;
@@ -206,7 +206,7 @@ export default function SettingsAccessPage() {
               color: theme.subtext,
             }}
           >
-            Controle central de admins, representantes, investidores e clientes do portal.
+            Controle central de admins, representantes, investidores, clientes e financeiro do portal.
           </p>
         </div>
 
@@ -248,6 +248,7 @@ export default function SettingsAccessPage() {
           <option value="REPRESENTATIVE">Representantes</option>
           <option value="INVESTOR">Investidores</option>
           <option value="CLIENT">Clientes</option>
+          <option value="ADMINISTRATIVE">Financeiro</option>
         </select>
       </div>
 
@@ -360,6 +361,7 @@ function labelType(type: AccessUserItem["type"]) {
   if (type === "ADMIN") return "Admin";
   if (type === "REPRESENTATIVE") return "Representante";
   if (type === "INVESTOR") return "Investidor";
+  if (type === "ADMINISTRATIVE") return "Financeiro";
   return "Cliente";
 }
 

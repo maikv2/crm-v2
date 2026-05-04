@@ -59,10 +59,15 @@ export async function GET() {
     ]);
 
     const adminAndRepresentatives = users
-      .filter((user) => user.role === "ADMIN" || user.role === "REPRESENTATIVE")
+      .filter(
+        (user) =>
+          user.role === "ADMIN" ||
+          user.role === "REPRESENTATIVE" ||
+          user.role === "ADMINISTRATIVE"
+      )
       .map((user) => ({
         id: user.id,
-        type: user.role as "ADMIN" | "REPRESENTATIVE",
+        type: user.role as "ADMIN" | "REPRESENTATIVE" | "ADMINISTRATIVE",
         name: user.name,
         email: user.email,
         loginEmail: user.email,

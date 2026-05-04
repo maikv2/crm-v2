@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       body?.identifier ?? body?.email ?? body?.user ?? body?.username ?? ""
     );
     const password = String(body?.password || "");
-    const rememberMe = Boolean(body?.rememberMe);
+   const rememberMe = Boolean(body?.rememberMe ?? body?.remember);
     const sessionMaxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 12;
 
     if (!rawIdentifier || !password) {

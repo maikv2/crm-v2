@@ -135,13 +135,13 @@ async function createOrRefreshPaymentConfirmation(params: {
   const wasAlreadyPaid = record?.tokenHash !== tokenHash;
 
   return {
-    confirmationId: record?.id,
-    token: wasAlreadyPaid ? null : token,
-    confirmationUrl: wasAlreadyPaid
-      ? null
-      : `${params.baseUrl}/finance/confirm?token=${encodeURIComponent(token)}`,
-    wasAlreadyPaid,
-  };
+  confirmationId: record?.id,
+  token: wasAlreadyPaid ? null : token,
+  confirmationUrl: wasAlreadyPaid
+    ? null
+    : `${params.baseUrl}/payments/commission/confirm?token=${encodeURIComponent(token)}`,
+  wasAlreadyPaid,
+};
 }
 
 function centsToBRL(value: number) {

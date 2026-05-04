@@ -14,12 +14,22 @@ import {
   AlertTriangle,
   Store,
   ShoppingCart,
+  RefreshCcw,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type StockReport = {
   period: { from: string; to: string };
+  filter: {
+    scope: "all" | "matrix" | "region";
+    regionId: string | null;
+    label: string;
+    options: {
+      matrix: { id: string; name: string } | null;
+      regions: Array<{ id: string; name: string; stockLocationId: string | null }>;
+    };
+  };
   summary: {
     totalMovements: number;
     totalIn: number;
@@ -71,6 +81,24 @@ type StockReport = {
       clientId: string;
       clientName: string;
       products: Array<{ productId: string; name: string; qty: number }>;
+    }>;
+  };
+  defectExchangeReport: {
+    totalQty: number;
+    productTotals: Array<{ productId: string; name: string; qty: number }>;
+    byClient: Array<{
+      clientId: string;
+      clientName: string;
+      products: Array<{ productId: string; name: string; qty: number }>;
+      orders: Array<{
+        orderNumber: number;
+        regionName: string | null;
+        returnedAt: string;
+        productName: string;
+        quantity: number;
+        reason: string | null;
+        notes: string | null;
+      }>;
     }>;
   };
   restockSuggestions: Array<{
@@ -144,7 +172,7 @@ function generateExhibitorPDF(data: StockReport) {
 
   let html = `
     <h1>Produtos Deixados em Expositores</h1>
-    <p>Período: ${period} &nbsp;|&nbsp; Total de expositores instalados: ${data.exhibitorReport.totalExhibitors}</p>
+    <p>Período: ${period} &nbsp;|&nbsp; Filtro: ${data.filter.label} &nbsp;|&nbsp; Total de expositores instalados: ${data.exhibitorReport.totalExhibitors}</p>
 
     <h2>Total Geral por Produto</h2>
     <table>
@@ -193,7 +221,7 @@ function generateSalesPDF(data: StockReport) {
 
   let html = `
     <h1>Saídas de Estoque para Vendas</h1>
-    <p>Período: ${period}</p>
+    <p>Período: ${period} &nbsp;|&nbsp; Filtro: ${data.filter.label}</p>
 
     <h2>Total por Produto</h2>
     <table>
@@ -236,7 +264,7 @@ function generateRestockPDF(data: StockReport) {
 
   const html = `
     <h1>Sugestão de Reposição de Estoque</h1>
-    <p>Período analisado: ${period} &nbsp;|&nbsp; Mínimo em estoque: ${data.restockMinimum} unidades</p>
+    <p>Período analisado: ${period} &nbsp;|&nbsp; Filtro: ${data.filter.label} &nbsp;|&nbsp; Mínimo em estoque: ${data.restockMinimum} unidades</p>
 
     <h2>Produtos que Precisam de Reposição</h2>
     <table>
@@ -269,6 +297,76 @@ function generateRestockPDF(data: StockReport) {
   `;
 
   printHTML(html, "Sugestão de Reposição");
+}
+
+
+function generateDefectExchangePDF(data: StockReport) {
+  const period = fmtPeriod(data.period.from, data.period.to);
+  const totalQty = data.defectExchangeReport.productTotals.reduce((s, p) => s + p.qty, 0);
+
+  let html = `
+    <h1>Produtos Trocados</h1>
+    <p>Período: ${period} &nbsp;|&nbsp; Filtro: ${data.filter.label} &nbsp;|&nbsp; Total de itens de troca: ${totalQty}</p>
+
+    <h2>Total Geral por Produto</h2>
+    <table>
+      <thead><tr><th>Produto</th><th style="text-align:right">Qtd trocada</th></tr></thead>
+      <tbody>
+        ${data.defectExchangeReport.productTotals.map((p) => `
+          <tr><td>${p.name}</td><td style="text-align:right;font-weight:700">${p.qty}</td></tr>
+        `).join("")}
+        <tr class="total-row"><td>TOTAL</td><td style="text-align:right">${totalQty}</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Por Cliente</h2>
+    ${data.defectExchangeReport.byClient.map((client) => {
+      const clientTotal = client.products.reduce((s, p) => s + p.qty, 0);
+      return `
+        <h3>${client.clientName.toUpperCase()}</h3>
+        <table>
+          <thead><tr><th>Produto</th><th style="text-align:right">Qtd</th></tr></thead>
+          <tbody>
+            ${client.products.map((p) => `
+              <tr><td>${p.name}</td><td style="text-align:right">${p.qty}</td></tr>
+            `).join("")}
+            <tr class="total-row"><td>Subtotal cliente</td><td style="text-align:right">${clientTotal}</td></tr>
+          </tbody>
+        </table>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Pedido</th>
+              <th>Região</th>
+              <th>Produto</th>
+              <th style="text-align:right">Qtd</th>
+              <th>Motivo/Obs.</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${client.orders.map((order) => `
+              <tr>
+                <td>${fmtDate(order.returnedAt)}</td>
+                <td>#${String(order.orderNumber).padStart(4, "0")}</td>
+                <td>${order.regionName ?? "—"}</td>
+                <td>${order.productName}</td>
+                <td style="text-align:right">${order.quantity}</td>
+                <td>${order.reason ?? order.notes ?? "—"}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }).join("")}
+  `;
+
+  if (data.defectExchangeReport.byClient.length === 0) {
+    html += `<p>Nenhum produto trocado no período selecionado.</p>`;
+  }
+
+  printHTML(html, "Produtos Trocados");
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -399,6 +497,8 @@ export default function ReportsStockPage() {
 
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
+  const scope = searchParams.get("scope") ?? "all";
+  const regionId = searchParams.get("regionId") ?? "";
 
   const [data, setData] = useState<StockReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -411,7 +511,9 @@ export default function ReportsStockPage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/reports/stock?from=${from}&to=${to}`, { cache: "no-store" });
+        const query = new URLSearchParams({ from, to, scope });
+        if (scope === "region" && regionId) query.set("regionId", regionId);
+        const res = await fetch(`/api/reports/stock?${query.toString()}`, { cache: "no-store" });
         if (!res.ok) throw new Error();
         const json = await res.json();
         if (active) setData(json);
@@ -423,13 +525,30 @@ export default function ReportsStockPage() {
     }
     load();
     return () => { active = false; };
-  }, [from, to]);
+  }, [from, to, scope, regionId]);
 
   if (loading) return <div style={{ minHeight: "100vh", background: pageBg, display: "flex", alignItems: "center", justifyContent: "center", color: theme.text, fontWeight: 700 }}>Carregando relatório...</div>;
   if (error || !data) return <div style={{ minHeight: "100vh", background: pageBg, display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", fontWeight: 700 }}>{error ?? "Erro."}</div>;
 
   const { summary } = data;
   const totalValueCents = data.currentPosition.reduce((s, p) => s + p.totalValueCents, 0);
+
+  function changeStockFilter(value: string) {
+    const params = new URLSearchParams({ from, to });
+    if (value === "matrix") {
+      params.set("scope", "matrix");
+    } else if (value.startsWith("region:")) {
+      params.set("scope", "region");
+      params.set("regionId", value.replace("region:", ""));
+    } else {
+      params.set("scope", "all");
+    }
+    router.push(`/reports/stock?${params.toString()}`);
+  }
+
+  const selectedFilterValue = data.filter.scope === "region" && data.filter.regionId
+    ? `region:${data.filter.regionId}`
+    : data.filter.scope;
 
   return (
     <div style={{ color: theme.text, background: pageBg, minHeight: "100vh", padding: 24 }}>
@@ -444,9 +563,29 @@ export default function ReportsStockPage() {
           </div>
           <div>
             <div style={{ fontSize: 22, fontWeight: 900, color: theme.text }}>Relatório de Estoque</div>
-            <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>{fmtPeriod(data.period.from, data.period.to)}</div>
+            <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>{fmtPeriod(data.period.from, data.period.to)} • {data.filter.label}</div>
           </div>
         </div>
+      </div>
+
+
+
+      <div style={{ background: isDark ? "#0f172a" : "#ffffff", border: `1px solid ${border}`, borderRadius: 16, padding: 18, marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", boxShadow: isDark ? "0 10px 30px rgba(2,6,23,0.35)" : "0 8px 24px rgba(15,23,42,0.06)" }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 900, color: theme.text, marginBottom: 4 }}>Filtro por local de estoque</div>
+          <div style={{ fontSize: 12, color: muted }}>Veja o relatório geral, somente matriz ou somente uma região.</div>
+        </div>
+        <select
+          value={selectedFilterValue}
+          onChange={(event) => changeStockFilter(event.target.value)}
+          style={{ minWidth: 260, border: `1px solid ${border}`, borderRadius: 12, padding: "10px 12px", background: isDark ? "#0b1324" : "#ffffff", color: theme.text, fontWeight: 700, outline: "none" }}
+        >
+          <option value="all">Todas as regiões</option>
+          <option value="matrix">Matriz{data.filter.options.matrix ? ` — ${data.filter.options.matrix.name}` : ""}</option>
+          {data.filter.options.regions.map((region) => (
+            <option key={region.id} value={`region:${region.id}`}>{region.name}</option>
+          ))}
+        </select>
       </div>
 
       {/* Summary cards */}
@@ -496,6 +635,18 @@ export default function ReportsStockPage() {
           count={data.restockSuggestions.length}
           countLabel={`produto${data.restockSuggestions.length !== 1 ? "s" : ""} abaixo do estoque mínimo`}
           onPrint={() => generateRestockPDF(data)}
+          theme={theme}
+        />
+
+        <PDFBlock
+          icon={RefreshCcw}
+          iconBg={isDark ? "rgba(124,58,237,0.18)" : "#f3ebff"}
+          iconFg="#7c3aed"
+          title="Produtos Trocados"
+          description="Total de itens de troca no período, com detalhamento por produto e por cliente"
+          count={data.defectExchangeReport.totalQty}
+          countLabel={data.defectExchangeReport.totalQty === 1 ? "item de troca no período" : "itens de troca no período"}
+          onPrint={() => generateDefectExchangePDF(data)}
           theme={theme}
         />
       </div>

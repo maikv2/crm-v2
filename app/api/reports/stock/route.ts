@@ -23,6 +23,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const from = parseDateParam(searchParams.get("from"));
     const to = parseDateParam(searchParams.get("to"));
+    const scopeParam = searchParams.get("scope") ?? "all";
+    const regionIdParam = searchParams.get("regionId") ?? "";
 
     if (!from || !to) {
       return NextResponse.json(
@@ -34,8 +36,65 @@ export async function GET(request: Request) {
     const toEnd = new Date(to);
     toEnd.setHours(23, 59, 59, 999);
 
+    const [products, locations, regions, allMovements] = await Promise.all([
+      prisma.product.findMany({
+        where: { active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, priceCents: true },
+      }),
+      prisma.stockLocation.findMany({
+        where: { active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
+      prisma.region.findMany({
+        where: { active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, stockLocationId: true },
+      }),
+      prisma.stockMovement.findMany({
+        select: { productId: true, stockLocationId: true, type: true, quantity: true },
+      }),
+    ]);
+
+    const regionStockLocationIds = new Set(
+      regions.map((r) => r.stockLocationId).filter(Boolean) as string[]
+    );
+    const matrixLocation =
+      locations.find((l) => !regionStockLocationIds.has(l.id)) ?? null;
+
+    const selectedRegion = regions.find((r) => r.id === regionIdParam) ?? null;
+    const scope =
+      scopeParam === "matrix" || (scopeParam === "region" && selectedRegion)
+        ? scopeParam
+        : "all";
+
+    const selectedStockLocationIds =
+      scope === "matrix"
+        ? matrixLocation
+          ? [matrixLocation.id]
+          : []
+        : scope === "region"
+        ? selectedRegion?.stockLocationId
+          ? [selectedRegion.stockLocationId]
+          : []
+        : locations.map((l) => l.id);
+
+    const selectedRegionIds =
+      scope === "region" && selectedRegion ? [selectedRegion.id] : undefined;
+
+    const stockLocationFilter =
+      selectedStockLocationIds.length > 0
+        ? { stockLocationId: { in: selectedStockLocationIds } }
+        : scope === "all"
+        ? {}
+        : { stockLocationId: { in: ["00000000-0000-0000-0000-000000000000"] } };
+
     const movements = await prisma.stockMovement.findMany({
-      where: { createdAt: { gte: from, lte: toEnd } },
+      where: {
+        createdAt: { gte: from, lte: toEnd },
+        ...stockLocationFilter,
+      },
       include: {
         product: { select: { id: true, name: true } },
         stockLocation: { select: { id: true, name: true } },
@@ -50,36 +109,15 @@ export async function GET(request: Request) {
       orderBy: { createdAt: "asc" },
     });
 
-    const [products, locations, regions, allMovements, exhibitorStocks] =
-      await Promise.all([
-        prisma.product.findMany({
-          where: { active: true },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true, priceCents: true },
-        }),
-        prisma.stockLocation.findMany({
-          where: { active: true },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true },
-        }),
-        prisma.region.findMany({
-          where: { active: true },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true, stockLocationId: true },
-        }),
-        prisma.stockMovement.findMany({
-          select: { productId: true, stockLocationId: true, type: true, quantity: true },
-        }),
-        prisma.exhibitorStock.findMany({
-          select: { productId: true, quantity: true },
-        }),
-      ]);
-
-    const regionStockLocationIds = new Set(
-      regions.map((r) => r.stockLocationId).filter(Boolean) as string[]
-    );
-    const matrixLocation =
-      locations.find((l) => !regionStockLocationIds.has(l.id)) ?? null;
+    const exhibitorStocks = await prisma.exhibitorStock.findMany({
+      where:
+        scope === "region" && selectedRegionIds
+          ? { exhibitor: { regionId: { in: selectedRegionIds } } }
+          : scope === "matrix"
+          ? { exhibitor: { regionId: "00000000-0000-0000-0000-000000000000" } }
+          : undefined,
+      select: { productId: true, quantity: true },
+    });
 
     const balanceMap: Record<string, Record<string, number>> = {};
     for (const product of products) {
@@ -139,13 +177,18 @@ export async function GET(request: Request) {
     const byLocation = Array.from(byLocationMap.entries()).map(([id, v]) => ({ id, ...v }));
 
     const currentPosition = products.map((product) => {
-      const matrixQty = matrixLocation ? (balanceMap[product.id]?.[matrixLocation.id] ?? 0) : 0;
-      const regionQtys = regions.map((region) => ({
-        regionId: region.id,
-        regionName: region.name,
-        qty: region.stockLocationId ? (balanceMap[product.id]?.[region.stockLocationId] ?? 0) : 0,
-      }));
-      const exhibitorQty = exhibitorByProduct[product.id] ?? 0;
+      const matrixQty = scope === "region" ? 0 : matrixLocation ? (balanceMap[product.id]?.[matrixLocation.id] ?? 0) : 0;
+      const regionQtys =
+        scope === "matrix"
+          ? []
+          : regions
+              .filter((region) => scope !== "region" || region.id === selectedRegion?.id)
+              .map((region) => ({
+                regionId: region.id,
+                regionName: region.name,
+                qty: region.stockLocationId ? (balanceMap[product.id]?.[region.stockLocationId] ?? 0) : 0,
+              }));
+      const exhibitorQty = scope === "matrix" ? 0 : (exhibitorByProduct[product.id] ?? 0);
       const totalQty = matrixQty + regionQtys.reduce((s, r) => s + r.qty, 0) + exhibitorQty;
       return {
         productId: product.id,
@@ -174,7 +217,11 @@ export async function GET(request: Request) {
 
     // ── BLOCO 1: Expositores instalados no período ─────────────────────────────
     const exhibitorsInPeriod = await prisma.exhibitor.findMany({
-      where: { installedAt: { gte: from, lte: toEnd } },
+      where: {
+        installedAt: { gte: from, lte: toEnd },
+        ...(scope === "region" && selectedRegionIds ? { regionId: { in: selectedRegionIds } } : {}),
+        ...(scope === "matrix" ? { regionId: "00000000-0000-0000-0000-000000000000" } : {}),
+      },
       include: {
         client: { select: { id: true, name: true } },
         initialItems: {
@@ -280,8 +327,11 @@ export async function GET(request: Request) {
 
     const currentBalanceByProduct: Record<string, number> = {};
     for (const product of products) {
-      const locTotal = Object.values(balanceMap[product.id] ?? {}).reduce((s, v) => s + v, 0);
-      currentBalanceByProduct[product.id] = locTotal + (exhibitorByProduct[product.id] ?? 0);
+      const selectedLocationTotal =
+        scope === "all"
+          ? Object.values(balanceMap[product.id] ?? {}).reduce((s, v) => s + v, 0)
+          : selectedStockLocationIds.reduce((s, locId) => s + (balanceMap[product.id]?.[locId] ?? 0), 0);
+      currentBalanceByProduct[product.id] = selectedLocationTotal + (scope === "matrix" ? 0 : (exhibitorByProduct[product.id] ?? 0));
     }
 
     const restockSuggestions = Array.from(outByProductMap.entries())
@@ -299,8 +349,113 @@ export async function GET(request: Request) {
       .filter((r) => r.needsRestock)
       .sort((a, b) => a.currentQty - b.currentQty);
 
+    // ── BLOCO 4: Produtos trocados por defeito ────────────────────────────────
+    const defectReturns = await prisma.defectReturnItem.findMany({
+      where: {
+        returnedAt: { gte: from, lte: toEnd },
+        ...(scope === "region" && selectedRegionIds
+          ? { order: { regionId: { in: selectedRegionIds } } }
+          : {}),
+        ...(scope === "matrix"
+          ? { order: { regionId: "00000000-0000-0000-0000-000000000000" } }
+          : {}),
+      },
+      include: {
+        product: { select: { id: true, name: true } },
+        order: {
+          select: {
+            id: true,
+            number: true,
+            client: { select: { id: true, name: true } },
+            region: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { returnedAt: "asc" },
+    });
+
+    type ExchangeProductSummary = { name: string; qty: number };
+    type ExchangeOrderDetail = {
+      orderNumber: number;
+      regionName: string | null;
+      returnedAt: string;
+      productName: string;
+      quantity: number;
+      reason: string | null;
+      notes: string | null;
+    };
+    type ExchangeClientSummary = {
+      clientId: string;
+      clientName: string;
+      products: Map<string, ExchangeProductSummary>;
+      orders: ExchangeOrderDetail[];
+    };
+
+    const exchangeProductMap = new Map<string, ExchangeProductSummary>();
+    const exchangeByClientMap = new Map<string, ExchangeClientSummary>();
+
+    for (const item of defectReturns) {
+      const productExisting: ExchangeProductSummary = exchangeProductMap.get(item.productId) ?? {
+        name: item.product.name,
+        qty: 0,
+      };
+      productExisting.qty += item.quantity;
+      exchangeProductMap.set(item.productId, productExisting);
+
+      const clientKey = item.order.client.id;
+      const clientExisting: ExchangeClientSummary = exchangeByClientMap.get(clientKey) ?? {
+        clientId: item.order.client.id,
+        clientName: item.order.client.name,
+        products: new Map<string, ExchangeProductSummary>(),
+        orders: [],
+      };
+      const clientProduct: ExchangeProductSummary = clientExisting.products.get(item.productId) ?? {
+        name: item.product.name,
+        qty: 0,
+      };
+      clientProduct.qty += item.quantity;
+      clientExisting.products.set(item.productId, clientProduct);
+      clientExisting.orders.push({
+        orderNumber: item.order.number,
+        regionName: item.order.region?.name ?? null,
+        returnedAt: item.returnedAt.toISOString(),
+        productName: item.product.name,
+        quantity: item.quantity,
+        reason: item.reason,
+        notes: item.notes,
+      });
+      exchangeByClientMap.set(clientKey, clientExisting);
+    }
+
+    const exchangeProductTotals = Array.from(exchangeProductMap.entries())
+      .map(([id, v]) => ({ productId: id, ...v }))
+      .sort((a, b) => b.qty - a.qty);
+
+    const exchangeByClient = Array.from(exchangeByClientMap.values()).map((c) => ({
+      clientId: c.clientId,
+      clientName: c.clientName,
+      products: Array.from(c.products.entries())
+        .map(([id, v]) => ({ productId: id, ...v }))
+        .sort((a, b) => b.qty - a.qty),
+      orders: c.orders,
+    }));
+
     return NextResponse.json({
       period: { from: from.toISOString(), to: toEnd.toISOString() },
+      filter: {
+        scope,
+        regionId: scope === "region" ? selectedRegion?.id ?? null : null,
+        label:
+          scope === "matrix"
+            ? "Matriz"
+            : scope === "region"
+            ? selectedRegion?.name ?? "Região"
+            : "Todas as regiões",
+        options: {
+          matrix: matrixLocation ? { id: matrixLocation.id, name: matrixLocation.name } : null,
+          regions: regions.map((r) => ({ id: r.id, name: r.name, stockLocationId: r.stockLocationId })),
+        },
+      },
       summary: { totalMovements: movements.length, totalIn, totalOut, totalTransferIn, totalTransferOut, totalAdjustment },
       byProductMovements,
       byLocation,
@@ -314,6 +469,11 @@ export async function GET(request: Request) {
       salesStockReport: {
         productTotals: salesProductTotals,
         byClient: salesByClient,
+      },
+      defectExchangeReport: {
+        totalQty: defectReturns.reduce((s, item) => s + item.quantity, 0),
+        productTotals: exchangeProductTotals,
+        byClient: exchangeByClient,
       },
       restockSuggestions,
       restockMinimum: RESTOCK_MINIMUM,

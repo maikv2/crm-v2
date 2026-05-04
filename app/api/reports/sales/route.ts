@@ -73,6 +73,13 @@ export async function GET(request: Request) {
               product: { select: { id: true, sku: true, name: true, commissionCents: true } },
             },
           },
+          accountsReceivables: {
+            include: {
+              installments: {
+                orderBy: { installmentNumber: "asc" },
+              },
+            },
+          },
         },
         orderBy: { issuedAt: "asc" },
       }),
@@ -106,10 +113,117 @@ export async function GET(request: Request) {
     const paidOrders = orders.filter((o) => o.paymentStatus === PaymentStatus.PAID);
     const pendingOrders = orders.filter((o) => o.paymentStatus === PaymentStatus.PENDING);
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    function getOrderCommissionCents(order: (typeof orders)[number]) {
+      const itemCommission = order.items.reduce(
+        (s, item) => s + item.qty * (item.product?.commissionCents ?? 0),
+        0
+      );
+      return order.commissionTotalCents || itemCommission;
+    }
+
+    function getCommissionPaymentInfo(order: (typeof orders)[number], commissionCents: number) {
+      const receivables = order.accountsReceivables ?? [];
+      const receivableTotalCents = receivables.reduce((sum, ar) => sum + ar.amountCents, 0);
+      const receivedCents = receivables.reduce((sum, ar) => {
+        const installmentReceived = ar.installments.reduce((s, installment) => s + installment.receivedCents, 0);
+        return sum + Math.max(ar.receivedCents, installmentReceived);
+      }, 0);
+
+      const baseTotalCents = receivableTotalCents > 0 ? receivableTotalCents : order.totalCents;
+      const paidBaseCents = order.paymentStatus === PaymentStatus.PAID
+        ? baseTotalCents
+        : Math.min(receivedCents, baseTotalCents);
+      const payableCommissionCents = baseTotalCents > 0
+        ? Math.min(commissionCents, Math.round((commissionCents * paidBaseCents) / baseTotalCents))
+        : 0;
+      const pendingCommissionCents = Math.max(commissionCents - payableCommissionCents, 0);
+
+      const pendingReasons: Array<{
+        label: string;
+        dueDate: string | null;
+        amountCents: number;
+        receivedCents: number;
+        pendingAmountCents: number;
+        pendingCommissionCents: number;
+        reason: string;
+      }> = [];
+
+      if (pendingCommissionCents > 0) {
+        if (receivables.length > 0) {
+          for (const ar of receivables) {
+            const installments = ar.installments.length > 0
+              ? ar.installments
+              : [{
+                  installmentNumber: 1,
+                  amountCents: ar.amountCents,
+                  receivedCents: ar.receivedCents,
+                  dueDate: ar.dueDate,
+                  status: ar.status,
+                }];
+
+            for (const installment of installments) {
+              const pendingAmountCents = Math.max(installment.amountCents - installment.receivedCents, 0);
+              if (pendingAmountCents <= 0) continue;
+
+              const due = installment.dueDate ? new Date(installment.dueDate) : null;
+              const isOverdue = due ? due.getTime() < today.getTime() : false;
+              const pendingCommissionForInstallment = baseTotalCents > 0
+                ? Math.round((commissionCents * pendingAmountCents) / baseTotalCents)
+                : 0;
+
+              pendingReasons.push({
+                label: `Parcela ${installment.installmentNumber ?? 1}`,
+                dueDate: due ? due.toISOString() : null,
+                amountCents: installment.amountCents,
+                receivedCents: installment.receivedCents,
+                pendingAmountCents,
+                pendingCommissionCents: pendingCommissionForInstallment,
+                reason: isOverdue
+                  ? "Parcela em aberto e vencida"
+                  : due
+                    ? "Parcela em aberto, ainda não venceu"
+                    : "Valor em aberto sem data de vencimento",
+              });
+            }
+          }
+        } else {
+          pendingReasons.push({
+            label: "Pedido",
+            dueDate: null,
+            amountCents: order.totalCents,
+            receivedCents: order.paymentStatus === PaymentStatus.PAID ? order.totalCents : 0,
+            pendingAmountCents: order.paymentStatus === PaymentStatus.PAID ? 0 : order.totalCents,
+            pendingCommissionCents,
+            reason: "Pedido ainda não baixado no financeiro",
+          });
+        }
+      }
+
+      return {
+        payableCommissionCents,
+        pendingCommissionCents,
+        receivedCents: paidBaseCents,
+        receivableTotalCents: baseTotalCents,
+        pendingReasons,
+      };
+    }
+
+    let payableCommissionCents = 0;
+    let pendingCommissionCents = 0;
+    for (const order of orders) {
+      const orderCommission = getOrderCommissionCents(order);
+      const paymentInfo = getCommissionPaymentInfo(order, orderCommission);
+      payableCommissionCents += paymentInfo.payableCommissionCents;
+      pendingCommissionCents += paymentInfo.pendingCommissionCents;
+    }
+
     const byRegionMap = new Map<string, { name: string; orders: number; revenueCents: number; commissionCents: number }>();
     for (const o of orders) {
       const key = o.regionId;
-      const orderCommission = o.commissionTotalCents || o.items.reduce((s, item) => s + item.qty * (item.product?.commissionCents ?? 0), 0);
+      const orderCommission = getOrderCommissionCents(o);
       const existing = byRegionMap.get(key) ?? { name: o.region.name, orders: 0, revenueCents: 0, commissionCents: 0 };
       existing.orders += 1;
       existing.revenueCents += o.totalCents;
@@ -122,7 +236,7 @@ export async function GET(request: Request) {
     for (const o of orders) {
       const key = o.sellerId ?? "__no_seller";
       const name = o.seller?.name ?? "Sem vendedor";
-      const orderCommission = o.commissionTotalCents || o.items.reduce((s, item) => s + item.qty * (item.product?.commissionCents ?? 0), 0);
+      const orderCommission = getOrderCommissionCents(o);
       const existing = bySellerMap.get(key) ?? { name, orders: 0, revenueCents: 0, commissionCents: 0 };
       existing.orders += 1;
       existing.revenueCents += o.totalCents;
@@ -145,7 +259,7 @@ export async function GET(request: Request) {
     const byClientMap = new Map<string, { name: string; orders: number; revenueCents: number; commissionCents: number }>();
     for (const o of orders) {
       const key = o.clientId;
-      const orderCommission = o.commissionTotalCents || o.items.reduce((s, item) => s + item.qty * (item.product?.commissionCents ?? 0), 0);
+      const orderCommission = getOrderCommissionCents(o);
       const existing = byClientMap.get(key) ?? { name: o.client.name, orders: 0, revenueCents: 0, commissionCents: 0 };
       existing.orders += 1;
       existing.revenueCents += o.totalCents;
@@ -179,6 +293,11 @@ export async function GET(request: Request) {
       sellerName: string | null;
       totalCents: number;
       commissionCents: number;
+      payableCommissionCents: number;
+      pendingCommissionCents: number;
+      receivedCents: number;
+      receivableTotalCents: number;
+      pendingReasons: Array<{ label: string; dueDate: string | null; amountCents: number; receivedCents: number; pendingAmountCents: number; pendingCommissionCents: number; reason: string }>;
       items: Array<{ productId: string; sku: string | null; productName: string; qty: number; unitCents: number; totalCents: number; commissionUnitCents: number; commissionCents: number }>;
     }>;
 
@@ -247,6 +366,9 @@ export async function GET(request: Request) {
 
       soldProductsByClientMap.set(clientKey, clientExisting);
 
+      const orderCommissionCents = getOrderCommissionCents(o);
+      const commissionPaymentInfo = getCommissionPaymentInfo(o, orderCommissionCents);
+
       commissionOrders.push({
         id: o.id,
         number: o.number,
@@ -256,7 +378,12 @@ export async function GET(request: Request) {
         sellerId: o.sellerId ?? null,
         sellerName: o.seller?.name ?? null,
         totalCents: o.totalCents,
-        commissionCents: o.commissionTotalCents || commissionItems.reduce((s, item) => s + item.commissionCents, 0),
+        commissionCents: orderCommissionCents,
+        payableCommissionCents: commissionPaymentInfo.payableCommissionCents,
+        pendingCommissionCents: commissionPaymentInfo.pendingCommissionCents,
+        receivedCents: commissionPaymentInfo.receivedCents,
+        receivableTotalCents: commissionPaymentInfo.receivableTotalCents,
+        pendingReasons: commissionPaymentInfo.pendingReasons,
         items: commissionItems,
       });
     }
@@ -306,7 +433,7 @@ export async function GET(request: Request) {
       sellerName: o.seller?.name ?? null,
       totalCents: o.totalCents,
       discountCents: o.discountCents,
-      commissionCents: o.commissionTotalCents || o.items.reduce((s, item) => s + item.qty * (item.product?.commissionCents ?? 0), 0),
+      commissionCents: getOrderCommissionCents(o),
       paymentMethod: o.paymentMethod,
       paymentMethodLabel: PAYMENT_METHOD_LABELS[o.paymentMethod] ?? o.paymentMethod,
       status: o.status,
@@ -336,6 +463,10 @@ export async function GET(request: Request) {
         totalDiscount: money(totalDiscountCents),
         totalCommissionCents,
         totalCommission: money(totalCommissionCents),
+        payableCommissionCents,
+        payableCommission: money(payableCommissionCents),
+        pendingCommissionCents,
+        pendingCommission: money(pendingCommissionCents),
         paidCount: paidOrders.length,
         pendingCount: pendingOrders.length,
         averageTicketCents: totalOrders > 0 ? Math.round(totalRevenueCents / totalOrders) : 0,

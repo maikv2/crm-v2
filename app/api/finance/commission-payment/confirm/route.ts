@@ -266,7 +266,7 @@ export async function POST(request: Request) {
           u."name" as "representativeName",
           u."phone" as "representativePhone",
           c."regionId",
-          r."name" as "regionName",
+          (SELECT r."name" FROM "Region" r WHERE r."id" = c."regionId") as "regionName",
           c."weekStart",
           c."weekEnd",
           c."amountCents",
@@ -280,7 +280,6 @@ export async function POST(request: Request) {
           c."metadata"
         FROM "CommissionPaymentConfirmation" c
         JOIN "User" u ON u."id" = c."representativeId"
-        LEFT JOIN "Region" r ON r."id" = c."regionId"
         WHERE c."id" = ${row.id}::uuid
         FOR UPDATE;
       `;

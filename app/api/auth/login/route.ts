@@ -36,6 +36,24 @@ function onlyDigits(value: string) {
   return value.replace(/\D/g, "");
 }
 
+function isBcryptHash(value: string) {
+  return /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
+async function passwordMatches(password: string, storedHash: string | null | undefined) {
+  if (!storedHash) return false;
+
+  if (isBcryptHash(storedHash)) {
+    try {
+      return await bcrypt.compare(password, storedHash);
+    } catch {
+      return false;
+    }
+  }
+
+  return storedHash === password;
+}
+
 async function clearAllSessions() {
   const cookieStore = await cookies();
   cookieStore.set(expiredCookie("portal_session"));
@@ -50,11 +68,11 @@ export async function POST(request: Request) {
 
     const access = normalizeAccess(body?.access);
     const rawIdentifier = normalizeIdentifier(
-      body?.identifier ?? body?.email ?? body?.user ?? ""
+      body?.identifier ?? body?.email ?? body?.user ?? body?.username ?? ""
     );
     const password = String(body?.password || "");
-    const remember = Boolean(body?.remember);
-    const sessionMaxAge = remember ? 60 * 60 * 24 * 180 : 60 * 60 * 24 * 7;
+    const rememberMe = Boolean(body?.rememberMe);
+    const sessionMaxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 12;
 
     if (!rawIdentifier || !password) {
       return NextResponse.json(
@@ -102,13 +120,21 @@ export async function POST(request: Request) {
         );
       }
 
-      const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+      const passwordMatch = await passwordMatches(password, user.passwordHash);
 
       if (!passwordMatch) {
         return NextResponse.json(
           { error: "Usuário ou senha inválidos." },
           { status: 401 }
         );
+      }
+
+      if (!isBcryptHash(user.passwordHash)) {
+        const newHash = await bcrypt.hash(password, 10);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { passwordHash: newHash },
+        });
       }
 
       const cookieStore = await clearAllSessions();
@@ -171,13 +197,21 @@ export async function POST(request: Request) {
         );
       }
 
-      const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+      const passwordMatch = await passwordMatches(password, user.passwordHash);
 
       if (!passwordMatch) {
         return NextResponse.json(
           { error: "Usuário ou senha inválidos." },
           { status: 401 }
         );
+      }
+
+      if (!isBcryptHash(user.passwordHash)) {
+        const newHash = await bcrypt.hash(password, 10);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { passwordHash: newHash },
+        });
       }
 
       const cookieStore = await clearAllSessions();
@@ -230,7 +264,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const passwordMatch = await bcrypt.compare(
+    const passwordMatch = await passwordMatches(
       password,
       client.portalPasswordHash
     );
@@ -240,6 +274,14 @@ export async function POST(request: Request) {
         { error: "Usuário ou senha inválidos." },
         { status: 401 }
       );
+    }
+
+    if (!isBcryptHash(client.portalPasswordHash)) {
+      const newHash = await bcrypt.hash(password, 10);
+      await prisma.client.update({
+        where: { id: client.id },
+        data: { portalPasswordHash: newHash },
+      });
     }
 
     const cookieStore = await clearAllSessions();

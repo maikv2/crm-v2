@@ -10,14 +10,16 @@ function onlyDigits(value: unknown) {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdminUser();
 
+    const { id } = await params;
+
     const user = await prisma.user.findUnique({
       where: {
-        id: params.id,
+        id,
       },
       select: {
         id: true,
@@ -65,10 +67,12 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdminUser();
+
+    const { id } = await params;
 
     const body = await request.json().catch(() => null);
 
@@ -86,7 +90,7 @@ export async function PATCH(
 
     const user = await prisma.user.findUnique({
       where: {
-        id: params.id,
+        id,
       },
       select: {
         id: true,
@@ -118,7 +122,7 @@ export async function PATCH(
       },
     });
 
-    if (existingEmail && existingEmail.id !== params.id) {
+    if (existingEmail && existingEmail.id !== id) {
       return NextResponse.json(
         { error: "Já existe outro usuário com este e-mail." },
         { status: 409 }
@@ -127,7 +131,7 @@ export async function PATCH(
 
     const updatedUser = await prisma.user.update({
       where: {
-        id: params.id,
+        id,
       },
       data: {
         name,

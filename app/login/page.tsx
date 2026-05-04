@@ -42,11 +42,11 @@ function buildPayload(
   }
 
   return {
-    access: "CRM",
-    identifier,
-    password,
-    remember,
-  };
+  access: "CRM",
+  username: identifier,
+  password,
+  remember,
+};
 }
 
 function getDefaultDestination(access: AccessType) {

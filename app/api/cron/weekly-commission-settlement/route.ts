@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendText, normalizeBrazilPhone } from "@/lib/zapi";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type ReceivableStatusLike = "PENDING" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELED" | string;
 
@@ -32,6 +34,115 @@ type OrderForSettlement = {
     }>;
   }>;
 };
+
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function getPublicBaseUrl(request: Request) {
+  const configured = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
+  if (configured?.trim()) return configured.trim().replace(/\/$/, "");
+
+  const url = new URL(request.url);
+  return `${url.protocol}//${url.host}`;
+}
+
+type ConfirmationRecord = {
+  id: string;
+  tokenHash: string;
+};
+
+async function createOrRefreshPaymentConfirmation(params: {
+  representativeId: string;
+  regionId?: string | null;
+  weekStart: Date;
+  weekEnd: Date;
+  amountCents: number;
+  pendingCents: number;
+  ordersCount: number;
+  representativeName: string;
+  regionName: string;
+  baseUrl: string;
+  metadata: unknown;
+}) {
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = sha256(token);
+  const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const description = `Pagamento de comissão - ${params.representativeName} - ${dateToShortBR(params.weekStart)} a ${dateToShortBR(params.weekEnd)}`;
+
+  const records = await prisma.$queryRaw<ConfirmationRecord[]>`
+    INSERT INTO "CommissionPaymentConfirmation" (
+      "representativeId",
+      "regionId",
+      "weekStart",
+      "weekEnd",
+      "amountCents",
+      "pendingCents",
+      "ordersCount",
+      "tokenHash",
+      "tokenExpiresAt",
+      "status",
+      "description",
+      "metadata",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${params.representativeId}::uuid,
+      ${params.regionId ? params.regionId : null}::uuid,
+      ${params.weekStart},
+      ${params.weekEnd},
+      ${params.amountCents},
+      ${params.pendingCents},
+      ${params.ordersCount},
+      ${tokenHash},
+      ${tokenExpiresAt},
+      'PENDING',
+      ${description},
+      ${JSON.stringify(params.metadata)}::jsonb,
+      now(),
+      now()
+    )
+    ON CONFLICT ("representativeId", "weekStart", "weekEnd")
+    DO UPDATE SET
+      "regionId" = EXCLUDED."regionId",
+      "amountCents" = EXCLUDED."amountCents",
+      "pendingCents" = EXCLUDED."pendingCents",
+      "ordersCount" = EXCLUDED."ordersCount",
+      "tokenHash" = CASE
+        WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
+          THEN "CommissionPaymentConfirmation"."tokenHash"
+        ELSE EXCLUDED."tokenHash"
+      END,
+      "tokenExpiresAt" = CASE
+        WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
+          THEN "CommissionPaymentConfirmation"."tokenExpiresAt"
+        ELSE EXCLUDED."tokenExpiresAt"
+      END,
+      "status" = CASE
+        WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
+          THEN "CommissionPaymentConfirmation"."status"
+        ELSE 'PENDING'
+      END,
+      "description" = EXCLUDED."description",
+      "metadata" = EXCLUDED."metadata",
+      "updatedAt" = now()
+    RETURNING "id", "tokenHash";
+  `;
+
+  const record = records[0];
+  const wasAlreadyPaid = record?.tokenHash !== tokenHash;
+
+  return {
+    confirmationId: record?.id,
+    token: wasAlreadyPaid ? null : token,
+    confirmationUrl: wasAlreadyPaid
+      ? null
+      : `${params.baseUrl}/finance/confirm?token=${encodeURIComponent(token)}`,
+    wasAlreadyPaid,
+  };
+}
 
 function centsToBRL(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -280,6 +391,7 @@ export async function GET(request: Request) {
 
     const { start, endExclusive, endDisplay } = getPreviousMondayToSundayPeriod();
     const today = new Date();
+    const baseUrl = getPublicBaseUrl(request);
 
     const representatives = await prisma.user.findMany({
       where: {
@@ -295,6 +407,7 @@ export async function GET(request: Request) {
         pixType: true,
         region: {
           select: {
+            id: true,
             name: true,
           },
         },
@@ -308,6 +421,7 @@ export async function GET(request: Request) {
       payableCommissionCents: number;
       pendingCommissionCents: number;
       sent: boolean;
+      confirmationUrl?: string | null;
       skippedReason?: string;
       zapi?: unknown;
     }> = [];
@@ -422,22 +536,50 @@ export async function GET(request: Request) {
         continue;
       }
 
-      const message = buildRepresentativeMessage({
+      const confirmation = await createOrRefreshPaymentConfirmation({
+        representativeId: representative.id,
+        regionId: representative.region?.id || null,
+        weekStart: start,
+        weekEnd: endDisplay,
+        amountCents: payableCommissionCents,
+        pendingCents: pendingCommissionCents,
+        ordersCount: orders.length,
         representativeName: representative.name,
         regionName,
-        pixKey: representative.pixKey,
-        pixName: representative.pixName,
-        pixType: representative.pixType,
-        periodStart: start,
-        periodEnd: endDisplay,
-        orderCount: orders.length,
-        totalSalesCents,
-        totalCommissionCents,
-        payableCommissionCents,
-        pendingCommissionCents,
-        payableOrders,
-        pendingOrders,
+        baseUrl,
+        metadata: {
+          totalSalesCents,
+          totalCommissionCents,
+          payableOrders,
+          pendingOrders,
+          pixKey: representative.pixKey,
+          pixName: representative.pixName,
+          pixType: representative.pixType,
+        },
       });
+
+      const message = [
+        buildRepresentativeMessage({
+          representativeName: representative.name,
+          regionName,
+          pixKey: representative.pixKey,
+          pixName: representative.pixName,
+          pixType: representative.pixType,
+          periodStart: start,
+          periodEnd: endDisplay,
+          orderCount: orders.length,
+          totalSalesCents,
+          totalCommissionCents,
+          payableCommissionCents,
+          pendingCommissionCents,
+          payableOrders,
+          pendingOrders,
+        }),
+        "",
+        confirmation.confirmationUrl
+          ? `*Confirmar pagamento:*\n${confirmation.confirmationUrl}`
+          : "*Pagamento já confirmado anteriormente para este período.*",
+      ].join("\n");
 
       const zapi = await sendText({ phone: financialPhone, message });
 
@@ -447,6 +589,7 @@ export async function GET(request: Request) {
         orders: orders.length,
         payableCommissionCents,
         pendingCommissionCents,
+        confirmationUrl: confirmation.confirmationUrl,
         sent: true,
         zapi,
       });

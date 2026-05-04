@@ -32,7 +32,7 @@ type LoggedUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "REPRESENTATIVE" | "INVESTOR" | string;
+  role: "ADMIN" | "REPRESENTATIVE" | "INVESTOR" | "ADMINISTRATIVE" | string;
   regionId?: string | null;
   stockLocationId?: string | null;
 };
@@ -55,20 +55,13 @@ export default function Sidebar() {
 
     async function loadUser() {
       try {
-        const res = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
-
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
         if (!res.ok) {
           if (active) setUser(null);
           return;
         }
-
         const json = await res.json();
-
-        if (active) {
-          setUser(json?.user ?? null);
-        }
+        if (active) setUser(json?.user ?? null);
       } catch (error) {
         console.error(error);
         if (active) setUser(null);
@@ -83,6 +76,7 @@ export default function Sidebar() {
   }, [pathname]);
 
   const isRepresentative = user?.role === "REPRESENTATIVE";
+  const isAdministrative = user?.role === "ADMINISTRATIVE";
 
   function isActivePath(currentPath: string, itemPath: string) {
     if (itemPath === "/") return currentPath === "/";
@@ -144,12 +138,10 @@ export default function Sidebar() {
             }}
           />
         )}
-
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Icon size={18} />
           {label}
         </div>
-
         {badge ? (
           <span
             style={{
@@ -197,11 +189,7 @@ export default function Sidebar() {
       }}
     >
       <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          marginBottom: 30,
-        }}
+        style={{ display: "flex", justifyContent: "center", marginBottom: 30 }}
       >
         <img
           src={dark ? "/logo_branca.svg" : "/logo.svg"}
@@ -210,7 +198,27 @@ export default function Sidebar() {
         />
       </div>
 
-      {isRepresentative ? (
+      {isAdministrative ? (
+        <>
+          <Section title="FINANCEIRO" />
+          <Item icon={DollarSign} label="Financeiro" path="/finance" />
+          <Item
+            icon={FileText}
+            label="Contas a Receber"
+            path="/finance/receivables"
+          />
+          <Item
+            icon={Wallet}
+            label="Caixa da Região"
+            path="/finance/region-cash"
+          />
+          <Item
+            icon={ArrowRightLeft}
+            label="Repasses → Matriz"
+            path="/finance/transfers"
+          />
+        </>
+      ) : isRepresentative ? (
         <>
           <Section title="PRINCIPAL" />
           <Item icon={LayoutDashboard} label="Dashboard" path="/rep" />

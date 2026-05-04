@@ -676,6 +676,7 @@ enum UserRole {
   ADMIN
   REPRESENTATIVE
   INVESTOR
+  ADMINISTRATIVE
 }
 
 enum ShareOwnerType {

@@ -19,7 +19,6 @@ function expiredCookie(name: string) {
 
 function normalizeAccess(value: unknown): AccessType {
   const access = String(value || "CRM").toUpperCase().trim();
-
   if (access === "CLIENT") return "CLIENT";
   if (access === "INVESTOR") return "INVESTOR";
   return "CRM";
@@ -39,11 +38,9 @@ function onlyDigits(value: string) {
 
 async function clearAllSessions() {
   const cookieStore = await cookies();
-
   cookieStore.set(expiredCookie("portal_session"));
   cookieStore.set(expiredCookie("investor_session"));
   cookieStore.set(expiredCookie("crm_session"));
-
   return cookieStore;
 }
 
@@ -67,9 +64,7 @@ export async function POST(request: Request) {
     if (access === "CRM") {
       const email = normalizeEmail(rawIdentifier);
 
-      const user = await prisma.user.findUnique({
-        where: { email },
-      });
+      const user = await prisma.user.findUnique({ where: { email } });
 
       if (!user || !user.passwordHash) {
         return NextResponse.json(
@@ -78,7 +73,13 @@ export async function POST(request: Request) {
         );
       }
 
-      if (user.role !== "ADMIN" && user.role !== "REPRESENTATIVE") {
+      const role = user.role as string;
+
+      if (
+        role !== "ADMIN" &&
+        role !== "REPRESENTATIVE" &&
+        role !== "ADMINISTRATIVE"
+      ) {
         return NextResponse.json(
           { error: "Este usuário não possui acesso ao CRM." },
           { status: 403 }
@@ -113,9 +114,12 @@ export async function POST(request: Request) {
         maxAge: 60 * 60 * 24 * 7,
       });
 
+      const destination =
+        role === "ADMINISTRATIVE" ? "/finance" : "/choose/crm";
+
       return NextResponse.json({
         ok: true,
-        destination: "/choose/crm",
+        destination,
         user: {
           id: user.id,
           role: user.role,
@@ -129,9 +133,7 @@ export async function POST(request: Request) {
 
       const user = await prisma.user.findUnique({
         where: { email },
-        include: {
-          investorProfile: true,
-        },
+        include: { investorProfile: true },
       });
 
       if (!user || !user.passwordHash) {
@@ -201,10 +203,7 @@ export async function POST(request: Request) {
           { email: identifierEmail },
           { billingEmail: identifierEmail },
           ...(identifierDigits
-            ? [
-                { cnpj: identifierDigits },
-                { cpf: identifierDigits },
-              ]
+            ? [{ cnpj: identifierDigits }, { cpf: identifierDigits }]
             : []),
         ],
       },
@@ -252,7 +251,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error(error);
-
     return NextResponse.json(
       { error: "Erro ao realizar login." },
       { status: 500 }

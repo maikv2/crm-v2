@@ -9,7 +9,7 @@ type AuthUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "REPRESENTATIVE" | string;
+  role: string;
 };
 
 function isRepPath(pathname: string) {
@@ -19,11 +19,13 @@ function isRepPath(pathname: string) {
 function isRepresentativeSharedAdminForm(pathname: string) {
   if (pathname === "/clients/new") return true;
   if (pathname === "/exhibitors/new") return true;
-
   const isClientEdit =
     pathname.startsWith("/clients/") && pathname.endsWith("/edit");
-
   return isClientEdit;
+}
+
+function isFinancePath(pathname: string) {
+  return pathname === "/finance" || pathname.startsWith("/finance/");
 }
 
 function getRedirectByRole(user: AuthUser, pathname: string) {
@@ -37,6 +39,10 @@ function getRedirectByRole(user: AuthUser, pathname: string) {
 
   if (user.role === "ADMIN" && isRepPath(pathname)) {
     return "/dashboard";
+  }
+
+  if (user.role === "ADMINISTRATIVE" && !isFinancePath(pathname)) {
+    return "/finance";
   }
 
   return null;
@@ -66,10 +72,7 @@ export default function CRMLayout({
         setLoading(true);
         setAllowed(false);
 
-        const res = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
-
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
         const json = await res.json().catch(() => null);
 
         if (!active) return;
@@ -93,9 +96,7 @@ export default function CRMLayout({
         if (!active) return;
         router.replace(loginRedirect);
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
 
@@ -128,17 +129,9 @@ export default function CRMLayout({
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f3f6fb" }}>
       <Sidebar />
-
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <Header />
-
-        <main
-          style={{
-            flex: 1,
-            padding: 0,
-            background: "#f3f6fb",
-          }}
-        >
+        <main style={{ flex: 1, padding: 0, background: "#f3f6fb" }}>
           {children}
         </main>
       </div>

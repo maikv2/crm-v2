@@ -2,6 +2,7 @@
 
 import {
   Suspense,
+  useEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -26,11 +27,17 @@ function getLoginEndpoint(access: AccessType) {
   return "/api/auth/login";
 }
 
-function buildPayload(access: AccessType, identifier: string, password: string) {
+function buildPayload(
+  access: AccessType,
+  identifier: string,
+  password: string,
+  remember: boolean
+) {
   if (access === "CLIENT" || access === "INVESTOR") {
     return {
       username: identifier,
       password,
+      remember,
     };
   }
 
@@ -38,6 +45,7 @@ function buildPayload(access: AccessType, identifier: string, password: string) 
     access: "CRM",
     identifier,
     password,
+    remember,
   };
 }
 
@@ -61,10 +69,78 @@ function LoginPageContent() {
   const [access, setAccess] = useState<AccessType>(initialAccess);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const redirectParam = searchParams.get("redirect");
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("crm-v2-login-preferences");
+      if (!saved) return;
+
+      const parsed = JSON.parse(saved) as {
+        access?: AccessType;
+        identifier?: string;
+        remember?: boolean;
+      };
+
+      if (
+        parsed.access === "CRM" ||
+        parsed.access === "CLIENT" ||
+        parsed.access === "INVESTOR"
+      ) {
+        setAccess(parsed.access);
+      }
+
+      if (typeof parsed.identifier === "string") {
+        setIdentifier(parsed.identifier);
+      }
+
+      if (typeof parsed.remember === "boolean") {
+        setRemember(parsed.remember);
+      }
+    } catch {
+      window.localStorage.removeItem("crm-v2-login-preferences");
+    }
+  }, []);
+
+  useEffect(() => {
+    let activeCheck = true;
+
+    async function checkExistingSession() {
+      try {
+        if (access !== "CRM") return;
+
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+
+        if (!activeCheck || !res.ok) return;
+
+        const json = await res.json().catch(() => null);
+
+        if (json?.user?.id) {
+          const destination =
+            typeof redirectParam === "string" && redirectParam.startsWith("/")
+              ? redirectParam
+              : getDefaultDestination(access);
+
+          router.replace(destination);
+          router.refresh();
+        }
+      } finally {
+        if (activeCheck) setCheckingSession(false);
+      }
+    }
+
+    checkExistingSession();
+
+    return () => {
+      activeCheck = false;
+    };
+  }, [access, redirectParam, router]);
+
   const pageBg = theme.isDark ? "#081225" : theme.pageBg;
   const cardBg = theme.isDark ? "#0f172a" : theme.cardBg;
   const border = theme.isDark ? "#1e293b" : theme.border;
@@ -103,7 +179,7 @@ function LoginPageContent() {
       setError(null);
 
       const endpoint = getLoginEndpoint(access);
-      const payload = buildPayload(access, identifier, password);
+      const payload = buildPayload(access, identifier, password, remember);
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -117,6 +193,19 @@ function LoginPageContent() {
 
       if (!res.ok) {
         throw new Error(json?.error || "Erro ao realizar login.");
+      }
+
+      if (remember) {
+        window.localStorage.setItem(
+          "crm-v2-login-preferences",
+          JSON.stringify({
+            access,
+            identifier,
+            remember: true,
+          })
+        );
+      } else {
+        window.localStorage.removeItem("crm-v2-login-preferences");
       }
 
       const destination =
@@ -180,6 +269,25 @@ function LoginPageContent() {
       >
         {label}
       </button>
+    );
+  }
+
+  if (checkingSession) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: pageBg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          color: theme.text,
+          fontWeight: 800,
+        }}
+      >
+        Verificando acesso...
+      </div>
     );
   }
 
@@ -258,6 +366,29 @@ function LoginPageContent() {
               style={inputStyle}
             />
           </div>
+
+
+
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: 13,
+              fontWeight: 700,
+              color: theme.text,
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              style={{ width: 16, height: 16, cursor: "pointer" }}
+            />
+            Manter conectado neste aparelho
+          </label>
 
           {error ? (
             <div

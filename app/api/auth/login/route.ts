@@ -53,6 +53,8 @@ export async function POST(request: Request) {
       body?.identifier ?? body?.email ?? body?.user ?? ""
     );
     const password = String(body?.password || "");
+    const remember = Boolean(body?.remember);
+    const sessionMaxAge = remember ? 60 * 60 * 24 * 180 : 60 * 60 * 24 * 7;
 
     if (!rawIdentifier || !password) {
       return NextResponse.json(
@@ -64,7 +66,14 @@ export async function POST(request: Request) {
     if (access === "CRM") {
       const email = normalizeEmail(rawIdentifier);
 
-      const user = await prisma.user.findUnique({ where: { email } });
+      const user = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: email,
+            mode: "insensitive",
+          },
+        },
+      });
 
       if (!user || !user.passwordHash) {
         return NextResponse.json(
@@ -111,7 +120,7 @@ export async function POST(request: Request) {
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        maxAge: 60 * 60 * 24 * 7,
+        maxAge: sessionMaxAge,
       });
 
       const destination =
@@ -131,8 +140,13 @@ export async function POST(request: Request) {
     if (access === "INVESTOR") {
       const email = normalizeEmail(rawIdentifier);
 
-      const user = await prisma.user.findUnique({
-        where: { email },
+      const user = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: email,
+            mode: "insensitive",
+          },
+        },
         include: { investorProfile: true },
       });
 
@@ -175,7 +189,7 @@ export async function POST(request: Request) {
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        maxAge: 60 * 60 * 24 * 7,
+        maxAge: sessionMaxAge,
       });
 
       return NextResponse.json({
@@ -237,7 +251,7 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: sessionMaxAge,
     });
 
     return NextResponse.json({

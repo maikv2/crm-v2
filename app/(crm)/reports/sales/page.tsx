@@ -647,7 +647,7 @@ export default function ReportsSalesPage() {
     setSettlementStatus(null);
 
     try {
-      const res = await fetch("/api/automations/commission-settlement/send", {
+      const res = await fetch("/api/automations/commissions-settlements/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

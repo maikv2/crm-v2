@@ -161,7 +161,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, response });
   } catch (error) {
-    console.error("POST /api/automations/commission-settlement/send error:", error);
+    console.error("POST /api/automations/commissions-settlements/send error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro ao enviar fechamento de comissão." },
       { status: 500 }

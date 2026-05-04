@@ -12,6 +12,7 @@ import {
   FileText,
   Package,
   Printer,
+  Send,
   ShoppingCart,
   TrendingUp,
   Users,
@@ -583,6 +584,10 @@ export default function ReportsSalesPage() {
   const [data, setData] = useState<SalesReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [financePhone, setFinancePhone] = useState("");
+  const [pixKey, setPixKey] = useState("");
+  const [sendingSettlement, setSendingSettlement] = useState(false);
+  const [settlementStatus, setSettlementStatus] = useState<string | null>(null);
 
   const isDark = theme.isDark;
   const muted = isDark ? "#94a3b8" : "#64748b";
@@ -615,12 +620,58 @@ export default function ReportsSalesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setFinancePhone(window.localStorage.getItem("salesReport.financePhone") ?? "");
+    setPixKey(window.localStorage.getItem("salesReport.pixKey") ?? "");
+  }, []);
+
   function applyFilters() {
     const params = new URLSearchParams({ from, to });
     if (regionId !== "all") params.set("regionId", regionId);
     if (sellerId !== "all") params.set("sellerId", sellerId);
     router.replace(`/reports/sales?${params.toString()}`);
     loadReport(from, to, regionId, sellerId);
+  }
+
+  function saveFinancialAutomationConfig() {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("salesReport.financePhone", financePhone);
+    window.localStorage.setItem("salesReport.pixKey", pixKey);
+    setSettlementStatus("Dados do financeiro salvos neste navegador.");
+  }
+
+  async function sendCommissionSettlement() {
+    if (!data) return;
+    setSendingSettlement(true);
+    setSettlementStatus(null);
+
+    try {
+      const res = await fetch("/api/automations/commission-settlement/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: financePhone,
+          pixKey,
+          period: data.period,
+          filters: {
+            regionName: regionId === "all" ? "Todas as regiões" : data.filterOptions?.regions.find((region) => region.id === regionId)?.name ?? "Região selecionada",
+            sellerName: sellerId === "all" ? "Todos os representantes" : data.filterOptions?.sellers.find((seller) => seller.id === sellerId)?.name ?? "Representante selecionado",
+          },
+          summary: data.summary,
+          bySeller: data.bySeller,
+          commissionOrders: data.commissionOrders,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Erro ao enviar fechamento.");
+      setSettlementStatus("Fechamento enviado pelo WhatsApp com sucesso.");
+    } catch (err) {
+      setSettlementStatus(err instanceof Error ? err.message : "Erro ao enviar fechamento.");
+    } finally {
+      setSendingSettlement(false);
+    }
   }
 
   const chartData = useMemo(() => {
@@ -727,6 +778,52 @@ export default function ReportsSalesPage() {
               <PdfBlock icon={Users} title="Itens por cliente" description="Produtos vendidos separados por cliente, com totais." onPrint={() => generateSoldProductsByClientPdf(data)} theme={theme} />
               <PdfBlock icon={BadgeDollarSign} title="Detalhamento de comissão" description="Pedido, itens, comissão liberada, pendente e motivo." onPrint={() => generateCommissionPdf(data, selectedSellerName)} theme={theme} />
             </div>
+
+            <Block title="Fechamento de comissão por WhatsApp" theme={theme}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto", gap: 12, alignItems: "end" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: muted, marginBottom: 6 }}>Telefone do financeiro</label>
+                  <input
+                    value={financePhone}
+                    onChange={(e) => setFinancePhone(e.target.value)}
+                    placeholder="Ex: 47999999999"
+                    style={inputStyle(isDark, border, theme.text)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: muted, marginBottom: 6 }}>Chave Pix para pagamento</label>
+                  <input
+                    value={pixKey}
+                    onChange={(e) => setPixKey(e.target.value)}
+                    placeholder="Chave Pix"
+                    style={inputStyle(isDark, border, theme.text)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={saveFinancialAutomationConfig}
+                  style={{ border: `1px solid ${border}`, borderRadius: 12, padding: "12px 14px", background: isDark ? "#020617" : "#ffffff", color: theme.text, fontWeight: 900, cursor: "pointer" }}
+                >
+                  Salvar dados
+                </button>
+                <button
+                  type="button"
+                  onClick={sendCommissionSettlement}
+                  disabled={sendingSettlement || !financePhone.trim()}
+                  style={{ border: "none", borderRadius: 12, padding: "12px 14px", background: sendingSettlement || !financePhone.trim() ? "#94a3b8" : "#16a34a", color: "#ffffff", fontWeight: 900, cursor: sendingSettlement || !financePhone.trim() ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                >
+                  <Send size={16} /> {sendingSettlement ? "Enviando..." : "Enviar fechamento"}
+                </button>
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, color: muted, lineHeight: 1.5 }}>
+                O envio usa o período, região e representante filtrados nesta tela. A comissão a pagar considera somente valores já baixados no financeiro.
+              </div>
+              {settlementStatus && (
+                <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, border: `1px solid ${border}`, background: subtle, color: theme.text, fontSize: 13, fontWeight: 700 }}>
+                  {settlementStatus}
+                </div>
+              )}
+            </Block>
 
             <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18, marginBottom: 20 }}>
               <Block title="Vendas por dia" theme={theme}>

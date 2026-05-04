@@ -210,13 +210,23 @@ export default function SettingsAccessPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => router.push("/settings")}
-          style={secondaryButtonStyle(theme)}
-        >
-          Voltar
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => router.push("/settings/finance-user/new")}
+            style={secondaryButtonStyle(theme)}
+          >
+            Novo usuário
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/settings")}
+            style={secondaryButtonStyle(theme)}
+          >
+            Voltar
+          </button>
+        </div>
       </div>
 
       <div
@@ -266,7 +276,7 @@ export default function SettingsAccessPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "140px 1.2fr 1fr 1fr 120px 280px",
+            gridTemplateColumns: "140px 1.2fr 1fr 1fr 120px 360px",
             gap: 12,
             padding: "14px 16px",
             borderBottom: `1px solid ${theme.border}`,
@@ -293,7 +303,7 @@ export default function SettingsAccessPage() {
               key={`${item.type}-${item.id}`}
               style={{
                 display: "grid",
-                gridTemplateColumns: "140px 1.2fr 1fr 1fr 120px 280px",
+                gridTemplateColumns: "140px 1.2fr 1fr 1fr 120px 360px",
                 gap: 12,
                 padding: "14px 16px",
                 borderBottom: `1px solid ${theme.border}`,
@@ -335,6 +345,18 @@ export default function SettingsAccessPage() {
                       ? "Criar acesso"
                       : "Trocar senha"}
                 </button>
+
+                {item.type === "ADMIN" ||
+                item.type === "REPRESENTATIVE" ||
+                item.type === "ADMINISTRATIVE" ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/settings/users/${item.id}/edit`)}
+                    style={smallButtonStyle(theme)}
+                  >
+                    Editar
+                  </button>
+                ) : null}
 
                 <button
                   type="button"

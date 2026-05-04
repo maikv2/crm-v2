@@ -43,6 +43,7 @@ export const adminMobileNavItems = [
       "/m/admin/alerts",
       "/m/admin/map",
       "/m/admin/settings",
+      "/m/admin/reports",
     ],
   },
 ];

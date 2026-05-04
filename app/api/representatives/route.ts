@@ -22,6 +22,9 @@ export async function GET() {
         name: true,
         email: true,
         phone: true,
+        pixKey: true,
+        pixName: true,
+        pixType: true,
         active: true,
         createdAt: true,
         regionId: true,
@@ -57,6 +60,9 @@ export async function GET() {
       name: rep.name,
       email: rep.email,
       phone: rep.phone,
+      pixKey: rep.pixKey,
+      pixName: rep.pixName,
+      pixType: rep.pixType,
       active: rep.active,
       createdAt: rep.createdAt,
       regionId: rep.regionId,
@@ -87,6 +93,9 @@ export async function POST(request: Request) {
     const email = normalizeText(body?.email)?.toLowerCase() ?? null;
     const password = normalizeText(body?.password);
     const phone = normalizeText(body?.phone);
+    const pixKey = normalizeText(body?.pixKey);
+    const pixName = normalizeText(body?.pixName);
+    const pixType = normalizeText(body?.pixType);
     const regionId = normalizeText(body?.regionId);
 
     if (!name) {
@@ -188,6 +197,9 @@ export async function POST(request: Request) {
         email,
         passwordHash,
         phone,
+        pixKey,
+        pixName,
+        pixType,
         role: UserRole.REPRESENTATIVE,
         active: true,
         regionId: region.id,
@@ -198,6 +210,9 @@ export async function POST(request: Request) {
         name: true,
         email: true,
         phone: true,
+        pixKey: true,
+        pixName: true,
+        pixType: true,
         active: true,
         createdAt: true,
         regionId: true,
@@ -233,6 +248,9 @@ export async function POST(request: Request) {
         name: created.name,
         email: created.email,
         phone: created.phone,
+        pixKey: created.pixKey,
+        pixName: created.pixName,
+        pixType: created.pixType,
         active: created.active,
         createdAt: created.createdAt,
         regionId: created.regionId,
@@ -259,6 +277,111 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       { error: "Erro ao criar representante." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+
+    const id = normalizeText(body?.id);
+    const pixKey = normalizeText(body?.pixKey);
+    const pixName = normalizeText(body?.pixName);
+    const pixType = normalizeText(body?.pixType);
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Informe o representante para atualizar o Pix." },
+        { status: 400 }
+      );
+    }
+
+    const representative = await prisma.user.findFirst({
+      where: {
+        id,
+        role: UserRole.REPRESENTATIVE,
+      },
+      select: { id: true },
+    });
+
+    if (!representative) {
+      return NextResponse.json(
+        { error: "Representante não encontrado." },
+        { status: 404 }
+      );
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: {
+        pixKey,
+        pixName,
+        pixType,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        pixKey: true,
+        pixName: true,
+        pixType: true,
+        active: true,
+        createdAt: true,
+        regionId: true,
+        stockLocationId: true,
+        region: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+            stockLocation: {
+              select: {
+                id: true,
+                name: true,
+                active: true,
+              },
+            },
+          },
+        },
+        stockLocation: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+          },
+        },
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      item: {
+        id: updated.id,
+        name: updated.name,
+        email: updated.email,
+        phone: updated.phone,
+        pixKey: updated.pixKey,
+        pixName: updated.pixName,
+        pixType: updated.pixType,
+        active: updated.active,
+        createdAt: updated.createdAt,
+        regionId: updated.regionId,
+        stockLocationId: updated.stockLocationId,
+        regionName: updated.region?.name ?? null,
+        stockLocationName:
+          updated.stockLocation?.name ??
+          updated.region?.stockLocation?.name ??
+          null,
+      },
+    });
+  } catch (error) {
+    console.error("PUT REPRESENTATIVES ERROR:", error);
+
+    return NextResponse.json(
+      { error: "Erro ao atualizar Pix do representante." },
       { status: 500 }
     );
   }

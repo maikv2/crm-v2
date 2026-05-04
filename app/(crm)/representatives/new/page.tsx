@@ -42,6 +42,9 @@ export default function NewRepresentativePage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [pixKey, setPixKey] = useState("");
+  const [pixName, setPixName] = useState("");
+  const [pixType, setPixType] = useState("");
   const [password, setPassword] = useState("");
   const [regionId, setRegionId] = useState("");
   const [stockLocationId, setStockLocationId] = useState("");
@@ -175,6 +178,9 @@ export default function NewRepresentativePage() {
           name: name.trim(),
           email: email.trim().toLowerCase(),
           phone: phone.trim() || null,
+          pixKey: pixKey.trim() || null,
+          pixName: pixName.trim() || null,
+          pixType: pixType.trim() || null,
           password: password.trim(),
           regionId,
           stockLocationId,
@@ -404,6 +410,68 @@ export default function NewRepresentativePage() {
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 14,
+              paddingTop: 14,
+              borderTop: `1px solid ${colors.border}`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 900,
+                marginBottom: 12,
+              }}
+            >
+              Dados Pix para Comissão
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <div>
+                <label style={labelStyle}>Nome do favorecido Pix</label>
+                <input
+                  style={inputStyle}
+                  placeholder="Ex: João da Silva"
+                  value={pixName}
+                  onChange={(e) => setPixName(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Tipo da chave Pix</label>
+                <select
+                  style={selectStyle}
+                  value={pixType}
+                  onChange={(e) => setPixType(e.target.value)}
+                >
+                  <option value="">Selecione</option>
+                  <option value="CPF">CPF</option>
+                  <option value="CNPJ">CNPJ</option>
+                  <option value="CELULAR">Celular</option>
+                  <option value="EMAIL">E-mail</option>
+                  <option value="ALEATORIA">Chave aleatória</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Chave Pix</label>
+                <input
+                  style={inputStyle}
+                  placeholder="Informe a chave Pix"
+                  value={pixKey}
+                  onChange={(e) => setPixKey(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 

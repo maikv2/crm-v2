@@ -10,6 +10,9 @@ type RepresentativeItem = {
   name: string;
   email: string;
   phone?: string | null;
+  pixKey?: string | null;
+  pixName?: string | null;
+  pixType?: string | null;
   active: boolean;
   createdAt: string;
   regionId?: string | null;
@@ -163,14 +166,80 @@ function SummaryCard({
 function RepresentativeCard({
   item,
   theme,
+  onSaved,
 }: {
   item: RepresentativeItem;
   theme: ThemeShape;
+  onSaved: (item: RepresentativeItem) => void;
 }) {
   const subtleCard = theme.isDark ? "#0b1324" : "#f8fafc";
   const innerCardBg = theme.isDark ? "#111827" : theme.cardBg;
   const border = theme.isDark ? "#1e293b" : theme.border;
   const muted = theme.isDark ? "#94a3b8" : "#64748b";
+  const inputBg = theme.isDark ? "#0f172a" : "#ffffff";
+
+  const [pixKey, setPixKey] = useState(item.pixKey ?? "");
+  const [pixName, setPixName] = useState(item.pixName ?? "");
+  const [pixType, setPixType] = useState(item.pixType ?? "");
+  const [savingPix, setSavingPix] = useState(false);
+
+  useEffect(() => {
+    setPixKey(item.pixKey ?? "");
+    setPixName(item.pixName ?? "");
+    setPixType(item.pixType ?? "");
+  }, [item.id, item.pixKey, item.pixName, item.pixType]);
+
+  async function savePix() {
+    try {
+      setSavingPix(true);
+
+      const res = await fetch("/api/representatives", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          pixKey: pixKey.trim() || null,
+          pixName: pixName.trim() || null,
+          pixType: pixType.trim() || null,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erro ao salvar Pix do representante.");
+      }
+
+      if (data?.item) {
+        onSaved(data.item as RepresentativeItem);
+      }
+
+      alert("Pix do representante salvo com sucesso.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Erro ao salvar Pix do representante.");
+    } finally {
+      setSavingPix(false);
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "10px 11px",
+    borderRadius: 10,
+    border: `1px solid ${border}`,
+    background: inputBg,
+    color: theme.text,
+    outline: "none",
+    fontSize: 13,
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    marginBottom: 5,
+    fontWeight: 800,
+    fontSize: 12,
+    color: muted,
+  };
 
   return (
     <div
@@ -325,6 +394,105 @@ function RepresentativeCard({
           </div>
         </div>
       </div>
+
+      <div
+        style={{
+          marginTop: 14,
+          background: innerCardBg,
+          border: `1px solid ${border}`,
+          borderRadius: 12,
+          padding: 12,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 900,
+            color: theme.text,
+            marginBottom: 10,
+          }}
+        >
+          Pix para comissão
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 0.8fr 1.2fr",
+            gap: 10,
+          }}
+        >
+          <div>
+            <label style={labelStyle}>Favorecido</label>
+            <input
+              style={inputStyle}
+              value={pixName}
+              onChange={(e) => setPixName(e.target.value)}
+              placeholder="Nome de quem recebe"
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Tipo</label>
+            <select
+              style={inputStyle}
+              value={pixType}
+              onChange={(e) => setPixType(e.target.value)}
+            >
+              <option value="">Selecione</option>
+              <option value="CPF">CPF</option>
+              <option value="CNPJ">CNPJ</option>
+              <option value="CELULAR">Celular</option>
+              <option value="EMAIL">E-mail</option>
+              <option value="ALEATORIA">Chave aleatória</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Chave Pix</label>
+            <input
+              style={inputStyle}
+              value={pixKey}
+              onChange={(e) => setPixKey(e.target.value)}
+              placeholder="Chave Pix do representante"
+            />
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 10,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontSize: 12, color: muted, fontWeight: 700 }}>
+            Esses dados serão usados no fechamento de comissão do representante.
+          </div>
+
+          <button
+            type="button"
+            onClick={savePix}
+            disabled={savingPix}
+            style={{
+              height: 36,
+              padding: "0 12px",
+              borderRadius: 10,
+              border: "none",
+              background: "#2563eb",
+              color: "#ffffff",
+              fontWeight: 900,
+              cursor: savingPix ? "not-allowed" : "pointer",
+              opacity: savingPix ? 0.7 : 1,
+            }}
+          >
+            {savingPix ? "Salvando..." : "Salvar Pix"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -370,6 +538,12 @@ export default function RepresentativesPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  function updateRepresentativeItem(updated: RepresentativeItem) {
+    setItems((current) =>
+      current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+    );
+  }
 
   const totals = useMemo(() => {
     return items.reduce(
@@ -530,7 +704,12 @@ export default function RepresentativesPage() {
             }}
           >
             {items.map((item) => (
-              <RepresentativeCard key={item.id} item={item} theme={theme} />
+              <RepresentativeCard
+                key={item.id}
+                item={item}
+                theme={theme}
+                onSaved={updateRepresentativeItem}
+              />
             ))}
           </div>
         )}

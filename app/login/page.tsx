@@ -72,7 +72,10 @@ function LoginPageContent() {
   const [remember, setRemember] = useState(true);
   const [checkingSession, setCheckingSession] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const redirectParam = searchParams.get("redirect");
 
@@ -147,15 +150,14 @@ function LoginPageContent() {
   const muted = theme.isDark ? "#94a3b8" : "#64748b";
   const subtle = theme.isDark ? "#111827" : "#f8fafc";
 
-  const identifierLabel =
-    access === "CLIENT" || access === "INVESTOR" ? "Usuário" : "E-mail";
+  const identifierLabel = access === "CRM" ? "Usuário" : "Usuário";
 
   const identifierPlaceholder =
     access === "CLIENT"
       ? "Digite o usuário do cliente"
       : access === "INVESTOR"
         ? "Digite o e-mail do investidor"
-        : "Digite seu e-mail";
+        : "Digite seu usuário";
 
   const title =
     access === "CRM"
@@ -177,6 +179,7 @@ function LoginPageContent() {
     try {
       setLoading(true);
       setError(null);
+      setSuccess(null);
 
       const endpoint = getLoginEndpoint(access);
       const payload = buildPayload(access, identifier, password, remember);
@@ -224,6 +227,50 @@ function LoginPageContent() {
     }
   }
 
+  async function handleForgotPassword() {
+    try {
+      setForgotLoading(true);
+      setError(null);
+      setSuccess(null);
+
+      const cleanIdentifier = identifier.trim();
+
+      if (!cleanIdentifier) {
+        throw new Error("Digite seu usuário ou e-mail antes de recuperar a senha.");
+      }
+
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          access,
+          identifier: cleanIdentifier,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Erro ao solicitar recuperação de senha.");
+      }
+
+      setSuccess(
+        json?.message ||
+          "Se houver um e-mail cadastrado para este usuário, enviaremos o link para redefinir a senha."
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Erro ao solicitar recuperação de senha."
+      );
+    } finally {
+      setForgotLoading(false);
+    }
+  }
+
   const inputStyle: CSSProperties = {
     width: "100%",
     padding: "12px 14px",
@@ -249,6 +296,7 @@ function LoginPageContent() {
         onClick={() => {
           setAccess(value);
           setError(null);
+          setSuccess(null);
           setIdentifier("");
           setPassword("");
 
@@ -346,11 +394,12 @@ function LoginPageContent() {
               {identifierLabel}
             </div>
             <input
-              type={access === "CRM" ? "email" : "text"}
+              type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder={identifierPlaceholder}
               style={inputStyle}
+              autoComplete="username"
             />
           </div>
 
@@ -358,37 +407,87 @@ function LoginPageContent() {
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
               Senha
             </div>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Digite sua senha"
-              style={inputStyle}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Digite sua senha"
+                style={{ ...inputStyle, paddingRight: 96 }}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  height: 32,
+                  padding: "0 10px",
+                  borderRadius: 10,
+                  border: `1px solid ${border}`,
+                  background: subtle,
+                  color: theme.text,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {showPassword ? "Ocultar" : "Ver senha"}
+              </button>
+            </div>
           </div>
 
-
-
-          <label
+          <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              fontSize: 13,
-              fontWeight: 700,
-              color: theme.text,
-              cursor: "pointer",
-              userSelect: "none",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
             }}
           >
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              style={{ width: 16, height: 16, cursor: "pointer" }}
-            />
-            Manter conectado neste aparelho
-          </label>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: 13,
+                fontWeight: 700,
+                color: theme.text,
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                style={{ width: 16, height: 16, cursor: "pointer" }}
+              />
+              Manter conectado neste aparelho
+            </label>
+
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={forgotLoading}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#2563eb",
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: forgotLoading ? "not-allowed" : "pointer",
+                padding: 0,
+                opacity: forgotLoading ? 0.7 : 1,
+              }}
+            >
+              {forgotLoading ? "Enviando..." : "Esqueci minha senha"}
+            </button>
+          </div>
 
           {error ? (
             <div
@@ -403,6 +502,23 @@ function LoginPageContent() {
               }}
             >
               {error}
+            </div>
+          ) : null}
+
+          {success ? (
+            <div
+              style={{
+                borderRadius: 12,
+                border: "1px solid #bbf7d0",
+                background: theme.isDark ? "rgba(20,83,45,0.22)" : "#f0fdf4",
+                color: theme.isDark ? "#86efac" : "#15803d",
+                padding: 12,
+                fontSize: 13,
+                fontWeight: 700,
+                lineHeight: 1.45,
+              }}
+            >
+              {success}
             </div>
           ) : null}
 

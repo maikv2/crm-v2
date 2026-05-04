@@ -32,6 +32,28 @@ function normalizeEmail(value: string) {
   return value.toLowerCase().trim();
 }
 
+function userLoginWhere(identifier: string) {
+  const value = identifier.trim();
+  const email = normalizeEmail(value);
+
+  return {
+    OR: [
+      {
+        name: {
+          equals: value,
+          mode: "insensitive" as const,
+        },
+      },
+      {
+        email: {
+          equals: email,
+          mode: "insensitive" as const,
+        },
+      },
+    ],
+  };
+}
+
 function onlyDigits(value: string) {
   return value.replace(/\D/g, "");
 }
@@ -82,15 +104,8 @@ export async function POST(request: Request) {
     }
 
     if (access === "CRM") {
-      const email = normalizeEmail(rawIdentifier);
-
       const user = await prisma.user.findFirst({
-        where: {
-          email: {
-            equals: email,
-            mode: "insensitive",
-          },
-        },
+        where: userLoginWhere(rawIdentifier),
       });
 
       if (!user || !user.passwordHash) {
@@ -164,15 +179,8 @@ export async function POST(request: Request) {
     }
 
     if (access === "INVESTOR") {
-      const email = normalizeEmail(rawIdentifier);
-
       const user = await prisma.user.findFirst({
-        where: {
-          email: {
-            equals: email,
-            mode: "insensitive",
-          },
-        },
+        where: userLoginWhere(rawIdentifier),
         include: { investorProfile: true },
       });
 

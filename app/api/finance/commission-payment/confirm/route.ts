@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { sendText } from "@/lib/zapi";
 import {
   FinanceCategoryType,
   FinanceEntryType,
@@ -16,6 +17,7 @@ type ConfirmationRow = {
   id: string;
   representativeId: string;
   representativeName: string;
+  representativePhone: string | null;
   regionId: string | null;
   regionName: string | null;
   weekStart: Date;
@@ -31,12 +33,103 @@ type ConfirmationRow = {
   metadata: unknown;
 };
 
+type MetadataPayload = {
+  totalSalesCents?: number;
+  totalCommissionCents?: number;
+  payableOrders?: Array<{ number: number; clientName: string; commissionCents: number }>;
+  pendingOrders?: Array<{ number: number; clientName: string; pendingCommissionCents: number; reason: string }>;
+  pixKey?: string | null;
+  pixName?: string | null;
+  pixType?: string | null;
+};
+
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
 function normalizeToken(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function centsToBRL(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format((value || 0) / 100);
+}
+
+function dateToShortBR(date: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(date);
+}
+
+function buildRepresentativeConfirmationMessage(params: {
+  representativeName: string;
+  regionName: string;
+  periodStart: Date;
+  periodEnd: Date;
+  orderCount: number;
+  totalSalesCents: number;
+  totalCommissionCents: number;
+  payableCommissionCents: number;
+  pendingCommissionCents: number;
+  payableOrders: Array<{ number: number; clientName: string; commissionCents: number }>;
+  pendingOrders: Array<{ number: number; clientName: string; pendingCommissionCents: number; reason: string }>;
+}) {
+  const payableLines = params.payableOrders.length
+    ? params.payableOrders
+        .slice(0, 12)
+        .map(
+          (order) =>
+            `• PED-${String(order.number).padStart(4, "0")} - ${order.clientName}: ${centsToBRL(order.commissionCents)}`
+        )
+        .join("\n")
+    : "Nenhuma comissão liberada para pagamento neste período.";
+
+  const pendingLines = params.pendingOrders.length
+    ? params.pendingOrders
+        .slice(0, 12)
+        .map(
+          (order) =>
+            `• PED-${String(order.number).padStart(4, "0")} - ${order.clientName}: ${centsToBRL(order.pendingCommissionCents)} pendente (${order.reason})`
+        )
+        .join("\n")
+    : "Nenhuma comissão pendente neste período.";
+
+  const extraPayable =
+    params.payableOrders.length > 12
+      ? `\n• +${params.payableOrders.length - 12} pedidos liberados no relatório.`
+      : "";
+  const extraPending =
+    params.pendingOrders.length > 12
+      ? `\n• +${params.pendingOrders.length - 12} pedidos pendentes no relatório.`
+      : "";
+
+  return [
+    "✅ *Pagamento de comissão confirmado!*",
+    "",
+    `Período: ${dateToShortBR(params.periodStart)} a ${dateToShortBR(params.periodEnd)}`,
+    `Representante: ${params.representativeName}`,
+    `Região: ${params.regionName}`,
+    "",
+    `Pedidos no período: ${params.orderCount}`,
+    `Total vendido: ${centsToBRL(params.totalSalesCents)}`,
+    `Comissão total gerada: ${centsToBRL(params.totalCommissionCents)}`,
+    "",
+    `*Valor pago agora: ${centsToBRL(params.payableCommissionCents)}*`,
+    `*Pendente para próximo acerto: ${centsToBRL(params.pendingCommissionCents)}*`,
+    "",
+    "*Comissões pagas neste acerto:*",
+    payableLines + extraPayable,
+    "",
+    "*Comissões pendentes e motivo:*",
+    pendingLines + extraPending,
+    "",
+    "Regra: comissão liberada somente sobre valores já baixados como recebidos no financeiro.",
+  ].join("\n");
 }
 
 async function findConfirmationByToken(token: string) {
@@ -47,6 +140,7 @@ async function findConfirmationByToken(token: string) {
       c."id",
       c."representativeId",
       u."name" as "representativeName",
+      u."phone" as "representativePhone",
       c."regionId",
       r."name" as "regionName",
       c."weekStart",
@@ -170,6 +264,7 @@ export async function POST(request: Request) {
           c."id",
           c."representativeId",
           u."name" as "representativeName",
+          u."phone" as "representativePhone",
           c."regionId",
           r."name" as "regionName",
           c."weekStart",
@@ -241,6 +336,38 @@ export async function POST(request: Request) {
 
       return { confirmation: fresh, transaction, alreadyPaid: false };
     });
+
+    // Enviar WhatsApp ao representante após confirmação (fire-and-forget)
+    if (!result.alreadyPaid && row.representativePhone) {
+      try {
+        const meta = (row.metadata ?? {}) as MetadataPayload;
+        const payableOrders = Array.isArray(meta.payableOrders) ? meta.payableOrders : [];
+        const pendingOrders = Array.isArray(meta.pendingOrders) ? meta.pendingOrders : [];
+        const totalSalesCents = typeof meta.totalSalesCents === "number" ? meta.totalSalesCents : 0;
+        const totalCommissionCents = typeof meta.totalCommissionCents === "number" ? meta.totalCommissionCents : 0;
+
+        const message = buildRepresentativeConfirmationMessage({
+          representativeName: row.representativeName,
+          regionName: row.regionName || "Sem região",
+          periodStart: row.weekStart,
+          periodEnd: row.weekEnd,
+          orderCount: row.ordersCount,
+          totalSalesCents,
+          totalCommissionCents,
+          payableCommissionCents: row.amountCents,
+          pendingCommissionCents: row.pendingCents,
+          payableOrders,
+          pendingOrders,
+        });
+
+        await sendText({ phone: row.representativePhone, message });
+      } catch (zapiError) {
+        console.error(
+          "POST /api/finance/commission-payment/confirm — falha ao enviar WhatsApp ao representante:",
+          zapiError
+        );
+      }
+    }
 
     return NextResponse.json({
       ok: true,

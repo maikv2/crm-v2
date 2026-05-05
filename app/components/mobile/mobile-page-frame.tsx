@@ -1,9 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Smartphone } from "lucide-react";
-import MobileShell from "@/app/components/mobile/mobile-shell";
-import { adminMobileNavItems } from "@/app/components/mobile/mobile-admin-shared";
+import MobileShell, {
+  type MobileNavItem,
+} from "@/app/components/mobile/mobile-shell";
+import {
+  adminMobileNavItems,
+  financeMobileNavItems,
+} from "@/app/components/mobile/mobile-admin-shared";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -11,23 +17,29 @@ export default function MobilePageFrame({
   title,
   subtitle,
   desktopHref,
+  navItems,
   children,
 }: {
   title: string;
   subtitle?: string;
   desktopHref?: string;
+  navItems?: MobileNavItem[];
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
+
+  const resolvedNavItems =
+    navItems ?? (pathname.startsWith("/m/admin/finance") ? financeMobileNavItems : adminMobileNavItems);
 
   return (
     <MobileShell
       title={title}
       subtitle={subtitle}
-      navItems={adminMobileNavItems}
+      navItems={resolvedNavItems}
       showBrand
-      brandHref="/m/admin"
+      brandHref={pathname.startsWith("/m/admin/finance") ? "/m/admin/finance" : "/m/admin"}
       rightSlot={
         desktopHref ? (
           <Link

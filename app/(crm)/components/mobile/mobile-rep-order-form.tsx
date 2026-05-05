@@ -414,8 +414,12 @@ export default function MobileRepOrderForm() {
   const itemsWithProduct = useMemo(() => {
     return cart.map((item) => {
       const product = products.find((p) => p.id === item.productId);
+      const regionStockKey = repRegionId ? `region:${repRegionId}` : "";
+      const stockMap = stockByProductAndLocation[item.productId] ?? {};
       const locationStock =
-        stockByProductAndLocation[item.productId]?.[repStockLocationId] ?? 0;
+        (regionStockKey ? stockMap[regionStockKey] : undefined) ??
+        stockMap[repStockLocationId] ??
+        0;
 
       return {
         ...item,
@@ -424,7 +428,7 @@ export default function MobileRepOrderForm() {
         subtotalCents: item.qty * item.unitCents,
       };
     });
-  }, [cart, products, stockByProductAndLocation, repStockLocationId]);
+  }, [cart, products, stockByProductAndLocation, repStockLocationId, repRegionId]);
 
   const filteredItems = useMemo(() => {
     return itemsWithProduct.filter((item) => {

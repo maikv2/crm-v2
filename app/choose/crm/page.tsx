@@ -18,12 +18,14 @@ type MeResponse = {
 function resolveDesktop(role?: string | null) {
   if (role === "ADMIN") return "/dashboard";
   if (role === "REPRESENTATIVE") return "/rep";
+  if (role === "ADMINISTRATIVE") return "/finance";
   return "/dashboard";
 }
 
 function resolveMobile(role?: string | null) {
   if (role === "ADMIN") return "/m/admin";
   if (role === "REPRESENTATIVE") return "/m/rep";
+  if (role === "ADMINISTRATIVE") return "/m/finance";
   return "/m/admin";
 }
 
@@ -159,7 +161,11 @@ export default function ChooseCrmPage() {
           setName(json?.user?.name?.trim() || json?.user?.email || "Usuário");
           setRole(nextRole);
 
-          if (nextRole !== "ADMIN" && nextRole !== "REPRESENTATIVE") {
+          if (
+            nextRole !== "ADMIN" &&
+            nextRole !== "REPRESENTATIVE" &&
+            nextRole !== "ADMINISTRATIVE"
+          ) {
             router.replace("/login?access=CRM");
             return;
           }

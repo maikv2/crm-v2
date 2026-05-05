@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserPlus, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { useTheme } from "@/app/providers/theme-provider";
+import { getThemeColors } from "@/lib/theme";
 
 function formatPhoneBR(value: string) {
   const v = value.replace(/\D/g, "").slice(0, 11);
@@ -15,6 +17,8 @@ function formatPhoneBR(value: string) {
 
 export default function NewFinanceUserPage() {
   const router = useRouter();
+  const { theme: mode } = useTheme();
+  const theme = getThemeColors(mode);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -23,7 +27,6 @@ export default function NewFinanceUserPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   async function handleSubmit() {
     setError(null);
@@ -54,11 +57,8 @@ export default function NewFinanceUserPage() {
         return;
       }
 
-      setSuccess(true);
-      setName("");
-      setEmail("");
-      setPhone("");
-      setPassword("");
+      router.push("/settings/access");
+      router.refresh();
     } catch {
       setError("Erro de conexão. Tente novamente.");
     } finally {
@@ -70,9 +70,10 @@ export default function NewFinanceUserPage() {
     width: "100%",
     padding: "10px 14px",
     borderRadius: 10,
-    border: "1px solid #d1d5db",
+    border: `1px solid ${theme.border}`,
     fontSize: 14,
-    color: "#0f172a",
+    color: theme.text,
+    background: theme.inputBg,
     outline: "none",
     boxSizing: "border-box",
   };
@@ -81,194 +82,188 @@ export default function NewFinanceUserPage() {
     display: "block",
     fontSize: 13,
     fontWeight: 600,
-    color: "#374151",
+    color: theme.subtext,
     marginBottom: 6,
   };
 
   return (
-    <div style={{ maxWidth: 520, margin: "40px auto", padding: "0 24px" }}>
-      <button
-        onClick={() => router.back()}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "#6b7280",
-          fontSize: 14,
-          fontWeight: 500,
-          marginBottom: 24,
-          padding: 0,
-        }}
-      >
-        <ArrowLeft size={16} />
-        Voltar
-      </button>
-
-      <div
-        style={{
-          background: "#ffffff",
-          borderRadius: 16,
-          border: "1px solid #e5e7eb",
-          padding: 32,
-        }}
-      >
-        <div
+    <div
+      style={{
+        minHeight: "100%",
+        background: theme.pageBg,
+        color: theme.text,
+        padding: "40px 24px",
+      }}
+    >
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <button
+          onClick={() => router.push("/settings/access")}
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 12,
-            marginBottom: 28,
+            gap: 8,
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: theme.subtext,
+            fontSize: 14,
+            fontWeight: 500,
+            marginBottom: 24,
+            padding: 0,
+          }}
+        >
+          <ArrowLeft size={16} />
+          Voltar
+        </button>
+
+        <div
+          style={{
+            background: theme.cardBg,
+            borderRadius: 16,
+            border: `1px solid ${theme.border}`,
+            padding: 32,
           }}
         >
           <div
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: "#eff6ff",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
+              gap: 12,
+              marginBottom: 28,
             }}
           >
-            <UserPlus size={20} color="#2563eb" />
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 17, color: "#0f172a" }}>
-              Novo Usuário Financeiro
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: theme.hoverBg,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <UserPlus size={20} color={theme.primary} />
             </div>
-            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
-              Acesso restrito ao módulo financeiro
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 17, color: theme.text }}>
+                Novo Usuário Financeiro
+              </div>
+              <div style={{ fontSize: 13, color: theme.subtext, marginTop: 2 }}>
+                Acesso restrito ao módulo financeiro
+              </div>
             </div>
           </div>
-        </div>
 
-        {success && (
-          <div
-            style={{
-              background: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              borderRadius: 10,
-              padding: "12px 16px",
-              marginBottom: 20,
-              color: "#15803d",
-              fontSize: 14,
-              fontWeight: 500,
-            }}
-          >
-            Usuário criado com sucesso!
-          </div>
-        )}
+          {error && (
+            <div
+              style={{
+                background: theme.isDark ? "rgba(127,29,29,0.25)" : "#fef2f2",
+                border: theme.isDark
+                  ? "1px solid rgba(248,113,113,0.35)"
+                  : "1px solid #fecaca",
+                borderRadius: 10,
+                padding: "12px 16px",
+                marginBottom: 20,
+                color: theme.isDark ? "#fecaca" : "#dc2626",
+                fontSize: 14,
+                fontWeight: 500,
+              }}
+            >
+              {error}
+            </div>
+          )}
 
-        {error && (
-          <div
-            style={{
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              borderRadius: 10,
-              padding: "12px 16px",
-              marginBottom: 20,
-              color: "#dc2626",
-              fontSize: 14,
-              fontWeight: 500,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <label style={labelStyle}>Nome completo *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Maria Financeiro"
-              style={inputStyle}
-            />
-          </div>
-
-          <div>
-            <label style={labelStyle}>E-mail *</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="email@empresa.com"
-              style={inputStyle}
-            />
-          </div>
-
-          <div>
-            <label style={labelStyle}>
-              WhatsApp{" "}
-              <span style={{ fontWeight: 400, color: "#9ca3af" }}>
-                — para receber fechamentos de comissão
-              </span>
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(formatPhoneBR(e.target.value))}
-              placeholder="(00) 00000-0000"
-              style={inputStyle}
-            />
-          </div>
-
-          <div>
-            <label style={labelStyle}>Senha *</label>
-            <div style={{ position: "relative" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <label style={labelStyle}>Nome completo *</label>
               <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                style={{ ...inputStyle, paddingRight: 42 }}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ex: Maria Financeiro"
+                style={inputStyle}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "#9ca3af",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
             </div>
-          </div>
 
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            style={{
-              marginTop: 8,
-              width: "100%",
-              padding: "12px 0",
-              borderRadius: 10,
-              background: loading ? "#93c5fd" : "#2563eb",
-              color: "#ffffff",
-              fontWeight: 700,
-              fontSize: 15,
-              border: "none",
-              cursor: loading ? "not-allowed" : "pointer",
-              transition: "background .15s ease",
-            }}
-          >
-            {loading ? "Criando..." : "Criar Usuário Financeiro"}
-          </button>
+            <div>
+              <label style={labelStyle}>E-mail *</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@empresa.com"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                WhatsApp{" "}
+                <span style={{ fontWeight: 400, color: theme.subtext }}>
+                  — para receber fechamentos de comissão
+                </span>
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(formatPhoneBR(e.target.value))}
+                placeholder="(00) 00000-0000"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Senha *</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  style={{ ...inputStyle, paddingRight: 42 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: theme.subtext,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              style={{
+                marginTop: 8,
+                width: "100%",
+                padding: "12px 0",
+                borderRadius: 10,
+                background: loading ? "#93c5fd" : theme.primary,
+                color: "#ffffff",
+                fontWeight: 700,
+                fontSize: 15,
+                border: "none",
+                cursor: loading ? "not-allowed" : "pointer",
+                transition: "background .15s ease",
+              }}
+            >
+              {loading ? "Criando..." : "Criar Usuário Financeiro"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -164,8 +164,7 @@ export async function POST(request: Request) {
         maxAge: sessionMaxAge,
       });
 
-      const destination =
-        role === "ADMINISTRATIVE" ? "/finance" : "/choose/crm";
+      const destination = "/choose/crm";
 
       return NextResponse.json({
         ok: true,

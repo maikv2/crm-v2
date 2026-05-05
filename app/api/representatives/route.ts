@@ -290,10 +290,21 @@ export async function PUT(request: Request) {
     const pixKey = normalizeText(body?.pixKey);
     const pixName = normalizeText(body?.pixName);
     const pixType = normalizeText(body?.pixType);
+    const phone = normalizeText(body?.phone);
+    const regionId = normalizeText(body?.regionId);
+    const nameInput = normalizeText(body?.name);
+
+    // Detecta se a chamada é só de Pix (modo legado) ou completa.
+    const hasFullPayload =
+      body && (
+        Object.prototype.hasOwnProperty.call(body, "regionId") ||
+        Object.prototype.hasOwnProperty.call(body, "phone") ||
+        Object.prototype.hasOwnProperty.call(body, "name")
+      );
 
     if (!id) {
       return NextResponse.json(
-        { error: "Informe o representante para atualizar o Pix." },
+        { error: "Informe o representante para atualizar." },
         { status: 400 }
       );
     }
@@ -313,13 +324,94 @@ export async function PUT(request: Request) {
       );
     }
 
+    // Se vier regionId, valida e resolve o stockLocationId pela região
+    // (mesma lógica do cadastro: estoque é obrigatório e vem da região).
+    let resolvedRegionId: string | null | undefined = undefined;
+    let resolvedStockLocationId: string | null | undefined = undefined;
+
+    if (hasFullPayload && Object.prototype.hasOwnProperty.call(body, "regionId")) {
+      if (!regionId) {
+        return NextResponse.json(
+          { error: "Selecione uma região para o representante." },
+          { status: 400 }
+        );
+      }
+
+      const region = await prisma.region.findUnique({
+        where: { id: regionId },
+        select: {
+          id: true,
+          name: true,
+          active: true,
+          stockLocationId: true,
+          stockLocation: {
+            select: { id: true, name: true, active: true },
+          },
+        },
+      });
+
+      if (!region) {
+        return NextResponse.json(
+          { error: "Região selecionada não encontrada." },
+          { status: 400 }
+        );
+      }
+
+      if (!region.active) {
+        return NextResponse.json(
+          { error: "A região selecionada está inativa." },
+          { status: 400 }
+        );
+      }
+
+      if (!region.stockLocationId) {
+        return NextResponse.json(
+          {
+            error:
+              "A região selecionada não possui local de estoque vinculado. Vincule um estoque à região antes de salvar.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (!region.stockLocation || !region.stockLocation.active) {
+        return NextResponse.json(
+          {
+            error:
+              "O local de estoque vinculado à região não foi encontrado ou está inativo.",
+          },
+          { status: 400 }
+        );
+      }
+
+      resolvedRegionId = region.id;
+      resolvedStockLocationId = region.stockLocationId;
+    }
+
+    const updateData: Prisma.UserUpdateInput = {
+      pixKey,
+      pixName,
+      pixType,
+    };
+
+    if (hasFullPayload) {
+      if (Object.prototype.hasOwnProperty.call(body, "phone")) {
+        updateData.phone = phone;
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "name") && nameInput) {
+        updateData.name = nameInput;
+      }
+      if (resolvedRegionId !== undefined) {
+        updateData.region = { connect: { id: resolvedRegionId } };
+      }
+      if (resolvedStockLocationId !== undefined) {
+        updateData.stockLocation = { connect: { id: resolvedStockLocationId } };
+      }
+    }
+
     const updated = await prisma.user.update({
       where: { id },
-      data: {
-        pixKey,
-        pixName,
-        pixType,
-      },
+      data: updateData,
       select: {
         id: true,
         name: true,
@@ -381,7 +473,7 @@ export async function PUT(request: Request) {
     console.error("PUT REPRESENTATIVES ERROR:", error);
 
     return NextResponse.json(
-      { error: "Erro ao atualizar Pix do representante." },
+      { error: "Erro ao atualizar representante." },
       { status: 500 }
     );
   }

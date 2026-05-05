@@ -167,10 +167,12 @@ function RepresentativeCard({
   item,
   theme,
   onSaved,
+  onEdit,
 }: {
   item: RepresentativeItem;
   theme: ThemeShape;
   onSaved: (item: RepresentativeItem) => void;
+  onEdit: (id: string) => void;
 }) {
   const subtleCard = theme.isDark ? "#0b1324" : "#f8fafc";
   const innerCardBg = theme.isDark ? "#111827" : theme.cardBg;
@@ -284,22 +286,52 @@ function RepresentativeCard({
 
         <div
           style={{
-            fontSize: 12,
-            fontWeight: 800,
-            color: item.active ? "#22c55e" : "#f59e0b",
-            background: item.active
-              ? theme.isDark
-                ? "rgba(34,197,94,0.14)"
-                : "#eaf8ef"
-              : theme.isDark
-              ? "rgba(245,158,11,0.16)"
-              : "#fff7e8",
-            padding: "6px 10px",
-            borderRadius: 999,
-            whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
           }}
         >
-          {item.active ? "Ativo" : "Inativo"}
+          <button
+            type="button"
+            onClick={() => onEdit(item.id)}
+            style={{
+              height: 32,
+              padding: "0 12px",
+              borderRadius: 999,
+              border: `1px solid ${
+                theme.isDark ? "#1e293b" : theme.border
+              }`,
+              background: theme.isDark ? "#0f172a" : theme.cardBg,
+              color: theme.text,
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Editar
+          </button>
+
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              color: item.active ? "#22c55e" : "#f59e0b",
+              background: item.active
+                ? theme.isDark
+                  ? "rgba(34,197,94,0.14)"
+                  : "#eaf8ef"
+                : theme.isDark
+                ? "rgba(245,158,11,0.16)"
+                : "#fff7e8",
+              padding: "6px 10px",
+              borderRadius: 999,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.active ? "Ativo" : "Inativo"}
+          </div>
         </div>
       </div>
 
@@ -709,6 +741,7 @@ export default function RepresentativesPage() {
                 item={item}
                 theme={theme}
                 onSaved={updateRepresentativeItem}
+                onEdit={(id) => router.push(`/representatives/${id}/edit`)}
               />
             ))}
           </div>

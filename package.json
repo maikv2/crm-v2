@@ -9,6 +9,7 @@
     "lint": "eslint",
     "backup:db": "node scripts/backup-db.mjs",
     "fix:region-stock": "tsx prisma/fix-region-stock-links.ts",
+    "fix:client-coords": "tsx prisma/fix-client-coordinates.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

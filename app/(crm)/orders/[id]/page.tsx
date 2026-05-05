@@ -434,6 +434,17 @@ function NFeBlock({
         return;
       }
       alert(data?.message || "NF-e enviada pelo WhatsApp.");
+
+      // Disparo automático ao financeiro quando for boleto
+      try {
+        await fetch("/api/whatsapp/send-boleto-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: order.id }),
+        });
+      } catch (errBoleto) {
+        console.error("Erro ao enviar solicitação de boleto:", errBoleto);
+      }
     } catch (err) {
       console.error("Erro ao enviar NF-e por WhatsApp:", err);
       alert("Erro ao enviar NF-e por WhatsApp.");

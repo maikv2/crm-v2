@@ -248,6 +248,19 @@ export default function MobileRepOrderDetailsPage() {
           ? data?.message || "NF-e enviada pelo WhatsApp."
           : `Erro: ${data?.error || res.status}`,
       );
+
+      // Disparo automático ao financeiro quando for boleto
+      if (res.ok) {
+        try {
+          await fetch("/api/whatsapp/send-boleto-request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderId: order.id }),
+          });
+        } catch (errBoleto) {
+          console.error("Erro ao enviar solicitação de boleto:", errBoleto);
+        }
+      }
     } catch (err) {
       console.error(err);
       alert("Erro ao enviar NF-e por WhatsApp.");
@@ -356,7 +369,8 @@ export default function MobileRepOrderDetailsPage() {
                 target="_blank"
                 rel="noreferrer"
                 style={{ textDecoration: "none" }}
-              >
+                >a
+              
                 <div
                   style={{
                     minHeight: 42,

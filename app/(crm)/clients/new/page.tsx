@@ -245,6 +245,11 @@ export default function NewClientPage() {
   const [cnpjSuccess, setCnpjSuccess] = useState<string | null>(null);
   const [lastFetchedCnpj, setLastFetchedCnpj] = useState("");
 
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState<string | null>(null);
+  const [cepSuccess, setCepSuccess] = useState<string | null>(null);
+  const [lastFetchedCep, setLastFetchedCep] = useState("");
+
   const isRepresentative = loggedUser?.role === "REPRESENTATIVE";
 
   useEffect(() => {
@@ -481,6 +486,67 @@ export default function NewClientPage() {
 
     return () => clearTimeout(timer);
   }, [form.cnpj, form.personType, lastFetchedCnpj]);
+
+  async function fetchCEPData(rawValue?: string) {
+    const cep = onlyDigits(rawValue ?? form.cep);
+
+    if (cep.length !== 8) {
+      setCepError("Informe um CEP com 8 dígitos.");
+      setCepSuccess(null);
+      return;
+    }
+
+    if (cepLoading) return;
+    if (cep === lastFetchedCep) return;
+
+    try {
+      setCepLoading(true);
+      setCepError(null);
+      setCepSuccess(null);
+
+      const response = await fetch(`/api/cep/${cep}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível consultar o CEP.");
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        cep: data.cep ? formatCEP(data.cep) : prev.cep,
+        street: prev.street || data.street || "",
+        district: prev.district || data.district || "",
+        city: prev.city || data.city || "",
+        state: prev.state || data.state || "",
+        complement: prev.complement || data.complement || "",
+      }));
+
+      setLastFetchedCep(cep);
+      setCepSuccess("Endereço preenchido pelo CEP.");
+    } catch (err: any) {
+      setCepError(err?.message || "Erro ao consultar CEP.");
+      setCepSuccess(null);
+    } finally {
+      setCepLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const cep = onlyDigits(form.cep);
+
+    if (cep.length !== 8) return;
+    if (cep === lastFetchedCep) return;
+
+    const timer = setTimeout(() => {
+      fetchCEPData(cep);
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [form.cep, lastFetchedCep]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -1121,9 +1187,41 @@ export default function NewClientPage() {
             </div>
 
             <div style={{ ...fieldStyle, alignSelf: "end" }}>
-              <button type="button" style={primaryButtonStyle}>
-                Buscar CEP
+              <button
+                type="button"
+                onClick={() => fetchCEPData()}
+                disabled={cepLoading}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: cepLoading ? 0.7 : 1,
+                  cursor: cepLoading ? "not-allowed" : "pointer",
+                }}
+              >
+                {cepLoading ? "Buscando..." : "Buscar CEP"}
               </button>
+              {cepError ? (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#dc2626",
+                    fontWeight: 700,
+                    marginTop: 4,
+                  }}
+                >
+                  {cepError}
+                </div>
+              ) : cepSuccess ? (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#16a34a",
+                    fontWeight: 700,
+                    marginTop: 4,
+                  }}
+                >
+                  {cepSuccess}
+                </div>
+              ) : null}
             </div>
 
             <div style={{ ...fieldStyle, gridColumn: "span 2" }}>

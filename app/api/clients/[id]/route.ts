@@ -450,30 +450,42 @@ export async function PUT(request: Request) {
         hasOwn(body, "complement");
 
       if (addressChanged) {
-        const fullAddress = buildAddress([
-          street,
-          number,
-          district,
-          city,
-          state,
-          cep,
-          country,
-        ]);
+        const hasMinimumAddressForGeocoding =
+          (Boolean(city) && Boolean(state)) || Boolean(cep);
 
-        let geocoded: { latitude?: number | null; longitude?: number | null } | null =
-          null;
+        if (hasMinimumAddressForGeocoding) {
+          const fullAddress = buildAddress([
+            street,
+            number,
+            district,
+            city,
+            state,
+            cep,
+            country,
+          ]);
 
-        try {
-          geocoded = await geocodeAddress(fullAddress);
-        } catch (error) {
-          console.error("Geocoding error on client update:", error);
-          geocoded = null;
+          let geocoded:
+            | { latitude?: number | null; longitude?: number | null }
+            | null = null;
+
+          try {
+            geocoded = await geocodeAddress(fullAddress);
+          } catch (error) {
+            console.error("Geocoding error on client update:", error);
+            geocoded = null;
+          }
+
+          // Só atualiza coordenadas se o geocoding teve sucesso.
+          // Se falhar, mantém as coordenadas existentes (não zera).
+          if (
+            geocoded &&
+            typeof geocoded.latitude === "number" &&
+            typeof geocoded.longitude === "number"
+          ) {
+            nextLatitude = geocoded.latitude;
+            nextLongitude = geocoded.longitude;
+          }
         }
-
-        nextLatitude =
-          typeof geocoded?.latitude === "number" ? geocoded.latitude : null;
-        nextLongitude =
-          typeof geocoded?.longitude === "number" ? geocoded.longitude : null;
       }
     }
 

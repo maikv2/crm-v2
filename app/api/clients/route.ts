@@ -307,18 +307,16 @@ export async function POST(request: Request) {
       }
     }
 
-    const hasEnoughAddressForGeocoding =
-      Boolean(street) &&
-      Boolean(number) &&
-      Boolean(district) &&
-      Boolean(city) &&
-      Boolean(state) &&
-      Boolean(cep);
+    // Tenta geocoding com qualquer endereço minimamente útil:
+    // basta ter cidade + UF, OU CEP. lib/geocoding já faz fallback
+    // entre múltiplas variações do endereço.
+    const hasMinimumAddressForGeocoding =
+      (Boolean(city) && Boolean(state)) || Boolean(cep);
 
     let geocoded: { latitude?: number | null; longitude?: number | null } | null =
       null;
 
-    if (hasEnoughAddressForGeocoding) {
+    if (hasMinimumAddressForGeocoding) {
       const fullAddress = buildAddress([
         street,
         number,

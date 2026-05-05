@@ -50,6 +50,74 @@ export default function MobileRepNewClientPage() {
 
   const [notes, setNotes] = useState("");
 
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepFeedback, setCepFeedback] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [lastFetchedCep, setLastFetchedCep] = useState("");
+
+  function digitsOnly(value: string) {
+    return String(value ?? "").replace(/\D/g, "");
+  }
+
+  async function fetchCEPData(rawValue?: string) {
+    const cleanCep = digitsOnly(rawValue ?? cep);
+
+    if (cleanCep.length !== 8) {
+      setCepFeedback({ type: "error", text: "Informe um CEP com 8 dígitos." });
+      return;
+    }
+
+    if (cepLoading) return;
+    if (cleanCep === lastFetchedCep) return;
+
+    try {
+      setCepLoading(true);
+      setCepFeedback(null);
+
+      const response = await fetch(`/api/cep/${cleanCep}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Não foi possível consultar o CEP.");
+      }
+
+      if (data.street && !street) setStreet(data.street);
+      if (data.district && !district) setDistrict(data.district);
+      if (data.city && !city) setCity(data.city);
+      if (data.state && !stateValue) setStateValue(String(data.state).toUpperCase());
+      if (data.complement && !complement) setComplement(data.complement);
+
+      setLastFetchedCep(cleanCep);
+      setCepFeedback({ type: "success", text: "Endereço preenchido pelo CEP." });
+    } catch (err: any) {
+      setCepFeedback({
+        type: "error",
+        text: err?.message || "Erro ao consultar CEP.",
+      });
+    } finally {
+      setCepLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const cleanCep = digitsOnly(cep);
+    if (cleanCep.length !== 8) return;
+    if (cleanCep === lastFetchedCep) return;
+
+    const timer = setTimeout(() => {
+      fetchCEPData(cleanCep);
+    }, 600);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cep, lastFetchedCep]);
+
   useEffect(() => {
     let active = true;
 
@@ -272,6 +340,30 @@ export default function MobileRepNewClientPage() {
                 placeholder="CEP"
                 style={inputStyle}
               />
+
+              {cepLoading ? (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: colors.subtext,
+                    fontWeight: 600,
+                    marginTop: -6,
+                  }}
+                >
+                  Buscando endereço pelo CEP...
+                </div>
+              ) : cepFeedback ? (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: cepFeedback.type === "error" ? "#dc2626" : "#16a34a",
+                    fontWeight: 600,
+                    marginTop: -6,
+                  }}
+                >
+                  {cepFeedback.text}
+                </div>
+              ) : null}
 
               <input
                 value={street}

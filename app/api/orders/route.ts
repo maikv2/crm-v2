@@ -608,8 +608,15 @@ export async function POST(request: Request) {
 
         const rules = getFinancialRules(paymentMethod);
 
+        const lastOrderForNumber = await tx.order.findFirst({
+          orderBy: { number: "desc" },
+          select: { number: true },
+        });
+        const nextOrderNumber = (lastOrderForNumber?.number ?? 0) + 1;
+
         const order = await tx.order.create({
           data: {
+            number: nextOrderNumber,
             regionId: regionId!,
             clientId: clientId!,
             exhibitorId: exhibitorId ?? null,

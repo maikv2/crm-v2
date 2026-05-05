@@ -13,6 +13,7 @@ type InvestorForm = {
   phone: string;
   document: string;
   notes: string;
+  password: string;
   quotaCount: number;
   quotaValue: number;
 };
@@ -92,6 +93,7 @@ export default function NewInvestorPage() {
     phone: "",
     document: "",
     notes: "",
+    password: "",
     quotaCount: 1,
     quotaValue: 20000,
   });
@@ -116,6 +118,18 @@ export default function NewInvestorPage() {
         throw new Error("Informe o nome do investidor.");
       }
 
+      if (!form.email.trim()) {
+        throw new Error(
+          "E-mail é obrigatório para o investidor acessar o portal."
+        );
+      }
+
+      if (!form.password || form.password.length < 6) {
+        throw new Error(
+          "A senha deve ter pelo menos 6 caracteres."
+        );
+      }
+
       if (form.quotaCount <= 0) {
         throw new Error("Informe uma quantidade de cotas válida.");
       }
@@ -126,10 +140,11 @@ export default function NewInvestorPage() {
 
       const payload = {
         name: form.name.trim(),
-        email: form.email.trim() || null,
+        email: form.email.trim(),
         phone: form.phone.trim() || null,
         document: form.document.trim() || null,
         notes: form.notes.trim() || null,
+        password: form.password,
         quotaCount: form.quotaCount,
         quotaValueCents: Math.round(form.quotaValue * 100),
         totalInvestedCents: Math.round(totalInvested * 100),
@@ -206,7 +221,8 @@ export default function NewInvestorPage() {
               color: theme.subtext,
             }}
           >
-            Cadastre os dados do investidor e a estrutura do investimento em cotas.
+            Cadastre os dados do investidor. O acesso ao portal do investidor é
+            criado automaticamente com o e-mail e a senha informados.
           </div>
         </div>
       </div>
@@ -275,7 +291,7 @@ export default function NewInvestorPage() {
                 }}
               >
                 <Field
-                  label="E-mail"
+                  label="E-mail *"
                   value={form.email}
                   onChange={(value) => update("email", value)}
                   theme={theme}
@@ -289,6 +305,23 @@ export default function NewInvestorPage() {
                   onChange={(value) => update("phone", value)}
                   theme={theme}
                   placeholder="Ex: (49) 99999-9999"
+                />
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: 16,
+                }}
+              >
+                <Field
+                  label="Senha de acesso ao portal *"
+                  value={form.password}
+                  onChange={(value) => update("password", value)}
+                  theme={theme}
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
                 />
               </div>
 

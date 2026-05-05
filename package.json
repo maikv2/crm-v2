@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "backup:db": "node scripts/backup-db.mjs",
+    "fix:region-stock": "tsx prisma/fix-region-stock-links.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

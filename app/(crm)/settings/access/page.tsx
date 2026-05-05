@@ -213,7 +213,7 @@ export default function SettingsAccessPage() {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
             type="button"
-            onClick={() => router.push("/settings/finance-user/new")}
+            onClick={() => router.push("/settings/users/new")}
             style={secondaryButtonStyle(theme)}
           >
             Novo usuário

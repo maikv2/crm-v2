@@ -24,6 +24,15 @@ type OrderPdfItem = {
   imageUrl: string | null;
 };
 
+type OrderPdfDefectReturnItem = {
+  id: string;
+  productName: string;
+  productSku: string | null;
+  quantity: number;
+  reason: string | null;
+  notes: string | null;
+};
+
 export type OrderPdfData = {
   orderId: string;
   orderNumber: number;
@@ -59,6 +68,7 @@ export type OrderPdfData = {
     name: string;
   } | null;
   items: OrderPdfItem[];
+  defectReturnItems: OrderPdfDefectReturnItem[];
   installments: OrderPdfInstallment[];
 };
 
@@ -396,6 +406,20 @@ const styles = StyleSheet.create({
 
 export function OrderPdfDocument({ data }: { data: OrderPdfData }) {
   const clientAddress = buildClientAddress(data.client);
+  const observationLines = [
+    data.notes?.trim() ? data.notes.trim() : null,
+    ...data.defectReturnItems.map((item) => {
+      const details = [
+        `Troca: ${item.quantity}x ${item.productName}${
+          item.productSku ? ` (SKU: ${item.productSku})` : ""
+        }`,
+        item.reason?.trim() ? `Motivo: ${item.reason.trim()}` : null,
+        item.notes?.trim() ? `Obs.: ${item.notes.trim()}` : null,
+      ].filter(Boolean);
+
+      return details.join(" | ");
+    }),
+  ].filter(Boolean);
 
   return (
     <Document title={`Pedido ${data.orderNumber}`}>
@@ -557,9 +581,15 @@ export function OrderPdfDocument({ data }: { data: OrderPdfData }) {
 
         <View style={styles.observations}>
           <Text style={styles.sectionTitle}>Observações</Text>
-          <Text style={styles.sectionText}>
-            {data.notes?.trim() ? data.notes : "Sem observações informadas."}
-          </Text>
+          {observationLines.length > 0 ? (
+            observationLines.map((line, index) => (
+              <Text key={index} style={styles.sectionText}>
+                {line}
+              </Text>
+            ))
+          ) : (
+            <Text style={styles.sectionText}>Sem observações informadas.</Text>
+          )}
         </View>
 
         <Text style={styles.footer}>

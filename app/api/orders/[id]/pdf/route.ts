@@ -80,6 +80,14 @@ export async function GET(request: Request, context: RouteContext) {
             createdAt: "asc",
           },
         },
+        defectReturnItems: {
+          include: {
+            product: true,
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
         accountsReceivables: {
           include: {
             installments: {
@@ -163,6 +171,14 @@ export async function GET(request: Request, context: RouteContext) {
           item.product.sku ?? null,
           item.product.name ?? null
         ),
+      })),
+      defectReturnItems: order.defectReturnItems.map((item) => ({
+        id: item.id,
+        productName: item.product.name,
+        productSku: item.product.sku ?? null,
+        quantity: item.quantity,
+        reason: normalizeText(item.reason),
+        notes: normalizeText(item.notes),
       })),
       installments,
     };

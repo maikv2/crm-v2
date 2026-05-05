@@ -28,6 +28,15 @@ function isFinancePath(pathname: string) {
   return pathname === "/finance" || pathname.startsWith("/finance/");
 }
 
+function isAdministrativeAllowedPath(pathname: string) {
+  if (isFinancePath(pathname)) return true;
+  if (pathname === "/reports/finance") return true;
+  if (pathname === "/investors/dashboard") return true;
+  if (pathname === "/investors/quotas") return true;
+  if (pathname === "/investors/distributions") return true;
+  return false;
+}
+
 function getRedirectByRole(user: AuthUser, pathname: string) {
   if (
     user.role === "REPRESENTATIVE" &&
@@ -41,7 +50,7 @@ function getRedirectByRole(user: AuthUser, pathname: string) {
     return "/dashboard";
   }
 
-  if (user.role === "ADMINISTRATIVE" && !isFinancePath(pathname)) {
+  if (user.role === "ADMINISTRATIVE" && !isAdministrativeAllowedPath(pathname)) {
     return "/finance";
   }
 

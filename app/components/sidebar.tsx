@@ -208,6 +208,11 @@ export default function Sidebar() {
             path="/finance/receivables"
           />
           <Item
+            icon={FileText}
+            label="Contas a Pagar"
+            path="/finance/payables"
+          />
+          <Item
             icon={Wallet}
             label="Caixa da Região"
             path="/finance/region-cash"
@@ -217,6 +222,18 @@ export default function Sidebar() {
             label="Repasses → Matriz"
             path="/finance/transfers"
           />
+
+          <Section title="INVESTIDORES" />
+          <Item icon={BarChart3} label="Cotistas" path="/investors/dashboard" />
+          <Item icon={Coins} label="Cotas" path="/investors/quotas" />
+          <Item
+            icon={CircleDollarSign}
+            label="Repasses Investidores"
+            path="/investors/distributions"
+          />
+
+          <Section title="RELATÓRIOS" />
+          <Item icon={BarChart3} label="Relatórios Financeiros" path="/reports/finance" />
         </>
       ) : isRepresentative ? (
         <>
@@ -301,6 +318,11 @@ export default function Sidebar() {
             path="/finance/receivables"
           />
           <Item
+            icon={FileText}
+            label="Contas a Pagar"
+            path="/finance/payables"
+          />
+          <Item
             icon={Wallet}
             label="Caixa da Região"
             path="/finance/region-cash"
@@ -321,6 +343,7 @@ export default function Sidebar() {
 
           <Section title="RELATÓRIOS" />
           <Item icon={BarChart3} label="Relatórios" path="/reports" />
+          <Item icon={BarChart3} label="Relatórios Financeiros" path="/reports/finance" />
         </>
       )}
     </aside>

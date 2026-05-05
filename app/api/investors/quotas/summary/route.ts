@@ -42,68 +42,134 @@ export async function GET(request: NextRequest) {
 
     const items = await Promise.all(
       regions.map(async (region) => {
+        // PASSO 1: contar cotas — não depende de fechamento mensal e nunca pode zerar.
+        let activeShares: Array<{
+          id: string;
+          quotaNumber: number;
+          amountCents: number;
+          ownerType: "COMPANY" | "INVESTOR";
+          investorId: string | null;
+          investor: {
+            id: string;
+            name: string;
+            email: string | null;
+            phone: string | null;
+          } | null;
+        }> = [];
+
         try {
-          const [monthlyResult, activeShares, preview, dailySnapshot] =
-            await Promise.all([
-              prisma.regionMonthlyResult.findFirst({
-                where: {
-                  regionId: region.id,
-                  month,
-                  year,
-                },
-                select: {
-                  grossRevenueCents: true,
-                  ebitdaCents: true,
-                  reserveCents: true,
-                },
-              }),
-              prisma.share.findMany({
-                where: {
-                  regionId: region.id,
-                  OR: [{ isActive: true }, { investorId: { not: null } }],
-                },
-                orderBy: {
-                  quotaNumber: "asc",
-                },
+          activeShares = await prisma.share.findMany({
+            where: {
+              regionId: region.id,
+              OR: [{ isActive: true }, { investorId: { not: null } }],
+            },
+            orderBy: {
+              quotaNumber: "asc",
+            },
+            select: {
+              id: true,
+              quotaNumber: true,
+              amountCents: true,
+              ownerType: true,
+              investorId: true,
+              investor: {
                 select: {
                   id: true,
-                  quotaNumber: true,
-                  amountCents: true,
-                  ownerType: true,
-                  investorId: true,
-                  investor: {
-                    select: {
-                      id: true,
-                      name: true,
-                      email: true,
-                      phone: true,
-                    },
-                  },
+                  name: true,
+                  email: true,
+                  phone: true,
                 },
-              }),
-              calculateInvestorDistributionPreview(region.id, month, year),
-              calculateDailyRegionSnapshot(region.id, month, year),
-            ]);
-
-          const activeQuotaCount = activeShares.length;
-
-          const investorShares = activeShares.filter(
-            (share) =>
-              share.investorId &&
-              (share.ownerType === "INVESTOR" || share.investorId !== null)
+              },
+            },
+          });
+        } catch (sharesError) {
+          console.error(
+            `Erro ao carregar cotas da região ${region.name}:`,
+            sharesError
           );
+        }
 
-          const companyShares = activeShares.filter(
-            (share) => !share.investorId && share.ownerType === "COMPANY"
+        const activeQuotaCount = activeShares.length;
+
+        const investorShares = activeShares.filter(
+          (share) =>
+            share.investorId &&
+            (share.ownerType === "INVESTOR" || share.investorId !== null)
+        );
+
+        const companyShares = activeShares.filter(
+          (share) => !share.investorId && share.ownerType === "COMPANY"
+        );
+
+        const investorQuotaCount = investorShares.length;
+        const companyQuotaCount = companyShares.length;
+        const availableQuotaCount = Math.max(
+          0,
+          region.maxQuotaCount - activeQuotaCount
+        );
+
+        // PASSO 2: cálculos financeiros. Se algum falhar (ex.: sem fechamento
+        // mensal ainda), seguimos com 0 nos valores monetários — mas mantemos
+        // a contagem correta de cotas calculada acima.
+        let monthlyResult: {
+          grossRevenueCents: number;
+          ebitdaCents: number;
+          reserveCents: number;
+        } | null = null;
+
+        try {
+          monthlyResult = await prisma.regionMonthlyResult.findFirst({
+            where: {
+              regionId: region.id,
+              month,
+              year,
+            },
+            select: {
+              grossRevenueCents: true,
+              ebitdaCents: true,
+              reserveCents: true,
+            },
+          });
+        } catch (monthlyError) {
+          console.error(
+            `Erro ao carregar resultado mensal da região ${region.name}:`,
+            monthlyError
           );
+        }
 
-          const investorQuotaCount = investorShares.length;
-          const companyQuotaCount = companyShares.length;
-          const availableQuotaCount = Math.max(
-            0,
-            region.maxQuotaCount - activeQuotaCount
+        let preview: Awaited<
+          ReturnType<typeof calculateInvestorDistributionPreview>
+        > | null = null;
+
+        try {
+          preview = await calculateInvestorDistributionPreview(
+            region.id,
+            month,
+            year
           );
+        } catch (previewError) {
+          console.warn(
+            `Preview de distribuição indisponível para ${region.name} (provavelmente sem fechamento mensal ${month}/${year}).`
+          );
+        }
 
+        let dailySnapshot: Awaited<
+          ReturnType<typeof calculateDailyRegionSnapshot>
+        > | null = null;
+
+        try {
+          dailySnapshot = await calculateDailyRegionSnapshot(
+            region.id,
+            month,
+            year
+          );
+        } catch (snapshotError) {
+          console.warn(
+            `Snapshot diário indisponível para ${region.name}.`
+          );
+        }
+
+        try {
           const grossRevenueCents =
             dailySnapshot?.grossRevenueCents ??
             monthlyResult?.grossRevenueCents ??
@@ -116,7 +182,7 @@ export async function GET(request: NextRequest) {
           const ebitdaCents =
             dailySnapshot?.ebitdaEstimatedCents ??
             monthlyResult?.ebitdaCents ??
-            preview.ebitdaCents ??
+            preview?.ebitdaCents ??
             0;
 
           const reserveCents =
@@ -126,7 +192,7 @@ export async function GET(request: NextRequest) {
 
           const investorPoolCents =
             dailySnapshot?.estimatedInvestorPoolCents ??
-            (preview.investors ?? []).reduce(
+            (preview?.investors ?? []).reduce(
               (sum, investor) => sum + (investor.totalDistributionCents ?? 0),
               0
             );
@@ -137,7 +203,7 @@ export async function GET(request: NextRequest) {
 
           const valuePerQuotaCents =
             dailySnapshot?.estimatedValuePerInvestorQuotaCents ??
-            preview.valuePerQuotaCents ??
+            preview?.valuePerQuotaCents ??
             0;
 
           const investorsMap = new Map<
@@ -198,25 +264,27 @@ export async function GET(request: NextRequest) {
             investorPoolCents,
             companyPoolCents,
             valuePerQuotaCents,
-            hasMonthlyResult: true,
+            hasMonthlyResult: Boolean(monthlyResult),
             investors,
           };
         } catch (error) {
           console.error(
-            `Erro ao montar resumo de cotas da região ${region.name}:`,
+            `Erro ao montar resumo financeiro da região ${region.name}:`,
             error
           );
 
+          // Mantém a contagem de cotas correta mesmo se os cálculos
+          // financeiros falharem.
           return {
             regionId: region.id,
             regionName: region.name,
             maxQuotaCount: region.maxQuotaCount,
             quotaValueCents: region.quotaValueCents,
             targetClients: region.targetClients,
-            activeQuotaCount: 0,
-            companyQuotaCount: 0,
-            investorQuotaCount: 0,
-            availableQuotaCount: region.maxQuotaCount,
+            activeQuotaCount,
+            companyQuotaCount,
+            investorQuotaCount,
+            availableQuotaCount,
             grossRevenueCents: 0,
             operatingProfitCents: 0,
             ebitdaCents: 0,

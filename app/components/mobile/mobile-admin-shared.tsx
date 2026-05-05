@@ -1,6 +1,5 @@
 import {
   BarChart3,
-  HandCoins,
   Home,
   Landmark,
   MoreHorizontal,
@@ -23,7 +22,7 @@ export const adminMobileNavItems = [
     label: "Financeiro",
     href: "/m/admin/finance",
     icon: Wallet,
-    matchPrefixes: ["/m/admin/finance"],
+    matchPrefixes: ["/m/admin/finance", "/m/finance"],
   },
   {
     label: "Cadastros",
@@ -66,27 +65,27 @@ export const financeMobileNavItems = [
   },
   {
     label: "Pagar",
-    href: "/m/admin/finance/payables",
+    href: "/m/finance/payables",
     icon: Receipt,
-    matchPrefixes: ["/m/admin/finance/payables"],
+    matchPrefixes: ["/m/finance/payables"],
   },
   {
     label: "Caixa",
-    href: "/m/admin/finance/region-cash",
+    href: "/m/finance/region-cash",
     icon: Landmark,
     matchPrefixes: [
-      "/m/admin/finance/region-cash",
+      "/m/finance/region-cash",
       "/m/admin/finance/transfers",
-      "/m/admin/finance/investor-distributions",
+      "/m/finance/investor-distributions",
     ],
   },
   {
     label: "Relatórios",
-    href: "/m/admin/finance/reports",
+    href: "/m/finance/reports",
     icon: BarChart3,
     matchPrefixes: [
-      "/m/admin/finance/reports",
-      "/m/admin/finance/investors",
+      "/m/finance/reports",
+      "/m/finance/investors",
     ],
   },
 ];

@@ -30,8 +30,11 @@ export default function MobilePageFrame({
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
 
+  const isFinanceMobile =
+    pathname.startsWith("/m/admin/finance") || pathname.startsWith("/m/finance");
+
   const resolvedNavItems =
-    navItems ?? (pathname.startsWith("/m/admin/finance") ? financeMobileNavItems : adminMobileNavItems);
+    navItems ?? (isFinanceMobile ? financeMobileNavItems : adminMobileNavItems);
 
   return (
     <MobileShell
@@ -39,7 +42,7 @@ export default function MobilePageFrame({
       subtitle={subtitle}
       navItems={resolvedNavItems}
       showBrand
-      brandHref={pathname.startsWith("/m/admin/finance") ? "/m/admin/finance" : "/m/admin"}
+      brandHref={isFinanceMobile ? "/m/admin/finance" : "/m/admin"}
       rightSlot={
         desktopHref ? (
           <Link

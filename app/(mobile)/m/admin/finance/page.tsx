@@ -206,14 +206,14 @@ export default function AdminFinanceMobile() {
         />
 
         <FinanceShortcut
-          href="/m/admin/finance/payables"
+          href="/m/finance/payables"
           icon={<Receipt size={18} />}
           title="Contas a pagar"
           description="Acompanhe despesas, vencimentos e pagamentos lançados."
         />
 
         <FinanceShortcut
-          href="/m/admin/finance/region-cash"
+          href="/m/finance/region-cash"
           icon={<Landmark size={18} />}
           title="Caixa da região"
           description="Controle valores recebidos pelas regiões e pendências de repasse."
@@ -227,21 +227,21 @@ export default function AdminFinanceMobile() {
         />
 
         <FinanceShortcut
-          href="/m/admin/finance/reports"
+          href="/m/finance/reports"
           icon={<BarChart3 size={18} />}
           title="Relatórios financeiros"
           description="Resumo financeiro com atalhos para relatórios e indicadores."
         />
 
         <FinanceShortcut
-          href="/m/admin/finance/investors"
+          href="/m/finance/investors"
           icon={<Users size={18} />}
           title="Investidores"
           description="Consulte investidores, cotistas e cotas sem gerar cadastro."
         />
 
         <FinanceShortcut
-          href="/m/admin/finance/investor-distributions"
+          href="/m/finance/investor-distributions"
           icon={<HandCoins size={18} />}
           title="Repasses para investidores"
           description="Controle prévias, histórico e distribuição de repasses."

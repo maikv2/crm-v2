@@ -232,9 +232,9 @@ export default function OrdersPage() {
   const btnStyle = actionButtonStyle(theme);
   const deleteBtnStyle: React.CSSProperties = {
     ...btnStyle,
-    border: "1px solid #fecaca",
-    background: "#fee2e2",
-    color: "#b91c1c",
+    border: `1px solid ${theme.isDark ? "#7f1d1d" : "#fecaca"}`,
+    background: theme.isDark ? "#3f1212" : "#fee2e2",
+    color: theme.isDark ? "#fecaca" : "#b91c1c",
   };
 
   return (
@@ -328,9 +328,9 @@ export default function OrdersPage() {
               marginBottom: 16,
               padding: 12,
               borderRadius: 12,
-              border: "1px solid #fecaca",
-              background: "#fee2e2",
-              color: "#991b1b",
+              border: `1px solid ${theme.isDark ? "#7f1d1d" : "#fecaca"}`,
+              background: theme.isDark ? "#3f1212" : "#fee2e2",
+              color: theme.isDark ? "#fecaca" : "#991b1b",
               fontWeight: 700,
             }}
           >

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "../components/sidebar";
 import Header from "../components/header";
+import { useTheme } from "../providers/theme-provider";
+import { getThemeColors } from "../../lib/theme";
 
 type AuthUser = {
   id: string;
@@ -67,6 +69,8 @@ export default function CRMLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState(false);
@@ -127,8 +131,8 @@ export default function CRMLayout({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#f3f6fb",
-          color: "#0f172a",
+          background: colors.pageBg,
+          color: colors.text,
           fontWeight: 800,
           fontSize: 15,
         }}
@@ -139,11 +143,11 @@ export default function CRMLayout({
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f3f6fb" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: colors.pageBg }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <Header />
-        <main style={{ flex: 1, padding: 0, background: "#f3f6fb" }}>
+        <main style={{ flex: 1, padding: 0, background: colors.pageBg }}>
           {children}
         </main>
       </div>

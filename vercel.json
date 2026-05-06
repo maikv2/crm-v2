@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/weekly-commission-settlement",
       "schedule": "0 12 * * 1"
+    },
+    {
+      "path": "/api/cron/cobranca-boletos",
+      "schedule": "0 12 * * *"
     }
   ]
 }

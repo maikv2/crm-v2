@@ -200,6 +200,14 @@ export default function Sidebar() {
 
       {isAdministrative ? (
         <>
+          <Section title="VENDAS" />
+          <Item
+            icon={PieChart}
+            label="Painel de Vendas"
+            path="/sales-dashboard"
+          />
+          <Item icon={ShoppingCart} label="Pedidos" path="/orders" />
+
           <Section title="FINANCEIRO" />
           <Item icon={DollarSign} label="Financeiro" path="/finance" />
           <Item
@@ -233,6 +241,7 @@ export default function Sidebar() {
           />
 
           <Section title="RELATÓRIOS" />
+          <Item icon={BarChart3} label="Relatórios de Vendas" path="/reports/sales" />
           <Item icon={BarChart3} label="Relatórios Financeiros" path="/reports/finance" />
         </>
       ) : isRepresentative ? (

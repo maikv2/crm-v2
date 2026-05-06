@@ -31,9 +31,12 @@ function isFinancePath(pathname: string) {
 function isAdministrativeAllowedPath(pathname: string) {
   if (isFinancePath(pathname)) return true;
   if (pathname === "/reports/finance") return true;
+  if (pathname === "/reports/sales") return true;
   if (pathname === "/investors/dashboard") return true;
   if (pathname === "/investors/quotas") return true;
   if (pathname === "/investors/distributions") return true;
+  if (pathname === "/sales-dashboard") return true;
+  if (pathname === "/orders" || pathname.startsWith("/orders/")) return true;
   return false;
 }
 

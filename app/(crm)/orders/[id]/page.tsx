@@ -776,6 +776,27 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [receivingId, setReceivingId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        if (active) setUserRole(json?.user?.role ?? null);
+      } catch {
+        // silencioso
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const canEdit = userRole === "ADMIN" || userRole === "ADMINISTRATIVE";
 
   // Monta o objeto `nfe` a partir dos campos flat que a API retorna do Prisma
   function mapOrderNfe(data: any): OrderDetail {
@@ -952,6 +973,15 @@ export default function OrderDetailPage() {
             theme={theme}
             onClick={() => router.push("/orders")}
           />
+          {canEdit && (
+            <ActionButton
+              label="✏️ Editar pedido"
+              theme={theme}
+              color="#f59e0b"
+              primary
+              onClick={() => setEditing(true)}
+            />
+          )}
           <ActionButton
             label="Baixar PDF"
             theme={theme}
@@ -1244,6 +1274,360 @@ export default function OrderDetailPage() {
             )}
           </div>
         </Block>
+      </div>
+
+      {editing && order && (
+        <EditOrderModal
+          order={order}
+          theme={theme}
+          onClose={() => setEditing(false)}
+          onSaved={async () => {
+            setEditing(false);
+            await reloadOrder();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditOrderModal({
+  order,
+  theme,
+  onClose,
+  onSaved,
+}: {
+  order: OrderDetail;
+  theme: ThemeShape;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const muted = theme.isDark ? "#94a3b8" : "#64748b";
+  const subtleCard = theme.isDark ? "#0b1324" : "#f8fafc";
+  const inputBg = theme.isDark ? "#0f172a" : "#ffffff";
+
+  const initialInstallments =
+    order.accountsReceivables?.[0]?.installments?.map((i) => ({
+      id: i.id,
+      installmentNumber: i.installmentNumber,
+      status: i.status,
+      dueDate: i.dueDate ? new Date(i.dueDate).toISOString().slice(0, 10) : "",
+      amount: ((i.amountCents ?? 0) / 100).toFixed(2),
+    })) ?? [];
+
+  const [paymentMethod, setPaymentMethod] = useState(
+    order.paymentMethod ?? "CASH"
+  );
+  const [paymentReceiver, setPaymentReceiver] = useState(
+    order.paymentReceiver ?? "REGION"
+  );
+  const [notes, setNotes] = useState(order.notes ?? "");
+  const [installments, setInstallments] = useState(initialInstallments);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function updateInstallment(
+    id: string,
+    field: "dueDate" | "amount",
+    value: string
+  ) {
+    setInstallments((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, [field]: value } : it))
+    );
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = {
+        paymentMethod,
+        paymentReceiver,
+        notes,
+        installments: installments
+          .filter((i) => i.status !== "PAID")
+          .map((i) => {
+            const valor = Number(String(i.amount).replace(",", "."));
+            return {
+              id: i.id,
+              dueDate: i.dueDate || undefined,
+              amountCents: Number.isFinite(valor)
+                ? Math.round(valor * 100)
+                : undefined,
+            };
+          }),
+      };
+
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(data?.error || "Erro ao salvar pedido.");
+        return;
+      }
+
+      await onSaved();
+    } catch (err) {
+      console.error(err);
+      setError("Erro de conexão ao salvar.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: `1px solid ${theme.border}`,
+    background: inputBg,
+    color: theme.text,
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: 12,
+    fontWeight: 700,
+    color: muted,
+    marginBottom: 6,
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(2,6,23,0.55)",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: 24,
+        zIndex: 50,
+        overflowY: "auto",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: theme.cardBg,
+          borderRadius: 18,
+          border: `1px solid ${theme.border}`,
+          maxWidth: 720,
+          width: "100%",
+          padding: 24,
+          margin: "20px 0",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 18,
+          }}
+        >
+          <div style={{ fontSize: 18, fontWeight: 900, color: theme.text }}>
+            Editar pedido {formatOrderNumber(order.number, order.id)}
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 22,
+              color: muted,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              background: theme.isDark ? "rgba(127,29,29,0.25)" : "#fef2f2",
+              border: theme.isDark
+                ? "1px solid rgba(248,113,113,0.35)"
+                : "1px solid #fecaca",
+              borderRadius: 10,
+              padding: "10px 14px",
+              marginBottom: 14,
+              color: theme.isDark ? "#fecaca" : "#dc2626",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: "grid", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Forma de pagamento</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="CASH">Dinheiro</option>
+                <option value="PIX">Pix</option>
+                <option value="BOLETO">Boleto</option>
+                <option value="CARD_DEBIT">Cartão débito</option>
+                <option value="CARD_CREDIT">Cartão crédito</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Quem recebeu</label>
+              <select
+                value={paymentReceiver}
+                onChange={(e) => setPaymentReceiver(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="REGION">Região</option>
+                <option value="MATRIX">Matriz</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Observações</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              style={{ ...inputStyle, resize: "vertical" }}
+            />
+          </div>
+
+          <div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 800,
+                color: theme.text,
+                marginBottom: 8,
+              }}
+            >
+              Parcelas
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {installments.length === 0 ? (
+                <div
+                  style={{
+                    border: `1px solid ${theme.border}`,
+                    background: subtleCard,
+                    padding: 14,
+                    borderRadius: 10,
+                    color: muted,
+                    fontSize: 13,
+                    textAlign: "center",
+                  }}
+                >
+                  Nenhuma parcela.
+                </div>
+              ) : (
+                installments.map((it) => {
+                  const paid = it.status === "PAID";
+                  return (
+                    <div
+                      key={it.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "60px 1fr 1fr 90px",
+                        gap: 10,
+                        alignItems: "center",
+                        background: subtleCard,
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          color: theme.text,
+                        }}
+                      >
+                        #{it.installmentNumber}
+                      </div>
+                      <input
+                        type="date"
+                        value={it.dueDate}
+                        disabled={paid}
+                        onChange={(e) =>
+                          updateInstallment(it.id, "dueDate", e.target.value)
+                        }
+                        style={{
+                          ...inputStyle,
+                          opacity: paid ? 0.6 : 1,
+                        }}
+                      />
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={it.amount}
+                        disabled={paid}
+                        onChange={(e) =>
+                          updateInstallment(it.id, "amount", e.target.value)
+                        }
+                        placeholder="0,00"
+                        style={{
+                          ...inputStyle,
+                          opacity: paid ? 0.6 : 1,
+                        }}
+                      />
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color: paid ? "#16a34a" : "#2563eb",
+                          textAlign: "center",
+                        }}
+                      >
+                        {paid ? "PAGO" : "A receber"}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            {installments.some((i) => i.status === "PAID") && (
+              <div style={{ fontSize: 11, color: muted, marginTop: 6 }}>
+                Parcelas já pagas não podem ser editadas.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 10,
+            marginTop: 22,
+          }}
+        >
+          <ActionButton label="Cancelar" theme={theme} onClick={onClose} />
+          <ActionButton
+            label={saving ? "Salvando..." : "Salvar alterações"}
+            theme={theme}
+            primary
+            disabled={saving}
+            onClick={handleSave}
+          />
+        </div>
       </div>
     </div>
   );

@@ -68,6 +68,177 @@ export async function GET(
   }
 }
 
+const VALID_PAYMENT_METHODS = [
+  "CASH",
+  "PIX",
+  "BOLETO",
+  "CARD_DEBIT",
+  "CARD_CREDIT",
+] as const;
+
+const VALID_PAYMENT_RECEIVERS = ["REGION", "MATRIX"] as const;
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const authUser = await getAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 }
+      );
+    }
+
+    if (authUser.role !== "ADMIN" && authUser.role !== "ADMINISTRATIVE") {
+      return NextResponse.json(
+        { error: "Apenas administrador ou financeiro pode editar pedidos." },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await context.params;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Pedido inválido." },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json().catch(() => null);
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        { error: "Body inválido." },
+        { status: 400 }
+      );
+    }
+
+    const paymentMethod =
+      typeof body.paymentMethod === "string" &&
+      (VALID_PAYMENT_METHODS as readonly string[]).includes(body.paymentMethod)
+        ? body.paymentMethod
+        : undefined;
+
+    const paymentReceiver =
+      typeof body.paymentReceiver === "string" &&
+      (VALID_PAYMENT_RECEIVERS as readonly string[]).includes(
+        body.paymentReceiver
+      )
+        ? body.paymentReceiver
+        : undefined;
+
+    const notes =
+      typeof body.notes === "string" ? body.notes : undefined;
+
+    const installments = Array.isArray(body.installments)
+      ? body.installments
+      : [];
+
+    await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id },
+        include: {
+          accountsReceivables: {
+            include: { installments: true },
+          },
+        },
+      });
+
+      if (!order) {
+        throw new Error("Pedido não encontrado.");
+      }
+
+      const orderUpdate: Record<string, unknown> = {};
+      if (paymentMethod !== undefined) orderUpdate.paymentMethod = paymentMethod;
+      if (paymentReceiver !== undefined)
+        orderUpdate.paymentReceiver = paymentReceiver;
+      if (notes !== undefined) orderUpdate.notes = notes;
+
+      if (Object.keys(orderUpdate).length > 0) {
+        await tx.order.update({
+          where: { id },
+          data: orderUpdate,
+        });
+      }
+
+      if (
+        paymentMethod !== undefined &&
+        order.accountsReceivables.length > 0
+      ) {
+        await tx.accountsReceivable.updateMany({
+          where: { orderId: id },
+          data: { paymentMethod: paymentMethod as any },
+        });
+      }
+
+      const allInstallments = order.accountsReceivables.flatMap(
+        (r) => r.installments
+      );
+
+      for (const inst of installments) {
+        if (!inst || typeof inst.id !== "string") continue;
+
+        const existing = allInstallments.find((i) => i.id === inst.id);
+        if (!existing) continue;
+        if (existing.status === "PAID") continue;
+
+        const update: Record<string, unknown> = {};
+
+        if (typeof inst.dueDate === "string" && inst.dueDate.trim()) {
+          const d = new Date(inst.dueDate);
+          if (!Number.isNaN(d.getTime())) {
+            update.dueDate = d;
+          }
+        }
+
+        if (
+          typeof inst.amountCents === "number" &&
+          Number.isFinite(inst.amountCents) &&
+          inst.amountCents >= 0
+        ) {
+          update.amountCents = Math.round(inst.amountCents);
+        }
+
+        if (Object.keys(update).length === 0) continue;
+
+        await tx.accountsReceivableInstallment.update({
+          where: { id: inst.id },
+          data: update,
+        });
+      }
+
+      for (const ar of order.accountsReceivables) {
+        const refreshed = await tx.accountsReceivableInstallment.findMany({
+          where: { accountsReceivableId: ar.id },
+          select: { amountCents: true },
+        });
+        const total = refreshed.reduce(
+          (acc, x) => acc + (x.amountCents ?? 0),
+          0
+        );
+        await tx.accountsReceivable.update({
+          where: { id: ar.id },
+          data: { amountCents: total },
+        });
+      }
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: "Pedido atualizado com sucesso.",
+    });
+  } catch (error) {
+    console.error("PATCH /api/orders/[id] error:", error);
+    const message =
+      error instanceof Error ? error.message : "Erro ao atualizar pedido.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   _request: Request,
   context: { params: Promise<{ id: string }> }

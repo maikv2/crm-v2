@@ -1,3 +1,4 @@
+import { StockMovementType } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
 const updates = [
@@ -17,17 +18,20 @@ const updates = [
 ];
 
 async function main() {
-  const stockLocation = await prisma.stockLocation.findFirst({
+  const region = await prisma.region.findFirst({
     where: {
       name: {
-        equals: "Oeste",
+        equals: "Oeste_SC_Chapecó",
         mode: "insensitive",
       },
     },
+    include: {
+      stockLocation: true,
+    },
   });
 
-  if (!stockLocation) {
-    throw new Error("Estoque da região Oeste não encontrado");
+  if (!region?.stockLocationId) {
+    throw new Error("Região Oeste_SC_Chapecó não encontrada ou sem estoque vinculado");
   }
 
   for (const item of updates) {
@@ -44,11 +48,21 @@ async function main() {
       throw new Error(`Produto não encontrado: ${item.name}`);
     }
 
+    await prisma.stockMovement.create({
+      data: {
+        productId: product.id,
+        stockLocationId: region.stockLocationId,
+        type: StockMovementType.ADJUSTMENT,
+        quantity: item.quantity,
+        note: "Ajuste manual estoque região Oeste",
+      },
+    });
+
     await prisma.stockBalance.upsert({
       where: {
         productId_stockLocationId: {
           productId: product.id,
-          stockLocationId: stockLocation.id,
+          stockLocationId: region.stockLocationId,
         },
       },
       update: {
@@ -56,7 +70,7 @@ async function main() {
       },
       create: {
         productId: product.id,
-        stockLocationId: stockLocation.id,
+        stockLocationId: region.stockLocationId,
         quantity: item.quantity,
       },
     });

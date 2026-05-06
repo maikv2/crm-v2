@@ -14,6 +14,12 @@ type Confirmation = {
   confirmedAt: string | null;
   tokenExpiresAt: string;
   description: string;
+  metadata?: {
+    payableCurrentWeekCents?: number;
+    payablePriorWeekCents?: number;
+    totalSalesCents?: number;
+    totalCommissionCents?: number;
+  } | null;
 };
 
 function centsToBRL(value: number) {
@@ -154,6 +160,36 @@ export default function FinanceConfirmPage() {
               />
               <Info label="Pedidos no período" value={String(confirmation.ordersCount)} />
               <Info label="Valor a pagar agora" value={centsToBRL(confirmation.amountCents)} highlight />
+              {confirmation.amountCents > 0 && (
+                <div
+                  style={{
+                    border: "1px solid #bbf7d0",
+                    borderRadius: 14,
+                    padding: 14,
+                    background: "#f0fdf4",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                      Vendas desta semana
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#166534", marginTop: 4 }}>
+                      {centsToBRL(confirmation.metadata?.payableCurrentWeekCents ?? 0)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                      Vendas de semanas anteriores
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#166534", marginTop: 4 }}>
+                      {centsToBRL(confirmation.metadata?.payablePriorWeekCents ?? 0)}
+                    </div>
+                  </div>
+                </div>
+              )}
               <Info label="Pendente para próximo acerto" value={centsToBRL(confirmation.pendingCents)} />
               <Info label="Status" value={confirmation.status === "PAID" ? "Pago" : confirmation.status} />
               {confirmation.confirmedAt ? (

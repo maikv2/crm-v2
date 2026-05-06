@@ -47,6 +47,7 @@ type PayableOrderPayload = {
   number: number;
   clientName: string;
   commissionCents: number;
+  isCurrentWeekSale: boolean;
 };
 
 type PendingOrderPayload = {
@@ -456,6 +457,8 @@ function buildRepresentativeMessage(params: {
   totalSalesCents: number;
   totalCommissionCents: number;
   payableCommissionCents: number;
+  payableCurrentWeekCents: number;
+  payablePriorWeekCents: number;
   pendingCommissionCents: number;
   payableOrders: PayableOrderPayload[];
   pendingOrders: PendingOrderPayload[];
@@ -510,6 +513,12 @@ function buildRepresentativeMessage(params: {
     `Comissão total considerada: ${centsToBRL(params.totalCommissionCents)}`,
     "",
     `*Valor a pagar hoje:* ${centsToBRL(params.payableCommissionCents)}`,
+    ...(params.payableCurrentWeekCents > 0 || params.payablePriorWeekCents > 0
+      ? [
+          `  → Vendas desta semana: ${centsToBRL(params.payableCurrentWeekCents)}`,
+          `  → Vendas de semanas anteriores: ${centsToBRL(params.payablePriorWeekCents)}`,
+        ]
+      : []),
     `*Pendente para próximo acerto:* ${centsToBRL(params.pendingCommissionCents)}`,
     pixBlock,
     "",
@@ -664,6 +673,7 @@ export async function GET(request: Request) {
             number: order.number,
             clientName: order.client.name,
             commissionCents: payableCommissionCents,
+            isCurrentWeekSale: issuedInCurrentPeriod,
           });
         }
 
@@ -682,6 +692,12 @@ export async function GET(request: Request) {
         (acc, order) => acc + order.commissionCents,
         0
       );
+      const payableCurrentWeekCents = payableOrders
+        .filter((o) => o.isCurrentWeekSale)
+        .reduce((acc, o) => acc + o.commissionCents, 0);
+      const payablePriorWeekCents = payableOrders
+        .filter((o) => !o.isCurrentWeekSale)
+        .reduce((acc, o) => acc + o.commissionCents, 0);
       const pendingCommissionCents = pendingOrders.reduce(
         (acc, order) => acc + order.pendingCommissionCents,
         0
@@ -719,6 +735,8 @@ export async function GET(request: Request) {
         metadata: {
           totalSalesCents,
           totalCommissionCents,
+          payableCurrentWeekCents,
+          payablePriorWeekCents,
           payableOrders,
           pendingOrders,
           pixKey: representative.pixKey,
@@ -744,6 +762,8 @@ export async function GET(request: Request) {
           totalSalesCents,
           totalCommissionCents,
           payableCommissionCents,
+          payableCurrentWeekCents,
+          payablePriorWeekCents,
           pendingCommissionCents,
           payableOrders,
           pendingOrders,

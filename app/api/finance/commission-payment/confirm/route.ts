@@ -36,8 +36,14 @@ type ConfirmationRow = {
 type MetadataPayload = {
   totalSalesCents?: number;
   totalCommissionCents?: number;
-  payableOrders?: Array<{ number: number; clientName: string; commissionCents: number }>;
-  pendingOrders?: Array<{ number: number; clientName: string; pendingCommissionCents: number; reason: string }>;
+  payableOrders?: Array<{ orderId?: string; number: number; clientName: string; commissionCents: number }>;
+  pendingOrders?: Array<{
+    orderId?: string;
+    number: number;
+    clientName: string;
+    pendingCommissionCents: number;
+    reason: string;
+  }>;
   pixKey?: string | null;
   pixName?: string | null;
   pixType?: string | null;
@@ -115,9 +121,9 @@ function buildRepresentativeConfirmationMessage(params: {
     `Representante: ${params.representativeName}`,
     `Região: ${params.regionName}`,
     "",
-    `Pedidos no período: ${params.orderCount}`,
-    `Total vendido: ${centsToBRL(params.totalSalesCents)}`,
-    `Comissão total gerada: ${centsToBRL(params.totalCommissionCents)}`,
+    `Pedidos considerados: ${params.orderCount}`,
+    `Total vendido considerado: ${centsToBRL(params.totalSalesCents)}`,
+    `Comissão total considerada: ${centsToBRL(params.totalCommissionCents)}`,
     "",
     `*Valor pago agora: ${centsToBRL(params.payableCommissionCents)}*`,
     `*Pendente para próximo acerto: ${centsToBRL(params.pendingCommissionCents)}*`,
@@ -286,10 +292,18 @@ export async function POST(request: Request) {
 
       const fresh = freshRows[0];
       if (!fresh) throw new Error("Confirmação não encontrada.");
-      if (fresh.status === "PAID") return { confirmation: fresh, transaction: null, alreadyPaid: true };
+      if (fresh.status === "PAID") {
+        return {
+          confirmation: fresh,
+          financeTransactionId: fresh.financeTransactionId,
+          alreadyPaid: true,
+        };
+      }
+
       if (fresh.status !== "PENDING") {
         throw new Error(`Este lançamento não pode ser confirmado. Status atual: ${fresh.status}.`);
       }
+
       if (fresh.tokenExpiresAt.getTime() < Date.now()) {
         await tx.$executeRaw`
           UPDATE "CommissionPaymentConfirmation"
@@ -299,51 +313,93 @@ export async function POST(request: Request) {
         throw new Error("Este link expirou.");
       }
 
-      const transaction = await tx.financeTransaction.create({
-        data: {
-          scope: FinanceScope.MATRIX,
-          type: FinanceEntryType.EXPENSE,
-          status: FinanceStatus.PAID,
-          category: FinanceCategoryType.COMMISSION,
-          paymentMethod: PaymentMethod.PIX,
-          description: fresh.description,
-          amountCents: fresh.amountCents,
-          regionId: fresh.regionId,
-          paidAt: new Date(),
-          dueDate: new Date(),
-          competenceMonth: new Date().getMonth() + 1,
-          competenceYear: new Date().getFullYear(),
-          isSystemGenerated: true,
-          notes: [
-            `Confirmado por link seguro enviado ao financeiro.`,
-            `Representante: ${fresh.representativeName}.`,
-            `Período: ${fresh.weekStart.toISOString()} até ${fresh.weekEnd.toISOString()}.`,
-            `Pendente para próximo acerto: ${(fresh.pendingCents / 100).toFixed(2)}.`,
-          ].join("\n"),
-        },
-      });
+      let financeTransactionId = fresh.financeTransactionId;
+
+      if (financeTransactionId) {
+        await tx.financeTransaction.update({
+          where: {
+            id: financeTransactionId,
+          },
+          data: {
+            scope: FinanceScope.MATRIX,
+            type: FinanceEntryType.EXPENSE,
+            status: FinanceStatus.PAID,
+            category: FinanceCategoryType.COMMISSION,
+            paymentMethod: PaymentMethod.PIX,
+            description: fresh.description,
+            amountCents: fresh.amountCents,
+            regionId: fresh.regionId,
+            paidAt: new Date(),
+            dueDate: new Date(),
+            competenceMonth: new Date().getMonth() + 1,
+            competenceYear: new Date().getFullYear(),
+            isSystemGenerated: true,
+            notes: [
+              "Despesa de comissão marcada como paga por link seguro enviado ao financeiro.",
+              `Representante: ${fresh.representativeName}.`,
+              `Período: ${fresh.weekStart.toISOString()} até ${fresh.weekEnd.toISOString()}.`,
+              `Pendente para próximo acerto: ${(fresh.pendingCents / 100).toFixed(2)}.`,
+            ].join("\n"),
+          },
+        });
+      } else {
+        const transaction = await tx.financeTransaction.create({
+          data: {
+            scope: FinanceScope.MATRIX,
+            type: FinanceEntryType.EXPENSE,
+            status: FinanceStatus.PAID,
+            category: FinanceCategoryType.COMMISSION,
+            paymentMethod: PaymentMethod.PIX,
+            description: fresh.description,
+            amountCents: fresh.amountCents,
+            regionId: fresh.regionId,
+            paidAt: new Date(),
+            dueDate: new Date(),
+            competenceMonth: new Date().getMonth() + 1,
+            competenceYear: new Date().getFullYear(),
+            isSystemGenerated: true,
+            notes: [
+              "Despesa criada e marcada como paga por link seguro enviado ao financeiro.",
+              `Representante: ${fresh.representativeName}.`,
+              `Período: ${fresh.weekStart.toISOString()} até ${fresh.weekEnd.toISOString()}.`,
+              `Pendente para próximo acerto: ${(fresh.pendingCents / 100).toFixed(2)}.`,
+            ].join("\n"),
+          },
+        });
+
+        financeTransactionId = transaction.id;
+      }
 
       await tx.$executeRaw`
         UPDATE "CommissionPaymentConfirmation"
         SET
           "status" = 'PAID',
           "confirmedAt" = now(),
-          "financeTransactionId" = ${transaction.id}::uuid,
+          "financeTransactionId" = ${financeTransactionId}::uuid,
           "updatedAt" = now()
         WHERE "id" = ${fresh.id}::uuid;
       `;
 
-      return { confirmation: fresh, transaction, alreadyPaid: false };
+      return {
+        confirmation: {
+          ...fresh,
+          status: "PAID",
+          confirmedAt: new Date(),
+          financeTransactionId,
+        },
+        financeTransactionId,
+        alreadyPaid: false,
+      };
     });
 
-    // Enviar WhatsApp ao representante após confirmação (fire-and-forget)
     if (!result.alreadyPaid && row.representativePhone) {
       try {
         const meta = (row.metadata ?? {}) as MetadataPayload;
         const payableOrders = Array.isArray(meta.payableOrders) ? meta.payableOrders : [];
         const pendingOrders = Array.isArray(meta.pendingOrders) ? meta.pendingOrders : [];
         const totalSalesCents = typeof meta.totalSalesCents === "number" ? meta.totalSalesCents : 0;
-        const totalCommissionCents = typeof meta.totalCommissionCents === "number" ? meta.totalCommissionCents : 0;
+        const totalCommissionCents =
+          typeof meta.totalCommissionCents === "number" ? meta.totalCommissionCents : 0;
 
         const message = buildRepresentativeConfirmationMessage({
           representativeName: row.representativeName,
@@ -371,8 +427,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       alreadyPaid: result.alreadyPaid,
-      confirmation: serialize({ ...row, status: "PAID", confirmedAt: new Date() }),
-      financeTransactionId: result.transaction?.id || row.financeTransactionId,
+      confirmation: serialize(result.confirmation),
+      financeTransactionId: result.financeTransactionId,
     });
   } catch (error) {
     console.error("POST /api/finance/commission-payment/confirm error:", error);

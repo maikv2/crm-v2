@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { randomBytes, createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { sendText, normalizeBrazilPhone } from "@/lib/zapi";
+import {
+  FinanceCategoryType,
+  FinanceEntryType,
+  FinanceScope,
+  FinanceStatus,
+  PaymentMethod,
+} from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,6 +42,31 @@ type OrderForSettlement = {
   }>;
 };
 
+type PayableOrderPayload = {
+  orderId: string;
+  number: number;
+  clientName: string;
+  commissionCents: number;
+};
+
+type PendingOrderPayload = {
+  orderId: string;
+  number: number;
+  clientName: string;
+  pendingCommissionCents: number;
+  reason: string;
+};
+
+type ConfirmationRecord = {
+  id: string;
+  tokenHash: string;
+  status: string;
+  financeTransactionId: string | null;
+};
+
+type ConfirmationMetadataRecord = {
+  metadata: unknown;
+};
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -46,102 +78,6 @@ function getPublicBaseUrl(request: Request) {
 
   const url = new URL(request.url);
   return `${url.protocol}//${url.host}`;
-}
-
-type ConfirmationRecord = {
-  id: string;
-  tokenHash: string;
-};
-
-async function createOrRefreshPaymentConfirmation(params: {
-  representativeId: string;
-  regionId?: string | null;
-  weekStart: Date;
-  weekEnd: Date;
-  amountCents: number;
-  pendingCents: number;
-  ordersCount: number;
-  representativeName: string;
-  regionName: string;
-  baseUrl: string;
-  metadata: unknown;
-}) {
-  const token = randomBytes(32).toString("base64url");
-  const tokenHash = sha256(token);
-  const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const description = `Pagamento de comissão - ${params.representativeName} - ${dateToShortBR(params.weekStart)} a ${dateToShortBR(params.weekEnd)}`;
-
-  const records = await prisma.$queryRaw<ConfirmationRecord[]>`
-    INSERT INTO "CommissionPaymentConfirmation" (
-      "representativeId",
-      "regionId",
-      "weekStart",
-      "weekEnd",
-      "amountCents",
-      "pendingCents",
-      "ordersCount",
-      "tokenHash",
-      "tokenExpiresAt",
-      "status",
-      "description",
-      "metadata",
-      "createdAt",
-      "updatedAt"
-    )
-    VALUES (
-      ${params.representativeId}::uuid,
-      ${params.regionId ? params.regionId : null}::uuid,
-      ${params.weekStart},
-      ${params.weekEnd},
-      ${params.amountCents},
-      ${params.pendingCents},
-      ${params.ordersCount},
-      ${tokenHash},
-      ${tokenExpiresAt},
-      'PENDING',
-      ${description},
-      ${JSON.stringify(params.metadata)}::jsonb,
-      now(),
-      now()
-    )
-    ON CONFLICT ("representativeId", "weekStart", "weekEnd")
-    DO UPDATE SET
-      "regionId" = EXCLUDED."regionId",
-      "amountCents" = EXCLUDED."amountCents",
-      "pendingCents" = EXCLUDED."pendingCents",
-      "ordersCount" = EXCLUDED."ordersCount",
-      "tokenHash" = CASE
-        WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
-          THEN "CommissionPaymentConfirmation"."tokenHash"
-        ELSE EXCLUDED."tokenHash"
-      END,
-      "tokenExpiresAt" = CASE
-        WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
-          THEN "CommissionPaymentConfirmation"."tokenExpiresAt"
-        ELSE EXCLUDED."tokenExpiresAt"
-      END,
-      "status" = CASE
-        WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
-          THEN "CommissionPaymentConfirmation"."status"
-        ELSE 'PENDING'
-      END,
-      "description" = EXCLUDED."description",
-      "metadata" = EXCLUDED."metadata",
-      "updatedAt" = now()
-    RETURNING "id", "tokenHash";
-  `;
-
-  const record = records[0];
-  const wasAlreadyPaid = record?.tokenHash !== tokenHash;
-
-  return {
-  confirmationId: record?.id,
-  token: wasAlreadyPaid ? null : token,
-  confirmationUrl: wasAlreadyPaid
-    ? null
-    : `${params.baseUrl}/payments/commission/confirm?token=${encodeURIComponent(token)}`,
-  wasAlreadyPaid,
-};
 }
 
 function centsToBRL(value: number) {
@@ -169,8 +105,6 @@ function dateToShortBR(date: Date) {
 }
 
 function getPreviousMondayToSundayPeriod(now = new Date()) {
-  // O cron roda na segunda. Considerando Brasil UTC-3:
-  // segunda 00:00 BRT = segunda 03:00 UTC.
   const saoPauloOffsetHours = 3;
   const localLike = new Date(now.getTime() - saoPauloOffsetHours * 60 * 60 * 1000);
   const day = localLike.getUTCDay();
@@ -287,6 +221,229 @@ function getPendingReason(order: OrderForSettlement, today: Date) {
   return pendingLines.join("; ");
 }
 
+function getCommittedFromMetadata(metadata: unknown) {
+  const committed = new Map<string, number>();
+  const payload = metadata as { payableOrders?: Array<{ orderId?: unknown; commissionCents?: unknown }> } | null;
+
+  if (!payload || !Array.isArray(payload.payableOrders)) return committed;
+
+  for (const order of payload.payableOrders) {
+    if (typeof order.orderId !== "string") continue;
+    const commissionCents = typeof order.commissionCents === "number" ? order.commissionCents : 0;
+    if (commissionCents <= 0) continue;
+
+    committed.set(order.orderId, (committed.get(order.orderId) || 0) + commissionCents);
+  }
+
+  return committed;
+}
+
+async function getPreviouslyCommittedCommissions(params: {
+  representativeId: string;
+  weekStart: Date;
+  weekEnd: Date;
+}) {
+  const rows = await prisma.$queryRaw<ConfirmationMetadataRecord[]>`
+    SELECT "metadata"
+    FROM "CommissionPaymentConfirmation"
+    WHERE "representativeId" = ${params.representativeId}::uuid
+      AND "status" IN ('PENDING', 'PAID')
+      AND NOT (
+        "weekStart" = ${params.weekStart}
+        AND "weekEnd" = ${params.weekEnd}
+      );
+  `;
+
+  const committed = new Map<string, number>();
+
+  for (const row of rows) {
+    const partial = getCommittedFromMetadata(row.metadata);
+    for (const [orderId, commissionCents] of partial.entries()) {
+      committed.set(orderId, (committed.get(orderId) || 0) + commissionCents);
+    }
+  }
+
+  return committed;
+}
+
+async function createOrRefreshPaymentConfirmation(params: {
+  representativeId: string;
+  regionId?: string | null;
+  weekStart: Date;
+  weekEnd: Date;
+  amountCents: number;
+  pendingCents: number;
+  ordersCount: number;
+  representativeName: string;
+  regionName: string;
+  metadata: unknown;
+}) {
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = sha256(token);
+  const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const description = `Pagamento de comissão - ${params.representativeName} - ${dateToShortBR(params.weekStart)} a ${dateToShortBR(params.weekEnd)}`;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const records = await tx.$queryRaw<ConfirmationRecord[]>`
+      INSERT INTO "CommissionPaymentConfirmation" (
+        "representativeId",
+        "regionId",
+        "weekStart",
+        "weekEnd",
+        "amountCents",
+        "pendingCents",
+        "ordersCount",
+        "tokenHash",
+        "tokenExpiresAt",
+        "status",
+        "description",
+        "metadata",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES (
+        ${params.representativeId}::uuid,
+        ${params.regionId ? params.regionId : null}::uuid,
+        ${params.weekStart},
+        ${params.weekEnd},
+        ${params.amountCents},
+        ${params.pendingCents},
+        ${params.ordersCount},
+        ${tokenHash},
+        ${tokenExpiresAt},
+        'PENDING',
+        ${description},
+        ${JSON.stringify(params.metadata)}::jsonb,
+        now(),
+        now()
+      )
+      ON CONFLICT ("representativeId", "weekStart", "weekEnd")
+      DO UPDATE SET
+        "regionId" = EXCLUDED."regionId",
+        "amountCents" = EXCLUDED."amountCents",
+        "pendingCents" = EXCLUDED."pendingCents",
+        "ordersCount" = EXCLUDED."ordersCount",
+        "tokenHash" = CASE
+          WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
+            THEN "CommissionPaymentConfirmation"."tokenHash"
+          ELSE EXCLUDED."tokenHash"
+        END,
+        "tokenExpiresAt" = CASE
+          WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
+            THEN "CommissionPaymentConfirmation"."tokenExpiresAt"
+          ELSE EXCLUDED."tokenExpiresAt"
+        END,
+        "status" = CASE
+          WHEN "CommissionPaymentConfirmation"."status" = 'PAID'
+            THEN "CommissionPaymentConfirmation"."status"
+          ELSE 'PENDING'
+        END,
+        "description" = EXCLUDED."description",
+        "metadata" = EXCLUDED."metadata",
+        "updatedAt" = now()
+      RETURNING "id", "tokenHash", "status", "financeTransactionId";
+    `;
+
+    const record = records[0];
+    if (!record) throw new Error("Não foi possível criar confirmação de comissão.");
+
+    let financeTransactionId = record.financeTransactionId;
+
+    if (record.status !== "PAID") {
+      if (params.amountCents > 0) {
+        if (financeTransactionId) {
+          await tx.financeTransaction.updateMany({
+            where: {
+              id: financeTransactionId,
+              status: {
+                not: FinanceStatus.PAID,
+              },
+            },
+            data: {
+              scope: FinanceScope.MATRIX,
+              type: FinanceEntryType.EXPENSE,
+              status: FinanceStatus.PENDING,
+              category: FinanceCategoryType.COMMISSION,
+              paymentMethod: PaymentMethod.PIX,
+              description,
+              amountCents: params.amountCents,
+              regionId: params.regionId || null,
+              dueDate: new Date(),
+              paidAt: null,
+              competenceMonth: params.weekEnd.getMonth() + 1,
+              competenceYear: params.weekEnd.getFullYear(),
+              isSystemGenerated: true,
+              notes: [
+                "Despesa gerada automaticamente no fechamento semanal de comissão.",
+                `Representante: ${params.representativeName}.`,
+                `Período: ${params.weekStart.toISOString()} até ${params.weekEnd.toISOString()}.`,
+                `Pendente para próximo acerto: ${(params.pendingCents / 100).toFixed(2)}.`,
+              ].join("\n"),
+            },
+          });
+        } else {
+          const transaction = await tx.financeTransaction.create({
+            data: {
+              scope: FinanceScope.MATRIX,
+              type: FinanceEntryType.EXPENSE,
+              status: FinanceStatus.PENDING,
+              category: FinanceCategoryType.COMMISSION,
+              paymentMethod: PaymentMethod.PIX,
+              description,
+              amountCents: params.amountCents,
+              regionId: params.regionId || null,
+              dueDate: new Date(),
+              competenceMonth: params.weekEnd.getMonth() + 1,
+              competenceYear: params.weekEnd.getFullYear(),
+              isSystemGenerated: true,
+              notes: [
+                "Despesa gerada automaticamente no fechamento semanal de comissão.",
+                `Representante: ${params.representativeName}.`,
+                `Período: ${params.weekStart.toISOString()} até ${params.weekEnd.toISOString()}.`,
+                `Pendente para próximo acerto: ${(params.pendingCents / 100).toFixed(2)}.`,
+              ].join("\n"),
+            },
+          });
+
+          financeTransactionId = transaction.id;
+
+          await tx.$executeRaw`
+            UPDATE "CommissionPaymentConfirmation"
+            SET "financeTransactionId" = ${transaction.id}::uuid, "updatedAt" = now()
+            WHERE "id" = ${record.id}::uuid;
+          `;
+        }
+      } else if (financeTransactionId) {
+        await tx.financeTransaction.updateMany({
+          where: {
+            id: financeTransactionId,
+            status: {
+              not: FinanceStatus.PAID,
+            },
+          },
+          data: {
+            status: FinanceStatus.CANCELLED,
+            amountCents: 0,
+            notes: "Despesa cancelada automaticamente porque não há comissão liberada para pagamento.",
+          },
+        });
+      }
+    }
+
+    return { ...record, financeTransactionId };
+  });
+
+  const wasAlreadyPaid = result.status === "PAID" || result.tokenHash !== tokenHash;
+
+  return {
+    confirmationId: result.id,
+    financeTransactionId: result.financeTransactionId,
+    token: wasAlreadyPaid ? null : token,
+    confirmationUrl: wasAlreadyPaid ? null : null,
+    wasAlreadyPaid,
+  };
+}
+
 function buildRepresentativeMessage(params: {
   representativeName: string;
   regionName: string;
@@ -300,17 +457,8 @@ function buildRepresentativeMessage(params: {
   totalCommissionCents: number;
   payableCommissionCents: number;
   pendingCommissionCents: number;
-  payableOrders: Array<{
-    number: number;
-    clientName: string;
-    commissionCents: number;
-  }>;
-  pendingOrders: Array<{
-    number: number;
-    clientName: string;
-    pendingCommissionCents: number;
-    reason: string;
-  }>;
+  payableOrders: PayableOrderPayload[];
+  pendingOrders: PendingOrderPayload[];
 }) {
   const payableLines = params.payableOrders.length
     ? params.payableOrders
@@ -332,8 +480,14 @@ function buildRepresentativeMessage(params: {
         .join("\n")
     : "Nenhuma comissão pendente neste período.";
 
-  const extraPayable = params.payableOrders.length > 12 ? `\n• +${params.payableOrders.length - 12} pedidos liberados no relatório.` : "";
-  const extraPending = params.pendingOrders.length > 12 ? `\n• +${params.pendingOrders.length - 12} pedidos pendentes no relatório.` : "";
+  const extraPayable =
+    params.payableOrders.length > 12
+      ? `\n• +${params.payableOrders.length - 12} pedidos liberados no relatório.`
+      : "";
+  const extraPending =
+    params.pendingOrders.length > 12
+      ? `\n• +${params.pendingOrders.length - 12} pedidos pendentes no relatório.`
+      : "";
 
   const pixBlock = params.pixKey
     ? [
@@ -343,10 +497,7 @@ function buildRepresentativeMessage(params: {
         `Tipo: ${params.pixType || "não informado"}`,
         `Chave: ${params.pixKey}`,
       ].join("\n")
-    : [
-        "",
-        "*Atenção:* representante sem chave Pix cadastrada.",
-      ].join("\n");
+    : ["", "*Atenção:* representante sem chave Pix cadastrada."].join("\n");
 
   return [
     "*Fechamento semanal de comissão*",
@@ -354,9 +505,9 @@ function buildRepresentativeMessage(params: {
     `Representante: ${params.representativeName}`,
     `Região: ${params.regionName}`,
     "",
-    `Pedidos no período: ${params.orderCount}`,
-    `Total vendido: ${centsToBRL(params.totalSalesCents)}`,
-    `Comissão total gerada: ${centsToBRL(params.totalCommissionCents)}`,
+    `Pedidos considerados: ${params.orderCount}`,
+    `Total vendido considerado: ${centsToBRL(params.totalSalesCents)}`,
+    `Comissão total considerada: ${centsToBRL(params.totalCommissionCents)}`,
     "",
     `*Valor a pagar hoje:* ${centsToBRL(params.payableCommissionCents)}`,
     `*Pendente para próximo acerto:* ${centsToBRL(params.pendingCommissionCents)}`,
@@ -422,21 +573,30 @@ export async function GET(request: Request) {
       pendingCommissionCents: number;
       sent: boolean;
       confirmationUrl?: string | null;
+      financeTransactionId?: string | null;
       skippedReason?: string;
       zapi?: unknown;
     }> = [];
 
     for (const representative of representatives) {
+      const committedCommissions = await getPreviouslyCommittedCommissions({
+        representativeId: representative.id,
+        weekStart: start,
+        weekEnd: endDisplay,
+      });
+
       const orders = (await prisma.order.findMany({
         where: {
           sellerId: representative.id,
           type: "SALE",
           issuedAt: {
-            gte: start,
             lt: endExclusive,
           },
           status: {
             not: "CANCELLED",
+          },
+          commissionTotalCents: {
+            gt: 0,
           },
         },
         orderBy: [{ issuedAt: "asc" }, { number: "asc" }],
@@ -473,30 +633,34 @@ export async function GET(request: Request) {
         },
       })) as OrderForSettlement[];
 
-      const totalSalesCents = orders.reduce((acc, order) => acc + (order.totalCents || 0), 0);
-      const totalCommissionCents = orders.reduce(
-        (acc, order) => acc + (order.commissionTotalCents || 0),
-        0
-      );
+      const payableOrders: PayableOrderPayload[] = [];
+      const pendingOrders: PendingOrderPayload[] = [];
 
-      const payableOrders: Array<{ number: number; clientName: string; commissionCents: number }> = [];
-      const pendingOrders: Array<{
-        number: number;
-        clientName: string;
-        pendingCommissionCents: number;
-        reason: string;
-      }> = [];
+      let totalSalesCents = 0;
+      let totalCommissionCents = 0;
 
       for (const order of orders) {
+        const alreadyCommittedCents = Math.max(0, committedCommissions.get(order.id) || 0);
+        const commissionTotalCents = Math.max(0, order.commissionTotalCents || 0);
         const paidCents = getPaidCents(order);
-        const payableCommissionCents = proratedCommission(order, paidCents);
+        const releasedCommissionCents = proratedCommission(order, paidCents);
+        const payableCommissionCents = Math.max(0, releasedCommissionCents - alreadyCommittedCents);
         const pendingCommissionCents = Math.max(
           0,
-          (order.commissionTotalCents || 0) - payableCommissionCents
+          commissionTotalCents - alreadyCommittedCents - payableCommissionCents
         );
+
+        const issuedInCurrentPeriod = order.issuedAt >= start && order.issuedAt < endExclusive;
+        const shouldShowOrder = issuedInCurrentPeriod || payableCommissionCents > 0 || pendingCommissionCents > 0;
+
+        if (!shouldShowOrder) continue;
+
+        totalSalesCents += order.totalCents || 0;
+        totalCommissionCents += Math.max(0, commissionTotalCents - alreadyCommittedCents);
 
         if (payableCommissionCents > 0) {
           payableOrders.push({
+            orderId: order.id,
             number: order.number,
             clientName: order.client.name,
             commissionCents: payableCommissionCents,
@@ -505,6 +669,7 @@ export async function GET(request: Request) {
 
         if (pendingCommissionCents > 0) {
           pendingOrders.push({
+            orderId: order.id,
             number: order.number,
             clientName: order.client.name,
             pendingCommissionCents,
@@ -521,9 +686,14 @@ export async function GET(request: Request) {
         (acc, order) => acc + order.pendingCommissionCents,
         0
       );
+      const ordersCount = new Set([
+        ...payableOrders.map((order) => order.orderId),
+        ...pendingOrders.map((order) => order.orderId),
+      ]).size;
+
       const regionName = representative.region?.name || orders[0]?.region.name || "Sem região";
 
-      if (!orders.length && payableCommissionCents === 0 && pendingCommissionCents === 0) {
+      if (ordersCount === 0 && payableCommissionCents === 0 && pendingCommissionCents === 0) {
         results.push({
           representative: representative.name,
           region: regionName,
@@ -531,7 +701,7 @@ export async function GET(request: Request) {
           payableCommissionCents: 0,
           pendingCommissionCents: 0,
           sent: false,
-          skippedReason: "Sem pedidos no período.",
+          skippedReason: "Sem comissão liberada ou pendente para este fechamento.",
         });
         continue;
       }
@@ -543,10 +713,9 @@ export async function GET(request: Request) {
         weekEnd: endDisplay,
         amountCents: payableCommissionCents,
         pendingCents: pendingCommissionCents,
-        ordersCount: orders.length,
+        ordersCount,
         representativeName: representative.name,
         regionName,
-        baseUrl,
         metadata: {
           totalSalesCents,
           totalCommissionCents,
@@ -558,6 +727,10 @@ export async function GET(request: Request) {
         },
       });
 
+      const confirmationUrl = confirmation.token
+        ? `${baseUrl}/payments/commission/confirm?token=${encodeURIComponent(confirmation.token)}`
+        : null;
+
       const message = [
         buildRepresentativeMessage({
           representativeName: representative.name,
@@ -567,7 +740,7 @@ export async function GET(request: Request) {
           pixType: representative.pixType,
           periodStart: start,
           periodEnd: endDisplay,
-          orderCount: orders.length,
+          orderCount: ordersCount,
           totalSalesCents,
           totalCommissionCents,
           payableCommissionCents,
@@ -576,8 +749,8 @@ export async function GET(request: Request) {
           pendingOrders,
         }),
         "",
-        confirmation.confirmationUrl
-          ? `*Confirmar pagamento:*\n${confirmation.confirmationUrl}`
+        confirmationUrl
+          ? `*Confirmar pagamento:*\n${confirmationUrl}`
           : "*Pagamento já confirmado anteriormente para este período.*",
       ].join("\n");
 
@@ -586,10 +759,11 @@ export async function GET(request: Request) {
       results.push({
         representative: representative.name,
         region: regionName,
-        orders: orders.length,
+        orders: ordersCount,
         payableCommissionCents,
         pendingCommissionCents,
-        confirmationUrl: confirmation.confirmationUrl,
+        confirmationUrl,
+        financeTransactionId: confirmation.financeTransactionId,
         sent: true,
         zapi,
       });

@@ -61,9 +61,11 @@ export async function GET() {
             },
             distributions: {
               orderBy: [{ year: "desc" }, { month: "desc" }],
-              include: {
-                region: true,
-              },
+              include: { region: true },
+            },
+            quarterlyFundDistributions: {
+              orderBy: [{ year: "desc" }, { quarter: "desc" }],
+              include: { region: true },
             },
           },
         },
@@ -83,18 +85,19 @@ export async function GET() {
 
     const activeShares = investor.shares ?? [];
     const distributions = investor.distributions ?? [];
+    const quarterlyFundDistributions = investor.quarterlyFundDistributions ?? [];
 
     const totalInvestedCents = activeShares.reduce((sum, share) => {
       return sum + (share.amountCents || share.region?.quotaValueCents || 0);
     }, 0);
 
-    const totalDistributedCents = distributions
-      .filter((d) => d.status === "PAID")
-      .reduce((sum, d) => sum + (d.totalDistributionCents ?? 0), 0);
+    const totalDistributedCents =
+      distributions.filter((d) => d.status === "PAID").reduce((sum, d) => sum + (d.totalDistributionCents ?? 0), 0) +
+      quarterlyFundDistributions.filter((d) => d.status === "PAID").reduce((sum, d) => sum + (d.totalDistributionCents ?? 0), 0);
 
-    const pendingDistributionCents = distributions
-      .filter((d) => d.status === "PENDING")
-      .reduce((sum, d) => sum + (d.totalDistributionCents ?? 0), 0);
+    const pendingDistributionCents =
+      distributions.filter((d) => d.status === "PENDING").reduce((sum, d) => sum + (d.totalDistributionCents ?? 0), 0) +
+      quarterlyFundDistributions.filter((d) => d.status === "PENDING").reduce((sum, d) => sum + (d.totalDistributionCents ?? 0), 0);
 
     return NextResponse.json({
       investor: {
@@ -114,6 +117,7 @@ export async function GET() {
       },
       shares: activeShares,
       distributions,
+      quarterlyFundDistributions,
     });
   } catch (error) {
     console.error("INVESTOR ME ERROR:", error);

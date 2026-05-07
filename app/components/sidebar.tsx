@@ -23,6 +23,7 @@ import {
   BriefcaseBusiness,
   Bell,
   Target,
+  BadgeDollarSign,
 } from "lucide-react";
 
 import { useTheme } from "../providers/theme-provider";
@@ -230,6 +231,11 @@ export default function Sidebar() {
             label="Repasses → Matriz"
             path="/finance/transfers"
           />
+          <Item
+            icon={BadgeDollarSign}
+            label="Comissões"
+            path="/finance/commissions"
+          />
 
           <Section title="INVESTIDORES" />
           <Item icon={BarChart3} label="Cotistas" path="/investors/dashboard" />
@@ -340,6 +346,11 @@ export default function Sidebar() {
             icon={ArrowRightLeft}
             label="Repasses → Matriz"
             path="/finance/transfers"
+          />
+          <Item
+            icon={BadgeDollarSign}
+            label="Comissões"
+            path="/finance/commissions"
           />
 
           <Section title="COTAS" />

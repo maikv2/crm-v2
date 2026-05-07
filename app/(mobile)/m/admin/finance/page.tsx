@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   ArrowRightLeft,
+  BadgeDollarSign,
   BarChart3,
   HandCoins,
   Landmark,
@@ -198,6 +199,13 @@ export default function AdminFinanceMobile() {
       </MobileCard>
 
       <div style={{ display: "grid", gap: 12 }}>
+        <FinanceShortcut
+          href="/m/admin/finance/commissions"
+          icon={<BadgeDollarSign size={18} />}
+          title="Comissões"
+          description="Breakdown semanal: desta semana, semanas anteriores e próximo acerto por representante."
+        />
+
         <FinanceShortcut
           href="/m/admin/finance/receivables"
           icon={<Wallet size={18} />}

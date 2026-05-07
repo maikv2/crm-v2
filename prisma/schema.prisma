@@ -31,6 +31,7 @@ model User {
   receiptsReceived          Receipt[]                  @relation("Receipt_receivedBy")
   representativeCommissions RepresentativeCommission[]
   representativeSettlements RepresentativeSettlement[]
+  commissionConfirmations   CommissionPaymentConfirmation[]
   region                    Region?                    @relation(fields: [regionId], references: [id])
   stockLocation             StockLocation?             @relation(fields: [stockLocationId], references: [id])
   visits                    Visit[]
@@ -64,6 +65,7 @@ model Region {
   monthlyResults            RegionMonthlyResult[]
   representativeCommissions RepresentativeCommission[]
   representativeSettlements RepresentativeSettlement[]
+  commissionConfirmations   CommissionPaymentConfirmation[]
   shares                    Share[]
   users                     User[]
 }
@@ -450,9 +452,10 @@ model FinanceTransaction {
   notes             String?
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @default(now()) @updatedAt
-  investor          Investor?           @relation(fields: [investorId], references: [id])
-  order             Order?              @relation(fields: [orderId], references: [id])
-  region            Region?             @relation(fields: [regionId], references: [id])
+  investor                  Investor?                       @relation(fields: [investorId], references: [id])
+  order                     Order?                          @relation(fields: [orderId], references: [id])
+  region                    Region?                         @relation(fields: [regionId], references: [id])
+  commissionConfirmations   CommissionPaymentConfirmation[]
 }
 
 model RegionMonthlyResult {
@@ -539,6 +542,31 @@ model RepresentativeSettlement {
   representative                User?                          @relation(fields: [representativeId], references: [id])
 
   @@unique([regionId, weekStart, weekEnd])
+}
+
+model CommissionPaymentConfirmation {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  representativeId     String               @db.Uuid
+  regionId             String?              @db.Uuid
+  weekStart            DateTime
+  weekEnd              DateTime
+  amountCents          Int                  @default(0)
+  pendingCents         Int                  @default(0)
+  ordersCount          Int                  @default(0)
+  tokenHash            String
+  tokenExpiresAt       DateTime
+  status               String               @default("PENDING")
+  description          String               @default("")
+  metadata             Json?
+  confirmedAt          DateTime?
+  financeTransactionId String?              @db.Uuid
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @default(now()) @updatedAt
+  representative       User                 @relation(fields: [representativeId], references: [id])
+  region               Region?              @relation(fields: [regionId], references: [id])
+  financeTransaction   FinanceTransaction?  @relation(fields: [financeTransactionId], references: [id])
+
+  @@unique([representativeId, weekStart, weekEnd])
 }
 
 model AccountsReceivable {

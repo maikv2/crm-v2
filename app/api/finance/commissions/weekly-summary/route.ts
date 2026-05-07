@@ -4,26 +4,24 @@ import { getAuthUser } from "@/lib/auth-user";
 
 export const dynamic = "force-dynamic";
 
-type ConfirmationRow = {
-  id: string;
-  representativeId: string;
-  representativeName: string;
-  regionId: string | null;
-  regionName: string | null;
-  weekStart: Date;
-  weekEnd: Date;
-  amountCents: number;
-  pendingCents: number;
-  ordersCount: number;
-  status: string;
-  confirmedAt: Date | null;
-  metadata: {
-    totalSalesCents?: number;
-    totalCommissionCents?: number;
-    payableCurrentWeekCents?: number;
-    payablePriorWeekCents?: number;
-  } | null;
-};
+function getCurrentWeekStart(now = new Date()) {
+  const saoPauloOffsetHours = 3;
+  const localLike = new Date(now.getTime() - saoPauloOffsetHours * 60 * 60 * 1000);
+  const day = localLike.getUTCDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+
+  const mondayLocalLike = new Date(localLike);
+  mondayLocalLike.setUTCDate(localLike.getUTCDate() + diffToMonday);
+  mondayLocalLike.setUTCHours(0, 0, 0, 0);
+
+  return new Date(mondayLocalLike.getTime() + saoPauloOffsetHours * 60 * 60 * 1000);
+}
+
+function proratedCommission(commissionTotalCents: number, totalCents: number, paidCents: number) {
+  if (!commissionTotalCents || !totalCents || !paidCents) return 0;
+  if (paidCents >= totalCents) return commissionTotalCents;
+  return Math.round((commissionTotalCents * paidCents) / totalCents);
+}
 
 export async function GET() {
   try {
@@ -37,85 +35,185 @@ export async function GET() {
       return NextResponse.json({ error: "Acesso não autorizado." }, { status: 403 });
     }
 
-    // Busca os fechamentos mais recentes — as últimas 2 semanas por representante
-    const rows = await prisma.$queryRaw<ConfirmationRow[]>`
-      SELECT
-        c."id",
-        c."representativeId",
-        u."name" AS "representativeName",
-        c."regionId",
-        r."name" AS "regionName",
-        c."weekStart",
-        c."weekEnd",
-        c."amountCents",
-        c."pendingCents",
-        c."ordersCount",
-        c."status",
-        c."confirmedAt",
-        c."metadata"
-      FROM "CommissionPaymentConfirmation" c
-      JOIN "User" u ON u."id" = c."representativeId"
-      LEFT JOIN "Region" r ON r."id" = c."regionId"
-      ORDER BY c."weekEnd" DESC, u."name" ASC
-      LIMIT 200;
-    `;
+    const weekStart = getCurrentWeekStart();
 
-    const confirmations = rows.map((row) => {
-      const meta = (row.metadata ?? {}) as {
-        payableCurrentWeekCents?: number;
-        payablePriorWeekCents?: number;
-        totalSalesCents?: number;
-        totalCommissionCents?: number;
-      };
-      return {
-        id: row.id,
-        representative: row.representativeName,
-        region: row.regionName ?? "Sem região",
-        weekStart: row.weekStart,
-        weekEnd: row.weekEnd,
-        amountCents: row.amountCents,
-        pendingCents: row.pendingCents,
-        ordersCount: row.ordersCount,
-        status: row.status,
-        confirmedAt: row.confirmedAt,
-        payableCurrentWeekCents: meta.payableCurrentWeekCents ?? null,
-        payablePriorWeekCents: meta.payablePriorWeekCents ?? null,
-        totalSalesCents: meta.totalSalesCents ?? null,
-        totalCommissionCents: meta.totalCommissionCents ?? null,
-      };
+    // Busca todos os representantes ativos
+    const representatives = await prisma.user.findMany({
+      where: { role: "REPRESENTATIVE", active: true },
+      orderBy: [{ region: { name: "asc" } }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        region: { select: { id: true, name: true } },
+      },
     });
 
-    // Totais agregados do acerto mais recente (última semana fechada)
-    const latestWeekEnd = rows[0]?.weekEnd ?? null;
-    const latestBatch = latestWeekEnd
-      ? confirmations.filter(
-          (c) =>
-            new Date(c.weekEnd).getTime() === new Date(latestWeekEnd).getTime()
-        )
-      : [];
+    // Busca todas as ordens de venda com comissão e seus recebimentos
+    const orders = await prisma.order.findMany({
+      where: {
+        type: "SALE",
+        status: { not: "CANCELLED" },
+        commissionTotalCents: { gt: 0 },
+      },
+      select: {
+        id: true,
+        sellerId: true,
+        issuedAt: true,
+        totalCents: true,
+        commissionTotalCents: true,
+        paymentStatus: true,
+        client: { select: { name: true } },
+        accountsReceivables: {
+          select: {
+            status: true,
+            amountCents: true,
+            receivedCents: true,
+            paidAt: true,
+            installments: {
+              select: {
+                amountCents: true,
+                receivedCents: true,
+                paidAt: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
-    const totals = latestBatch.reduce(
-      (acc, c) => ({
-        totalPayable: acc.totalPayable + c.amountCents,
-        totalCurrentWeek:
-          acc.totalCurrentWeek + (c.payableCurrentWeekCents ?? 0),
-        totalPriorWeeks:
-          acc.totalPriorWeeks + (c.payablePriorWeekCents ?? 0),
-        totalPending: acc.totalPending + c.pendingCents,
-      }),
-      {
-        totalPayable: 0,
-        totalCurrentWeek: 0,
-        totalPriorWeeks: 0,
-        totalPending: 0,
+    // Indexa ordens por vendedor
+    const ordersBySeller = new Map<string, typeof orders>();
+    for (const order of orders) {
+      if (!order.sellerId) continue;
+      if (!ordersBySeller.has(order.sellerId)) ordersBySeller.set(order.sellerId, []);
+      ordersBySeller.get(order.sellerId)!.push(order);
+    }
+
+    type RepRow = {
+      representativeId: string;
+      representative: string;
+      region: string;
+      ordersCount: number;
+      payableCurrentWeekCents: number;
+      payablePriorWeekCents: number;
+      amountCents: number;
+      pendingCents: number;
+    };
+
+    const rows: RepRow[] = [];
+
+    for (const rep of representatives) {
+      const repOrders = ordersBySeller.get(rep.id) ?? [];
+
+      let payableCurrentWeekCents = 0;
+      let payablePriorWeekCents = 0;
+      let pendingCents = 0;
+      const orderIds = new Set<string>();
+
+      for (const order of repOrders) {
+        const commissionTotal = Math.max(0, order.commissionTotalCents ?? 0);
+        const orderTotal = Math.max(0, order.totalCents ?? 0);
+        if (!commissionTotal || !orderTotal) continue;
+
+        // Calcula quanto foi pago esta semana vs antes desta semana vs pendente
+        let paidThisWeekCents = 0;
+        let paidBeforeThisWeekCents = 0;
+
+        if (!order.accountsReceivables.length) {
+          if (order.paymentStatus === "PAID") {
+            paidBeforeThisWeekCents = orderTotal;
+          }
+        } else {
+          for (const ar of order.accountsReceivables) {
+            const installments = ar.installments;
+            if (installments.length) {
+              for (const inst of installments) {
+                const amount = Math.max(0, inst.amountCents ?? 0);
+                const received = Math.max(0, inst.receivedCents ?? 0);
+                const isPaid = inst.status === "PAID" || !!inst.paidAt;
+                const effectiveAmount = isPaid ? Math.max(received, amount) : Math.min(received, amount);
+                if (!effectiveAmount) continue;
+
+                if (inst.paidAt && new Date(inst.paidAt) >= weekStart) {
+                  paidThisWeekCents += effectiveAmount;
+                } else if (isPaid || received > 0) {
+                  paidBeforeThisWeekCents += effectiveAmount;
+                }
+              }
+            } else {
+              const amount = Math.max(0, ar.amountCents ?? 0);
+              const received = Math.max(0, ar.receivedCents ?? 0);
+              const isPaid = ar.status === "PAID" || !!ar.paidAt;
+              const effectiveAmount = isPaid ? Math.max(received, amount) : Math.min(received, amount);
+              if (!effectiveAmount) continue;
+
+              if (ar.paidAt && new Date(ar.paidAt) >= weekStart) {
+                paidThisWeekCents += effectiveAmount;
+              } else if (isPaid || received > 0) {
+                paidBeforeThisWeekCents += effectiveAmount;
+              }
+            }
+          }
+        }
+
+        paidThisWeekCents = Math.min(paidThisWeekCents, orderTotal);
+        paidBeforeThisWeekCents = Math.min(paidBeforeThisWeekCents, orderTotal - paidThisWeekCents);
+
+        const commissionThisWeek = proratedCommission(commissionTotal, orderTotal, paidThisWeekCents);
+        const commissionBeforeThisWeek = proratedCommission(commissionTotal, orderTotal, paidBeforeThisWeekCents);
+        const totalPaidCommission = commissionThisWeek + commissionBeforeThisWeek;
+        const orderPending = Math.max(0, commissionTotal - totalPaidCommission);
+
+        // Classifica comissão desta semana por origem da venda
+        if (commissionThisWeek > 0) {
+          const isCurrentWeekSale = new Date(order.issuedAt) >= weekStart;
+          if (isCurrentWeekSale) {
+            payableCurrentWeekCents += commissionThisWeek;
+          } else {
+            payablePriorWeekCents += commissionThisWeek;
+          }
+          orderIds.add(order.id);
+        }
+
+        if (orderPending > 0) {
+          pendingCents += orderPending;
+          orderIds.add(order.id);
+        }
       }
+
+      const amountCents = payableCurrentWeekCents + payablePriorWeekCents;
+
+      if (amountCents === 0 && pendingCents === 0) continue;
+
+      rows.push({
+        representativeId: rep.id,
+        representative: rep.name,
+        region: rep.region?.name ?? "Sem região",
+        ordersCount: orderIds.size,
+        payableCurrentWeekCents,
+        payablePriorWeekCents,
+        amountCents,
+        pendingCents,
+      });
+    }
+
+    const totals = rows.reduce(
+      (acc, r) => ({
+        totalPayable: acc.totalPayable + r.amountCents,
+        totalCurrentWeek: acc.totalCurrentWeek + r.payableCurrentWeekCents,
+        totalPriorWeeks: acc.totalPriorWeeks + r.payablePriorWeekCents,
+        totalPending: acc.totalPending + r.pendingCents,
+      }),
+      { totalPayable: 0, totalCurrentWeek: 0, totalPriorWeeks: 0, totalPending: 0 }
     );
 
     return NextResponse.json({
       ok: true,
-      latestWeekEnd,
+      weekStart,
+      calculatedAt: new Date(),
       totals,
-      confirmations,
+      confirmations: rows,
     });
   } catch (error) {
     console.error("GET /api/finance/commissions/weekly-summary error:", error);

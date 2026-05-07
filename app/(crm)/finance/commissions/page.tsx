@@ -20,20 +20,15 @@ function dateBR(value: string | Date) {
   }).format(new Date(value));
 }
 
-type Confirmation = {
-  id: string;
+type RepRow = {
+  representativeId: string;
   representative: string;
   region: string;
-  weekStart: string;
-  weekEnd: string;
+  ordersCount: number;
+  payableCurrentWeekCents: number;
+  payablePriorWeekCents: number;
   amountCents: number;
   pendingCents: number;
-  ordersCount: number;
-  status: string;
-  confirmedAt: string | null;
-  payableCurrentWeekCents: number | null;
-  payablePriorWeekCents: number | null;
-  totalSalesCents: number | null;
 };
 
 type Totals = {
@@ -44,32 +39,11 @@ type Totals = {
 };
 
 type SummaryData = {
-  latestWeekEnd: string | null;
+  weekStart: string;
+  calculatedAt: string;
   totals: Totals;
-  confirmations: Confirmation[];
+  confirmations: RepRow[];
 };
-
-function statusLabel(status: string) {
-  if (status === "PAID") return "Pago";
-  if (status === "PENDING") return "Pendente";
-  if (status === "EXPIRED") return "Expirado";
-  if (status === "CANCELLED") return "Cancelado";
-  return status;
-}
-
-function statusColor(status: string) {
-  if (status === "PAID") return "#166534";
-  if (status === "PENDING") return "#92400e";
-  if (status === "EXPIRED") return "#991b1b";
-  return "#475569";
-}
-
-function statusBg(status: string) {
-  if (status === "PAID") return "#dcfce7";
-  if (status === "PENDING") return "#fef3c7";
-  if (status === "EXPIRED") return "#fee2e2";
-  return "#f1f5f9";
-}
 
 export default function FinanceCommissionsPage() {
   const { theme: mode } = useTheme();
@@ -84,24 +58,25 @@ export default function FinanceCommissionsPage() {
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
+    setLoading(true);
     fetch("/api/finance/commissions/weekly-summary", { cache: "no-store" })
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Erro ao carregar dados.");
         setData(json);
-        setSelectedWeek(json.latestWeekEnd ?? null);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => { load(); }, []);
 
   if (loading) {
     return (
       <div style={{ padding: 24, background: pageBg, minHeight: "100vh", color: textColor }}>
-        Carregando comissões...
+        Calculando comissões em tempo real...
       </div>
     );
   }
@@ -118,80 +93,43 @@ export default function FinanceCommissionsPage() {
 
   if (!data) return null;
 
-  // Semanas distintas disponíveis
-  const weeks = Array.from(
-    new Map(
-      data.confirmations.map((c) => [
-        c.weekEnd,
-        { weekStart: c.weekStart, weekEnd: c.weekEnd },
-      ])
-    ).values()
-  ).sort((a, b) => new Date(b.weekEnd).getTime() - new Date(a.weekEnd).getTime());
-
-  const filtered = selectedWeek
-    ? data.confirmations.filter((c) => c.weekEnd === selectedWeek)
-    : data.confirmations.filter((c) => c.weekEnd === data.latestWeekEnd);
-
-  const totals = filtered.reduce(
-    (acc, c) => ({
-      totalPayable: acc.totalPayable + c.amountCents,
-      totalCurrentWeek: acc.totalCurrentWeek + (c.payableCurrentWeekCents ?? 0),
-      totalPriorWeeks: acc.totalPriorWeeks + (c.payablePriorWeekCents ?? 0),
-      totalPending: acc.totalPending + c.pendingCents,
-    }),
-    { totalPayable: 0, totalCurrentWeek: 0, totalPriorWeeks: 0, totalPending: 0 }
-  );
-
-  const selectedWeekData = weeks.find((w) => w.weekEnd === selectedWeek);
-
   return (
     <div style={{ minHeight: "100vh", background: pageBg, padding: 24, color: textColor }}>
       <div style={{ maxWidth: 1200 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 4 }}>
-          Controle de Comissões
-        </h1>
-        <p style={{ color: muted, marginBottom: 24, marginTop: 0 }}>
-          Breakdown semanal: o que foi gerado pelas vendas da semana, por vendas anteriores e o que fica para o próximo acerto.
-        </p>
 
-        {/* Seletor de semana */}
-        {weeks.length > 1 && (
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 13, color: muted, fontWeight: 700, marginRight: 8 }}>
-              Semana de fechamento:
-            </label>
-            <select
-              value={selectedWeek ?? ""}
-              onChange={(e) => setSelectedWeek(e.target.value)}
-              style={{
-                border: `1px solid ${border}`,
-                borderRadius: 8,
-                padding: "6px 12px",
-                background: cardBg,
-                color: textColor,
-                fontSize: 14,
-              }}
-            >
-              {weeks.map((w) => (
-                <option key={w.weekEnd} value={w.weekEnd}>
-                  {dateBR(w.weekStart)} a {dateBR(w.weekEnd)}
-                </option>
-              ))}
-            </select>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
+          <div>
+            <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 4, marginTop: 0 }}>
+              Controle de Comissões
+            </h1>
+            <p style={{ color: muted, margin: 0, fontSize: 13 }}>
+              Semana a partir de <strong style={{ color: textColor }}>{dateBR(data.weekStart)}</strong>
+              {" · "}Atualizado em tempo real conforme pagamentos dos clientes
+              {" · "}Última consulta: {new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(data.calculatedAt))}
+            </p>
           </div>
-        )}
-
-        {selectedWeekData && (
-          <p style={{ fontSize: 13, color: muted, marginBottom: 20 }}>
-            Período: <strong style={{ color: textColor }}>{dateBR(selectedWeekData.weekStart)} a {dateBR(selectedWeekData.weekEnd)}</strong>
-          </p>
-        )}
+          <button
+            onClick={load}
+            style={{
+              border: `1px solid ${border}`,
+              borderRadius: 10,
+              padding: "8px 16px",
+              background: cardBg,
+              color: textColor,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            ↻ Atualizar
+          </button>
+        </div>
 
         {/* Cards de totais */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
           <TotalCard
-            label="Total a pagar"
-            value={money(totals.totalPayable)}
+            label="Total a pagar esta semana"
+            value={money(data.totals.totalPayable)}
             highlight
             border={border}
             cardBg={cardBg}
@@ -199,7 +137,8 @@ export default function FinanceCommissionsPage() {
           />
           <TotalCard
             label="Desta semana"
-            value={money(totals.totalCurrentWeek)}
+            sublabel="vendas emitidas esta semana"
+            value={money(data.totals.totalCurrentWeek)}
             color="#1e40af"
             bg="#eff6ff"
             border={border}
@@ -208,7 +147,8 @@ export default function FinanceCommissionsPage() {
           />
           <TotalCard
             label="Semanas anteriores"
-            value={money(totals.totalPriorWeeks)}
+            sublabel="vendas antigas pagas esta semana"
+            value={money(data.totals.totalPriorWeeks)}
             color="#7e22ce"
             bg="#faf5ff"
             border={border}
@@ -217,7 +157,8 @@ export default function FinanceCommissionsPage() {
           />
           <TotalCard
             label="Próximo acerto"
-            value={money(totals.totalPending)}
+            sublabel="aguardando pagamento do cliente"
+            value={money(data.totals.totalPending)}
             color="#92400e"
             bg="#fffbeb"
             border={border}
@@ -232,7 +173,7 @@ export default function FinanceCommissionsPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ background: theme.isDark ? "#162032" : "#f8fafc", borderBottom: `1px solid ${border}` }}>
-                  {["Representante", "Região", "Pedidos", "Desta semana", "Semanas anteriores", "Total a pagar", "Próximo acerto", "Status"].map((h) => (
+                  {["Representante", "Região", "Pedidos", "Desta semana", "Semanas anteriores", "Total a pagar", "Próximo acerto"].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -251,54 +192,29 @@ export default function FinanceCommissionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {data.confirmations.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={8}
-                      style={{ padding: 24, textAlign: "center", color: muted }}
-                    >
-                      Nenhum fechamento encontrado para este período.
+                    <td colSpan={7} style={{ padding: 24, textAlign: "center", color: muted }}>
+                      Nenhuma comissão encontrada para esta semana.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((c) => (
-                    <tr
-                      key={c.id}
-                      style={{ borderBottom: `1px solid ${border}` }}
-                    >
+                  data.confirmations.map((c) => (
+                    <tr key={c.representativeId} style={{ borderBottom: `1px solid ${border}` }}>
                       <td style={{ padding: "12px 16px", fontWeight: 700 }}>{c.representative}</td>
                       <td style={{ padding: "12px 16px", color: muted }}>{c.region}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>{c.ordersCount}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#1d4ed8", fontWeight: 700 }}>
-                        {c.payableCurrentWeekCents != null
-                          ? money(c.payableCurrentWeekCents)
-                          : <span style={{ color: muted, fontWeight: 400 }}>—</span>}
+                        {money(c.payableCurrentWeekCents)}
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#7e22ce", fontWeight: 700 }}>
-                        {c.payablePriorWeekCents != null
-                          ? money(c.payablePriorWeekCents)
-                          : <span style={{ color: muted, fontWeight: 400 }}>—</span>}
+                        {money(c.payablePriorWeekCents)}
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 900 }}>
                         {money(c.amountCents)}
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#92400e" }}>
                         {money(c.pendingCents)}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 10px",
-                            borderRadius: 8,
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: statusColor(c.status),
-                            background: statusBg(c.status),
-                          }}
-                        >
-                          {statusLabel(c.status)}
-                        </span>
                       </td>
                     </tr>
                   ))
@@ -309,8 +225,10 @@ export default function FinanceCommissionsPage() {
         </div>
 
         <p style={{ fontSize: 12, color: muted, marginTop: 16 }}>
-          Regra: comissão liberada somente sobre valores já baixados como recebidos no financeiro.
-          &ldquo;Desta semana&rdquo; = vendas emitidas no período do fechamento. &ldquo;Semanas anteriores&rdquo; = vendas de períodos anteriores cujo pagamento entrou esta semana.
+          Comissão liberada somente sobre valores já baixados como recebidos no financeiro.
+          &ldquo;Desta semana&rdquo; = vendas emitidas a partir de {dateBR(data.weekStart)}.
+          &ldquo;Semanas anteriores&rdquo; = vendas antigas cujo pagamento entrou esta semana.
+          &ldquo;Próximo acerto&rdquo; = saldo ainda não recebido dos clientes.
         </p>
       </div>
     </div>
@@ -319,6 +237,7 @@ export default function FinanceCommissionsPage() {
 
 function TotalCard({
   label,
+  sublabel,
   value,
   highlight = false,
   color,
@@ -328,6 +247,7 @@ function TotalCard({
   muted,
 }: {
   label: string;
+  sublabel?: string;
   value: string;
   highlight?: boolean;
   color?: string;
@@ -348,11 +268,14 @@ function TotalCard({
       <div style={{ fontSize: 12, color: muted, fontWeight: 700, textTransform: "uppercase" }}>
         {label}
       </div>
+      {sublabel && (
+        <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>{sublabel}</div>
+      )}
       <div
         style={{
           fontSize: 22,
           fontWeight: 900,
-          marginTop: 6,
+          marginTop: 8,
           color: color ?? (highlight ? "#166534" : undefined),
         }}
       >

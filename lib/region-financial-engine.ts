@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 
+// Admin overhead is provisioned at 32% of gross revenue per V2 budget model.
+// The difference between provisioned and actual admin cost flows to the quarterly fund.
+const PROJECTED_ADMIN_PCT = 0.32;
+
 type RegionFinancialSnapshot = {
   regionId: string;
   month: number;
@@ -13,6 +17,7 @@ type RegionFinancialSnapshot = {
   reserveCents: number;
   ebitdaCents: number;
   operatingProfitCents: number;
+  quarterlyFundContributionCents: number;
   activePdvs: number;
   activeClients: number;
 };
@@ -196,6 +201,12 @@ export async function calculateRegionFinancialSnapshot(
   const ebitdaCents = Math.max(0, Math.floor(grossRevenueCents * 0.15));
   const reserveCents = Math.max(0, operatingProfitCents - ebitdaCents);
 
+  // Monthly contribution to the quarterly fund:
+  // projected admin budget (32% of revenue) minus actual admin spend.
+  // Efficiency surplus flows to investors quarterly via the fundo trimestral.
+  const projectedAdminCents = Math.floor(grossRevenueCents * PROJECTED_ADMIN_PCT);
+  const quarterlyFundContributionCents = Math.max(0, projectedAdminCents - administrativeCents);
+
   return {
     regionId,
     month,
@@ -209,6 +220,7 @@ export async function calculateRegionFinancialSnapshot(
     reserveCents,
     ebitdaCents,
     operatingProfitCents,
+    quarterlyFundContributionCents,
     activePdvs,
     activeClients,
   };
@@ -238,6 +250,7 @@ export async function recalculateRegionMonthlyResult(
       administrativeCents: snapshot.administrativeCents,
       reserveCents: snapshot.reserveCents,
       ebitdaCents: snapshot.ebitdaCents,
+      quarterlyFundContributionCents: snapshot.quarterlyFundContributionCents,
       activePdvs: snapshot.activePdvs,
       activeClients: snapshot.activeClients,
     },
@@ -253,6 +266,7 @@ export async function recalculateRegionMonthlyResult(
       administrativeCents: snapshot.administrativeCents,
       reserveCents: snapshot.reserveCents,
       ebitdaCents: snapshot.ebitdaCents,
+      quarterlyFundContributionCents: snapshot.quarterlyFundContributionCents,
       activePdvs: snapshot.activePdvs,
       activeClients: snapshot.activeClients,
     },

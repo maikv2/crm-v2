@@ -56,8 +56,9 @@ model Region {
   clients                   Client[]
   exhibitors                Exhibitor[]
   financeTransactions       FinanceTransaction[]
-  investorDistributions     InvestorDistribution[]
-  orders                    Order[]
+  investorDistributions          InvestorDistribution[]
+  quarterlyFundDistributions     QuarterlyFundDistribution[]
+  orders                         Order[]
   portalOrderRequests       PortalOrderRequest[]
   prospects                 Prospect[]
   receipts                  Receipt[]
@@ -80,10 +81,11 @@ model Investor {
   document      String?
   notes         String?
   userId        String?                @unique @db.Uuid
-  transactions  FinanceTransaction[]
-  user          User?                  @relation(fields: [userId], references: [id])
-  distributions InvestorDistribution[]
-  shares        Share[]
+  transactions              FinanceTransaction[]
+  user                      User?                       @relation(fields: [userId], references: [id])
+  distributions             InvestorDistribution[]
+  quarterlyFundDistributions QuarterlyFundDistribution[]
+  shares                    Share[]
 }
 
 model Share {
@@ -459,24 +461,26 @@ model FinanceTransaction {
 }
 
 model RegionMonthlyResult {
-  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  regionId            String                 @db.Uuid
-  month               Int
-  year                Int
-  grossRevenueCents   Int                    @default(0)
-  cmvCents            Int                    @default(0)
-  logisticsCents      Int                    @default(0)
-  commissionCents     Int                    @default(0)
-  taxesCents          Int                    @default(0)
-  administrativeCents Int                    @default(0)
-  reserveCents        Int                    @default(0)
-  ebitdaCents         Int                    @default(0)
-  activePdvs          Int                    @default(0)
-  activeClients       Int                    @default(0)
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @default(now()) @updatedAt
-  distributions       InvestorDistribution[]
-  region              Region                 @relation(fields: [regionId], references: [id])
+  id                             String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  regionId                       String                        @db.Uuid
+  month                          Int
+  year                           Int
+  grossRevenueCents              Int                           @default(0)
+  cmvCents                       Int                           @default(0)
+  logisticsCents                 Int                           @default(0)
+  commissionCents                Int                           @default(0)
+  taxesCents                     Int                           @default(0)
+  administrativeCents            Int                           @default(0)
+  reserveCents                   Int                           @default(0)
+  ebitdaCents                    Int                           @default(0)
+  activePdvs                     Int                           @default(0)
+  activeClients                  Int                           @default(0)
+  quarterlyFundContributionCents Int                           @default(0)
+  createdAt                      DateTime                      @default(now())
+  updatedAt                      DateTime                      @default(now()) @updatedAt
+  distributions                  InvestorDistribution[]
+  quarterlyFundDistributions     QuarterlyFundDistribution[]
+  region                         Region                        @relation(fields: [regionId], references: [id])
 
   @@unique([regionId, month, year])
 }
@@ -501,6 +505,29 @@ model InvestorDistribution {
   regionMonthlyResult    RegionMonthlyResult @relation(fields: [regionMonthlyResultId], references: [id])
 
   @@unique([regionId, investorId, month, year])
+}
+
+model QuarterlyFundDistribution {
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  regionMonthlyResultId  String              @db.Uuid
+  regionId               String              @db.Uuid
+  investorId             String              @db.Uuid
+  quarter                Int
+  year                   Int
+  quotaCount             Int                 @default(1)
+  valuePerQuotaCents     Int                 @default(0)
+  totalDistributionCents Int                 @default(0)
+  quarterlyFundTotalCents Int                @default(0)
+  payoutPhase            InvestorPayoutPhase
+  paidAt                 DateTime?
+  status                 FinanceStatus       @default(PENDING)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @default(now()) @updatedAt
+  investor               Investor            @relation(fields: [investorId], references: [id])
+  region                 Region              @relation(fields: [regionId], references: [id])
+  regionMonthlyResult    RegionMonthlyResult @relation(fields: [regionMonthlyResultId], references: [id])
+
+  @@unique([regionId, investorId, quarter, year])
 }
 
 model RepresentativeCommission {

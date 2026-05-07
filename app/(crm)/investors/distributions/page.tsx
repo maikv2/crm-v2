@@ -19,6 +19,7 @@ type DistributionInvestorItem = {
   quotaCount: number;
   totalDistributionCents: number;
   quotaNumbers: number[];
+  payoutPhase?: "PAYBACK" | "RECURRING";
 };
 
 type DistributionSummaryItem = {
@@ -479,14 +480,31 @@ function RegionDistributionCard({
                 }}
               >
                 <div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: theme.text,
-                    }}
-                  >
-                    {investor.investorName}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        color: theme.text,
+                      }}
+                    >
+                      {investor.investorName}
+                    </div>
+                    {investor.payoutPhase && (
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        padding: "2px 7px",
+                        borderRadius: 999,
+                        background: investor.payoutPhase === "PAYBACK" ? "#fffbeb" : "#eff6ff",
+                        color: investor.payoutPhase === "PAYBACK" ? "#92400e" : "#1e40af",
+                        border: `1px solid ${investor.payoutPhase === "PAYBACK" ? "#fde68a" : "#bfdbfe"}`,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                      }}>
+                        {investor.payoutPhase === "PAYBACK" ? "Recuperação" : "Pós-payback"}
+                      </span>
+                    )}
                   </div>
                   <div
                     style={{
@@ -508,16 +526,20 @@ function RegionDistributionCard({
                   {investor.quotaCount} cota(s) • #{investor.quotaNumbers.join(", #")}
                 </div>
 
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 900,
-                    color: "#22c55e",
-                    textAlign: "right",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {moneyFromCents(investor.totalDistributionCents)}
+                <div style={{ textAlign: "right" }}>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 900,
+                      color: "#22c55e",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {moneyFromCents(investor.totalDistributionCents)}
+                  </div>
+                  <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>
+                    {investor.payoutPhase === "PAYBACK" ? "60% EBITDA" : "40% EBITDA"}
+                  </div>
                 </div>
               </div>
             ))}

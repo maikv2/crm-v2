@@ -7,6 +7,7 @@ type InvestorPreviewItem = {
   quotaCount: number;
   totalDistributionCents: number;
   quotaNumbers: number[];
+  payoutPhase: "PAYBACK" | "RECURRING";
 };
 
 function safeDivideInt(total: number, divisor: number) {
@@ -46,25 +47,54 @@ export async function calculateInvestorDistributionPreview(
     },
   });
 
-  const activeQuotaCount = shares.length;
+  // Batch-fetch cumulative paid distributions per investor to determine payback phase.
+  // Payback is complete when total received >= investment (amountCents, default R$20k).
+  const paidSums = await prisma.investorDistribution.groupBy({
+    by: ["investorId"],
+    where: {
+      regionId,
+      paidAt: { not: null },
+    },
+    _sum: { totalDistributionCents: true },
+  });
 
+  const paidByInvestor = new Map<string, number>();
+  for (const r of paidSums) {
+    paidByInvestor.set(r.investorId, r._sum.totalDistributionCents ?? 0);
+  }
+
+  const activeQuotaCount = shares.length;
   const ebitdaCents = monthlyResult.ebitdaCents;
 
   const companyShares = shares.filter((s) => s.ownerType === "COMPANY");
   const investorShares = shares.filter((s) => s.ownerType === "INVESTOR");
 
-  let investorTotalCents = 0;
+  // Build per-investor data with correct payout phase
+  type InvestorShareData = {
+    share: (typeof investorShares)[0];
+    paidBack: boolean;
+    payoutPhase: "PAYBACK" | "RECURRING";
+    investorRate: number;
+  };
 
-  for (const share of investorShares) {
+  const investorShareData: InvestorShareData[] = investorShares.map((share) => {
+    const totalPaid = share.investorId
+      ? (paidByInvestor.get(share.investorId) ?? 0)
+      : 0;
+    // Investor recovers when cumulative paid distributions >= their investment amount
     const paidBack =
-      share.paidBackAt !== null ||
-      (share.investedAt &&
-        monthlyResult.ebitdaCents * 0.6 >= share.amountCents);
-
+      share.paidBackAt !== null || totalPaid >= share.amountCents;
+    const payoutPhase = paidBack ? "RECURRING" : "PAYBACK";
     const investorRate = paidBack
       ? share.postPayInvestorBps
       : share.prePayInvestorBps;
+    return { share, paidBack, payoutPhase, investorRate };
+  });
 
+  // Each investor quota receives: ebitda * investorRate / 10000 / activeQuotaCount
+  // This gives each quota its proportional slice of the investor pool (60% PAYBACK / 40% RECURRING)
+  let investorTotalCents = 0;
+  for (const { investorRate } of investorShareData) {
     investorTotalCents += Math.floor(
       (ebitdaCents * investorRate) / 10000 / activeQuotaCount
     );
@@ -77,7 +107,7 @@ export async function calculateInvestorDistributionPreview(
 
   const grouped = new Map<string, InvestorPreviewItem>();
 
-  for (const share of investorShares) {
+  for (const { share, payoutPhase } of investorShareData) {
     if (!share.investorId || !share.investor) continue;
 
     const existing = grouped.get(share.investorId);
@@ -90,14 +120,18 @@ export async function calculateInvestorDistributionPreview(
         quotaCount: 1,
         totalDistributionCents: valuePerQuotaCents,
         quotaNumbers: [share.quotaNumber],
+        payoutPhase,
       });
-
       continue;
     }
 
     existing.quotaCount += 1;
     existing.totalDistributionCents += valuePerQuotaCents;
     existing.quotaNumbers.push(share.quotaNumber);
+    // If any quota is still in PAYBACK, the whole investor stays in PAYBACK
+    if (payoutPhase === "PAYBACK") {
+      existing.payoutPhase = "PAYBACK";
+    }
   }
 
   return {
@@ -140,9 +174,42 @@ export async function generateInvestorDistributions(
     throw new Error("Resultado mensal não encontrado.");
   }
 
+  // Re-fetch cumulative paid per investor to set payoutPhase correctly on upsert
+  const paidSums = await prisma.investorDistribution.groupBy({
+    by: ["investorId"],
+    where: {
+      regionId,
+      paidAt: { not: null },
+    },
+    _sum: { totalDistributionCents: true },
+  });
+
+  const paidByInvestor = new Map<string, number>();
+  for (const r of paidSums) {
+    paidByInvestor.set(r.investorId, r._sum.totalDistributionCents ?? 0);
+  }
+
+  const shares = await prisma.share.findMany({
+    where: { regionId, isActive: true, ownerType: "INVESTOR" },
+    select: { investorId: true, amountCents: true, paidBackAt: true },
+  });
+
+  const phaseByInvestor = new Map<string, "PAYBACK" | "RECURRING">();
+  for (const s of shares) {
+    if (!s.investorId) continue;
+    const totalPaid = paidByInvestor.get(s.investorId) ?? 0;
+    const paidBack = s.paidBackAt !== null || totalPaid >= s.amountCents;
+    // Keep PAYBACK if any quota not yet recovered
+    if (!phaseByInvestor.has(s.investorId) || !paidBack) {
+      phaseByInvestor.set(s.investorId, paidBack ? "RECURRING" : "PAYBACK");
+    }
+  }
+
   const results = [];
 
   for (const investor of preview.investors) {
+    const payoutPhase = phaseByInvestor.get(investor.investorId) ?? "PAYBACK";
+
     const record = await prisma.investorDistribution.upsert({
       where: {
         regionId_investorId_month_year: {
@@ -156,6 +223,7 @@ export async function generateInvestorDistributions(
         quotaCount: investor.quotaCount,
         valuePerQuotaCents: preview.valuePerQuotaCents,
         totalDistributionCents: investor.totalDistributionCents,
+        payoutPhase,
         status: "PENDING",
       },
       create: {
@@ -167,7 +235,7 @@ export async function generateInvestorDistributions(
         quotaCount: investor.quotaCount,
         valuePerQuotaCents: preview.valuePerQuotaCents,
         totalDistributionCents: investor.totalDistributionCents,
-        payoutPhase: "RECURRING",
+        payoutPhase,
         status: "PENDING",
       },
     });

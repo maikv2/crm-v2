@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  Bell,
   CalendarDays,
   ChevronRight,
   CircleDollarSign,
@@ -151,6 +152,19 @@ export default function MobileRepOperationsPage() {
             title="Clientes"
             subtitle="Consultar carteira de clientes da região"
             icon={<Users size={18} />}
+          />
+        </div>
+      </MobileCard>
+
+      <MobileCard>
+        <MobileSectionTitle title="Alertas" />
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <ActionCard
+            href="/m/rep/alerts"
+            title="Alertas e solicitações"
+            subtitle="Ver solicitações de pedido feitas pelos clientes via portal"
+            icon={<Bell size={18} />}
           />
         </div>
       </MobileCard>

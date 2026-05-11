@@ -36,8 +36,8 @@ export async function GET() {
     }
 
     const weekStart = getCurrentWeekStart();
+    const now = new Date();
 
-    // Busca todos os representantes ativos
     const representatives = await prisma.user.findMany({
       where: { role: "REPRESENTATIVE", active: true },
       orderBy: [{ region: { name: "asc" } }, { name: "asc" }],
@@ -48,7 +48,6 @@ export async function GET() {
       },
     });
 
-    // Busca todas as ordens de venda com comissão e seus recebimentos
     const orders = await prisma.order.findMany({
       where: {
         type: "SALE",
@@ -68,11 +67,13 @@ export async function GET() {
             status: true,
             amountCents: true,
             receivedCents: true,
+            dueDate: true,
             paidAt: true,
             installments: {
               select: {
                 amountCents: true,
                 receivedCents: true,
+                dueDate: true,
                 paidAt: true,
                 status: true,
               },
@@ -82,7 +83,24 @@ export async function GET() {
       },
     });
 
-    // Indexa ordens por vendedor
+    // Busca confirmações pagas para saber o histórico por representante
+    const confirmations = await prisma.commissionPaymentConfirmation.findMany({
+      where: {
+        status: "CONFIRMED",
+        representativeId: { in: representatives.map((r) => r.id) },
+      },
+      select: {
+        representativeId: true,
+        amountCents: true,
+        confirmedAt: true,
+      },
+    });
+
+    const confirmedByRep = new Map<string, number>();
+    for (const c of confirmations) {
+      confirmedByRep.set(c.representativeId, (confirmedByRep.get(c.representativeId) ?? 0) + (c.amountCents ?? 0));
+    }
+
     const ordersBySeller = new Map<string, typeof orders>();
     for (const order of orders) {
       if (!order.sellerId) continue;
@@ -98,7 +116,9 @@ export async function GET() {
       payableCurrentWeekCents: number;
       payablePriorWeekCents: number;
       amountCents: number;
-      pendingCents: number;
+      pendingOverdueCents: number;
+      pendingNormalCents: number;
+      totalConfirmedCents: number;
     };
 
     const rows: RepRow[] = [];
@@ -108,7 +128,8 @@ export async function GET() {
 
       let payableCurrentWeekCents = 0;
       let payablePriorWeekCents = 0;
-      let pendingCents = 0;
+      let pendingOverdueCents = 0;
+      let pendingNormalCents = 0;
       const orderIds = new Set<string>();
 
       for (const order of repOrders) {
@@ -116,42 +137,49 @@ export async function GET() {
         const orderTotal = Math.max(0, order.totalCents ?? 0);
         if (!commissionTotal || !orderTotal) continue;
 
-        // Calcula quanto foi pago esta semana vs antes desta semana vs pendente
         let paidThisWeekCents = 0;
         let paidBeforeThisWeekCents = 0;
+        let unpaidOverdueCents = 0;
+        let unpaidNormalCents = 0;
 
         if (!order.accountsReceivables.length) {
           if (order.paymentStatus === "PAID") {
             paidBeforeThisWeekCents = orderTotal;
+          } else {
+            unpaidNormalCents = orderTotal;
           }
         } else {
           for (const ar of order.accountsReceivables) {
-            const installments = ar.installments;
-            if (installments.length) {
-              for (const inst of installments) {
-                const amount = Math.max(0, inst.amountCents ?? 0);
-                const received = Math.max(0, inst.receivedCents ?? 0);
-                const isPaid = inst.status === "PAID" || !!inst.paidAt;
-                const effectiveAmount = isPaid ? Math.max(received, amount) : Math.min(received, amount);
-                if (!effectiveAmount) continue;
+            const items = ar.installments.length
+              ? ar.installments.map((i) => ({ ...i, dueDate: i.dueDate }))
+              : [{ amountCents: ar.amountCents, receivedCents: ar.receivedCents, dueDate: ar.dueDate, paidAt: ar.paidAt, status: ar.status }];
 
-                if (inst.paidAt && new Date(inst.paidAt) >= weekStart) {
+            for (const item of items) {
+              const amount = Math.max(0, item.amountCents ?? 0);
+              const received = Math.max(0, item.receivedCents ?? 0);
+              const isPaid = item.status === "PAID" || !!item.paidAt;
+              const effectiveAmount = isPaid ? Math.max(received, amount) : Math.min(received, amount);
+
+              if (effectiveAmount > 0) {
+                if (item.paidAt && new Date(item.paidAt) >= weekStart) {
                   paidThisWeekCents += effectiveAmount;
                 } else if (isPaid || received > 0) {
                   paidBeforeThisWeekCents += effectiveAmount;
                 }
               }
-            } else {
-              const amount = Math.max(0, ar.amountCents ?? 0);
-              const received = Math.max(0, ar.receivedCents ?? 0);
-              const isPaid = ar.status === "PAID" || !!ar.paidAt;
-              const effectiveAmount = isPaid ? Math.max(received, amount) : Math.min(received, amount);
-              if (!effectiveAmount) continue;
 
-              if (ar.paidAt && new Date(ar.paidAt) >= weekStart) {
-                paidThisWeekCents += effectiveAmount;
-              } else if (isPaid || received > 0) {
-                paidBeforeThisWeekCents += effectiveAmount;
+              if (!isPaid) {
+                const unpaidAmount = Math.max(0, amount - received);
+                if (unpaidAmount > 0) {
+                  const dueDate = item.dueDate ? new Date(item.dueDate) : null;
+                  const isOverdue =
+                    item.status === "OVERDUE" || (dueDate !== null && dueDate < now);
+                  if (isOverdue) {
+                    unpaidOverdueCents += unpaidAmount;
+                  } else {
+                    unpaidNormalCents += unpaidAmount;
+                  }
+                }
               }
             }
           }
@@ -162,10 +190,12 @@ export async function GET() {
 
         const commissionThisWeek = proratedCommission(commissionTotal, orderTotal, paidThisWeekCents);
         const commissionBeforeThisWeek = proratedCommission(commissionTotal, orderTotal, paidBeforeThisWeekCents);
-        const totalPaidCommission = commissionThisWeek + commissionBeforeThisWeek;
-        const orderPending = Math.max(0, commissionTotal - totalPaidCommission);
+        const totalReleased = commissionThisWeek + commissionBeforeThisWeek;
 
-        // Classifica comissão desta semana por origem da venda
+        const orderPendingOverdue = proratedCommission(commissionTotal, orderTotal, Math.min(unpaidOverdueCents, orderTotal));
+        const orderPendingTotal = Math.max(0, commissionTotal - totalReleased);
+        const orderPendingNormal = Math.max(0, orderPendingTotal - orderPendingOverdue);
+
         if (commissionThisWeek > 0) {
           const isCurrentWeekSale = new Date(order.issuedAt) >= weekStart;
           if (isCurrentWeekSale) {
@@ -176,15 +206,16 @@ export async function GET() {
           orderIds.add(order.id);
         }
 
-        if (orderPending > 0) {
-          pendingCents += orderPending;
+        if (orderPendingTotal > 0) {
+          pendingOverdueCents += orderPendingOverdue;
+          pendingNormalCents += orderPendingNormal;
           orderIds.add(order.id);
         }
       }
 
       const amountCents = payableCurrentWeekCents + payablePriorWeekCents;
 
-      if (amountCents === 0 && pendingCents === 0) continue;
+      if (amountCents === 0 && pendingOverdueCents === 0 && pendingNormalCents === 0) continue;
 
       rows.push({
         representativeId: rep.id,
@@ -194,7 +225,9 @@ export async function GET() {
         payableCurrentWeekCents,
         payablePriorWeekCents,
         amountCents,
-        pendingCents,
+        pendingOverdueCents,
+        pendingNormalCents,
+        totalConfirmedCents: confirmedByRep.get(rep.id) ?? 0,
       });
     }
 
@@ -203,9 +236,10 @@ export async function GET() {
         totalPayable: acc.totalPayable + r.amountCents,
         totalCurrentWeek: acc.totalCurrentWeek + r.payableCurrentWeekCents,
         totalPriorWeeks: acc.totalPriorWeeks + r.payablePriorWeekCents,
-        totalPending: acc.totalPending + r.pendingCents,
+        totalPendingOverdue: acc.totalPendingOverdue + r.pendingOverdueCents,
+        totalPendingNormal: acc.totalPendingNormal + r.pendingNormalCents,
       }),
-      { totalPayable: 0, totalCurrentWeek: 0, totalPriorWeeks: 0, totalPending: 0 }
+      { totalPayable: 0, totalCurrentWeek: 0, totalPriorWeeks: 0, totalPendingOverdue: 0, totalPendingNormal: 0 }
     );
 
     return NextResponse.json({

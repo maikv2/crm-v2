@@ -29,41 +29,61 @@ export async function GET() {
     }
 
     const weekStart = getCurrentWeekStart();
+    const now = new Date();
 
-    const orders = await prisma.order.findMany({
-      where: {
-        sellerId: user.id,
-        type: "SALE",
-        status: { not: "CANCELLED" },
-        commissionTotalCents: { gt: 0 },
-      },
-      orderBy: { issuedAt: "asc" },
-      select: {
-        id: true,
-        number: true,
-        issuedAt: true,
-        totalCents: true,
-        commissionTotalCents: true,
-        paymentStatus: true,
-        client: { select: { name: true } },
-        accountsReceivables: {
-          select: {
-            status: true,
-            amountCents: true,
-            receivedCents: true,
-            paidAt: true,
-            installments: {
-              select: {
-                amountCents: true,
-                receivedCents: true,
-                paidAt: true,
-                status: true,
+    const [orders, paidConfirmations] = await Promise.all([
+      prisma.order.findMany({
+        where: {
+          sellerId: user.id,
+          type: "SALE",
+          status: { not: "CANCELLED" },
+          commissionTotalCents: { gt: 0 },
+        },
+        orderBy: { issuedAt: "asc" },
+        select: {
+          id: true,
+          number: true,
+          issuedAt: true,
+          totalCents: true,
+          commissionTotalCents: true,
+          paymentStatus: true,
+          client: { select: { name: true } },
+          accountsReceivables: {
+            select: {
+              status: true,
+              amountCents: true,
+              receivedCents: true,
+              dueDate: true,
+              paidAt: true,
+              installments: {
+                select: {
+                  amountCents: true,
+                  receivedCents: true,
+                  dueDate: true,
+                  paidAt: true,
+                  status: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+      prisma.commissionPaymentConfirmation.findMany({
+        where: {
+          representativeId: user.id,
+          status: "CONFIRMED",
+        },
+        orderBy: { confirmedAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          amountCents: true,
+          weekStart: true,
+          weekEnd: true,
+          confirmedAt: true,
+        },
+      }),
+    ]);
 
     type OrderRow = {
       orderId: string;
@@ -71,15 +91,17 @@ export async function GET() {
       clientName: string;
       issuedAt: Date;
       commissionThisWeekCents: number;
-      commissionPriorWeekCents: number;
-      pendingCents: number;
+      pendingOverdueCents: number;
+      pendingNormalCents: number;
       isCurrentWeekSale: boolean;
+      hasOverdue: boolean;
     };
 
     const orderRows: OrderRow[] = [];
     let totalCurrentWeekCents = 0;
     let totalPriorWeekCents = 0;
-    let totalPendingCents = 0;
+    let totalPendingOverdueCents = 0;
+    let totalPendingNormalCents = 0;
 
     for (const order of orders) {
       const commissionTotal = Math.max(0, order.commissionTotalCents ?? 0);
@@ -88,25 +110,47 @@ export async function GET() {
 
       let paidThisWeekCents = 0;
       let paidBeforeThisWeekCents = 0;
+      let unpaidOverdueCents = 0;
+      let unpaidNormalCents = 0;
 
       if (!order.accountsReceivables.length) {
         if (order.paymentStatus === "PAID") {
           paidBeforeThisWeekCents = orderTotal;
+        } else {
+          unpaidNormalCents = orderTotal;
         }
       } else {
         for (const ar of order.accountsReceivables) {
-          const items = ar.installments.length ? ar.installments : [ar];
+          const items = ar.installments.length
+            ? ar.installments.map((i) => ({ ...i, dueDate: i.dueDate }))
+            : [{ amountCents: ar.amountCents, receivedCents: ar.receivedCents, dueDate: ar.dueDate, paidAt: ar.paidAt, status: ar.status }];
+
           for (const item of items) {
             const amount = Math.max(0, item.amountCents ?? 0);
             const received = Math.max(0, item.receivedCents ?? 0);
             const isPaid = item.status === "PAID" || !!item.paidAt;
             const effective = isPaid ? Math.max(received, amount) : Math.min(received, amount);
-            if (!effective) continue;
 
-            if (item.paidAt && new Date(item.paidAt) >= weekStart) {
-              paidThisWeekCents += effective;
-            } else if (isPaid || received > 0) {
-              paidBeforeThisWeekCents += effective;
+            if (effective > 0) {
+              if (item.paidAt && new Date(item.paidAt) >= weekStart) {
+                paidThisWeekCents += effective;
+              } else if (isPaid || received > 0) {
+                paidBeforeThisWeekCents += effective;
+              }
+            }
+
+            if (!isPaid) {
+              const unpaidAmount = Math.max(0, amount - received);
+              if (unpaidAmount > 0) {
+                const dueDate = item.dueDate ? new Date(item.dueDate) : null;
+                const isOverdue =
+                  item.status === "OVERDUE" || (dueDate !== null && dueDate < now);
+                if (isOverdue) {
+                  unpaidOverdueCents += unpaidAmount;
+                } else {
+                  unpaidNormalCents += unpaidAmount;
+                }
+              }
             }
           }
         }
@@ -117,36 +161,39 @@ export async function GET() {
 
       const commissionThisWeek = proratedCommission(commissionTotal, orderTotal, paidThisWeekCents);
       const commissionBeforeThisWeek = proratedCommission(commissionTotal, orderTotal, paidBeforeThisWeekCents);
-      const pending = Math.max(0, commissionTotal - commissionThisWeek - commissionBeforeThisWeek);
+      const totalReleasedCommission = commissionThisWeek + commissionBeforeThisWeek;
 
-      if (commissionThisWeek === 0 && pending === 0) continue;
+      const pendingOverdueCents = proratedCommission(commissionTotal, orderTotal, Math.min(unpaidOverdueCents, orderTotal));
+      const pendingTotal = Math.max(0, commissionTotal - totalReleasedCommission);
+      const pendingNormalCents = Math.max(0, pendingTotal - pendingOverdueCents);
+
+      if (commissionThisWeek === 0 && pendingTotal === 0) continue;
 
       const isCurrentWeekSale = new Date(order.issuedAt) >= weekStart;
-
-      // Para exibição na lista do rep: comissão desta semana = o que entrou esta semana
-      const commissionThisWeekForRep = commissionThisWeek;
-      const commissionPriorWeekForRep = isCurrentWeekSale ? 0 : commissionBeforeThisWeek;
 
       if (isCurrentWeekSale) {
         totalCurrentWeekCents += commissionThisWeek;
       } else {
         totalPriorWeekCents += commissionThisWeek;
       }
-      totalPendingCents += pending;
+      totalPendingOverdueCents += pendingOverdueCents;
+      totalPendingNormalCents += pendingNormalCents;
 
       orderRows.push({
         orderId: order.id,
         number: order.number,
         clientName: order.client.name,
         issuedAt: order.issuedAt,
-        commissionThisWeekCents: commissionThisWeekForRep,
-        commissionPriorWeekCents: commissionPriorWeekForRep,
-        pendingCents: pending,
+        commissionThisWeekCents: commissionThisWeek,
+        pendingOverdueCents,
+        pendingNormalCents,
         isCurrentWeekSale,
+        hasOverdue: pendingOverdueCents > 0,
       });
     }
 
     const totalPayable = totalCurrentWeekCents + totalPriorWeekCents;
+    const totalAlreadyConfirmedCents = paidConfirmations.reduce((s, c) => s + (c.amountCents ?? 0), 0);
 
     return NextResponse.json({
       ok: true,
@@ -156,9 +203,12 @@ export async function GET() {
         totalPayable,
         currentWeekCents: totalCurrentWeekCents,
         priorWeeksCents: totalPriorWeekCents,
-        pendingCents: totalPendingCents,
+        pendingOverdueCents: totalPendingOverdueCents,
+        pendingNormalCents: totalPendingNormalCents,
+        totalAlreadyConfirmedCents,
       },
       orders: orderRows,
+      paidHistory: paidConfirmations,
     });
   } catch (error) {
     console.error("GET /api/rep/finance/acerto error:", error);

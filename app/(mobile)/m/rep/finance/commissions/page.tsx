@@ -25,15 +25,27 @@ type OrderRow = {
   clientName: string;
   issuedAt: string;
   commissionThisWeekCents: number;
-  pendingCents: number;
+  pendingOverdueCents: number;
+  pendingNormalCents: number;
   isCurrentWeekSale: boolean;
+  hasOverdue: boolean;
+};
+
+type PaidEntry = {
+  id: string;
+  amountCents: number;
+  weekStart: string;
+  weekEnd: string;
+  confirmedAt: string | null;
 };
 
 type Summary = {
   totalPayable: number;
   currentWeekCents: number;
   priorWeeksCents: number;
-  pendingCents: number;
+  pendingOverdueCents: number;
+  pendingNormalCents: number;
+  totalAlreadyConfirmedCents: number;
 };
 
 type AcertoData = {
@@ -41,6 +53,7 @@ type AcertoData = {
   calculatedAt: string;
   summary: Summary;
   orders: OrderRow[];
+  paidHistory: PaidEntry[];
 };
 
 export default function MobileRepCommissionsPage() {
@@ -78,7 +91,7 @@ export default function MobileRepCommissionsPage() {
         <MobileCard style={{ color: "#991b1b" }}>{error}</MobileCard>
       ) : data ? (
         <>
-          {/* Total a receber */}
+          {/* Total liberado */}
           <div style={{
             background: "#f0fdf4",
             border: "1px solid #bbf7d0",
@@ -87,14 +100,17 @@ export default function MobileRepCommissionsPage() {
             marginBottom: 4,
           }}>
             <div style={{ fontSize: 12, color: "#166534", fontWeight: 700, textTransform: "uppercase" }}>
-              Total a receber esta semana
+              Total liberado para receber
+            </div>
+            <div style={{ fontSize: 11, color: "#4ade80", marginTop: 2 }}>
+              Pagamentos confirmados dos clientes
             </div>
             <div style={{ fontSize: 36, fontWeight: 900, color: "#166534", marginTop: 4 }}>
               {formatMoneyBR(data.summary.totalPayable)}
             </div>
           </div>
 
-          {/* 3 blocos */}
+          {/* Breakdown liberado */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <BlockCard
               label="Desta semana"
@@ -105,7 +121,7 @@ export default function MobileRepCommissionsPage() {
               borderColor="#bfdbfe"
             />
             <BlockCard
-              label="Semanas anteriores"
+              label="Sem. anteriores"
               sublabel="vendas antigas pagas agora"
               value={formatMoneyBR(data.summary.priorWeeksCents)}
               color="#7e22ce"
@@ -113,14 +129,32 @@ export default function MobileRepCommissionsPage() {
               borderColor="#e9d5ff"
             />
           </div>
-          <BlockCard
-            label="Próximo acerto"
-            sublabel="aguardando pagamento do cliente"
-            value={formatMoneyBR(data.summary.pendingCents)}
-            color="#92400e"
-            bg="#fffbeb"
-            borderColor="#fde68a"
-          />
+
+          {/* Pendências */}
+          {(data.summary.pendingOverdueCents > 0 || data.summary.pendingNormalCents > 0) && (
+            <>
+              {data.summary.pendingOverdueCents > 0 && (
+                <BlockCard
+                  label="⚠ Em atraso"
+                  sublabel="clientes com pagamento vencido"
+                  value={formatMoneyBR(data.summary.pendingOverdueCents)}
+                  color="#991b1b"
+                  bg="#fef2f2"
+                  borderColor="#fecaca"
+                />
+              )}
+              {data.summary.pendingNormalCents > 0 && (
+                <BlockCard
+                  label="No prazo"
+                  sublabel="dentro do vencimento"
+                  value={formatMoneyBR(data.summary.pendingNormalCents)}
+                  color="#92400e"
+                  bg="#fffbeb"
+                  borderColor="#fde68a"
+                />
+              )}
+            </>
+          )}
 
           {/* Lista de pedidos */}
           {data.orders.length > 0 && (
@@ -132,6 +166,8 @@ export default function MobileRepCommissionsPage() {
                   style={{
                     padding: "12px 0",
                     borderBottom: `1px solid ${colors.isDark ? "#1e293b" : "#f1f5f9"}`,
+                    borderLeft: order.hasOverdue ? "3px solid #ef4444" : "3px solid transparent",
+                    paddingLeft: order.hasOverdue ? 8 : 0,
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "flex-start",
@@ -141,6 +177,11 @@ export default function MobileRepCommissionsPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: colors.text }}>
                       {order.clientName}
+                      {order.hasOverdue && (
+                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 5, padding: "1px 5px" }}>
+                          atraso
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 12, color: colors.subtext, marginTop: 2 }}>
                       PED-{String(order.number).padStart(4, "0")} · {dateBR(order.issuedAt)}
@@ -164,9 +205,14 @@ export default function MobileRepCommissionsPage() {
                         {formatMoneyBR(order.commissionThisWeekCents)}
                       </div>
                     )}
-                    {order.pendingCents > 0 && (
+                    {order.pendingOverdueCents > 0 && (
+                      <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2, fontWeight: 700 }}>
+                        {formatMoneyBR(order.pendingOverdueCents)} em atraso
+                      </div>
+                    )}
+                    {order.pendingNormalCents > 0 && (
                       <div style={{ fontSize: 12, color: "#92400e", marginTop: 2 }}>
-                        {formatMoneyBR(order.pendingCents)} pendente
+                        {formatMoneyBR(order.pendingNormalCents)} pendente
                       </div>
                     )}
                   </div>
@@ -177,7 +223,46 @@ export default function MobileRepCommissionsPage() {
 
           {data.orders.length === 0 && (
             <MobileCard>
-              <div style={{ fontSize: 13, color: colors.subtext }}>Nenhuma comissão encontrada para esta semana.</div>
+              <div style={{ fontSize: 13, color: colors.subtext }}>Nenhuma comissão ativa no momento.</div>
+            </MobileCard>
+          )}
+
+          {/* Histórico */}
+          {data.paidHistory.length > 0 && (
+            <MobileCard>
+              <MobileSectionTitle title="Histórico de pagamentos recebidos" />
+              {data.paidHistory.map((entry) => (
+                <div
+                  key={entry.id}
+                  style={{
+                    padding: "10px 0",
+                    borderBottom: `1px solid ${colors.isDark ? "#1e293b" : "#f1f5f9"}`,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: colors.subtext }}>
+                      {dateBR(entry.weekStart)} → {dateBR(entry.weekEnd)}
+                    </div>
+                    {entry.confirmedAt && (
+                      <div style={{ fontSize: 11, color: colors.subtext }}>
+                        Confirmado {dateBR(entry.confirmedAt)}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: "#166534" }}>
+                    {formatMoneyBR(entry.amountCents)}
+                  </div>
+                </div>
+              ))}
+              {data.summary.totalAlreadyConfirmedCents > 0 && (
+                <div style={{ paddingTop: 10, display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                  <span style={{ fontSize: 12, color: colors.subtext }}>Total recebido</span>
+                  <span style={{ fontSize: 14, color: "#166534" }}>{formatMoneyBR(data.summary.totalAlreadyConfirmedCents)}</span>
+                </div>
+              )}
             </MobileCard>
           )}
 

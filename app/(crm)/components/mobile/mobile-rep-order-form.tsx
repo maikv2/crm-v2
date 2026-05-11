@@ -252,6 +252,7 @@ export default function MobileRepOrderForm() {
   const [installmentCount, setInstallmentCount] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [defectReturnItems, setDefectReturnItems] = useState<DefectReturnItem[]>([]);
+  const [defectSearch, setDefectSearch] = useState("");
 
   const [savedOrderId, setSavedOrderId] = useState("");
   const [savedOrderNumber, setSavedOrderNumber] = useState<number | null>(null);
@@ -461,6 +462,16 @@ export default function MobileRepOrderForm() {
   const selectedDefectReturnItems = useMemo(() => {
     return defectItemsWithProduct.filter((item) => item.quantity > 0 && item.product);
   }, [defectItemsWithProduct]);
+
+  const filteredDefectProducts = useMemo(() => {
+    return products.filter((product) => {
+      if (!defectSearch) return true;
+      return (
+        product.name.toLowerCase().includes(defectSearch.toLowerCase()) ||
+        String(product.sku ?? "").toLowerCase().includes(defectSearch.toLowerCase())
+      );
+    });
+  }, [products, defectSearch]);
 
   const subtotalCents = useMemo(() => {
     return selectedItems.reduce((sum, item) => sum + item.subtotalCents, 0);
@@ -1206,16 +1217,44 @@ router.push(targetPath);
             Registre aqui os itens devolvidos na troca. Eles acompanham o mesmo pedido e não geram financeiro.
           </div>
 
+          <div style={{ position: "relative" }}>
+            <Search
+              size={16}
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: colors.subtext,
+                pointerEvents: "none",
+              }}
+            />
+            <input
+              type="text"
+              value={defectSearch}
+              onChange={(e) => setDefectSearch(e.target.value)}
+              placeholder="Buscar produto por nome ou SKU"
+              style={{
+                width: "100%",
+                height: 44,
+                borderRadius: 14,
+                border: `1px solid ${colors.border}`,
+                background: colors.inputBg,
+                color: colors.text,
+                padding: "0 14px 0 38px",
+                outline: "none",
+                fontSize: 14,
+              }}
+            />
+          </div>
+
           <div style={{ display: "grid", gap: 10 }}>
-            {selectedItems.length === 0 ? (
+            {filteredDefectProducts.length === 0 ? (
               <div style={{ fontSize: 14, color: colors.subtext }}>
-                Adicione produtos ao pedido para registrar trocas.
+                Nenhum produto encontrado.
               </div>
             ) : (
-              selectedItems.map((item) => {
-                const product = item.product;
-                if (!product) return null;
-
+              filteredDefectProducts.map((product) => {
                 const defectItem =
                   defectItemsWithProduct.find((entry) => entry.productId === product.id) ?? null;
 

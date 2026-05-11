@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { calculateRegionFinancialSnapshot, recalculateRegionMonthlyResult } from "@/lib/region-financial-engine";
 
 type InvestorPreviewItem = {
   investorId: string;
@@ -30,9 +31,10 @@ export async function calculateInvestorDistributionPreview(
     },
   });
 
-  if (!monthlyResult) {
-    throw new Error("Resultado mensal da região não encontrado.");
-  }
+  // Fall back to live calculation when no saved result exists yet
+  const liveSnapshot = monthlyResult
+    ? null
+    : await calculateRegionFinancialSnapshot(regionId, month, year).catch(() => null);
 
   const shares = await prisma.share.findMany({
     where: {
@@ -64,7 +66,7 @@ export async function calculateInvestorDistributionPreview(
   }
 
   const activeQuotaCount = shares.length;
-  const ebitdaCents = monthlyResult.ebitdaCents;
+  const ebitdaCents = monthlyResult?.ebitdaCents ?? liveSnapshot?.ebitdaCents ?? 0;
 
   const companyShares = shares.filter((s) => s.ownerType === "COMPANY");
   const investorShares = shares.filter((s) => s.ownerType === "INVESTOR");
@@ -160,18 +162,19 @@ export async function generateInvestorDistributions(
     year
   );
 
-  const monthlyResult = await prisma.regionMonthlyResult.findUnique({
-    where: {
-      regionId_month_year: {
-        regionId,
-        month,
-        year,
-      },
-    },
+  let monthlyResult = await prisma.regionMonthlyResult.findUnique({
+    where: { regionId_month_year: { regionId, month, year } },
   });
 
+  // Auto-calculate and save the monthly result if not yet recorded
   if (!monthlyResult) {
-    throw new Error("Resultado mensal não encontrado.");
+    await recalculateRegionMonthlyResult(regionId, month, year);
+    monthlyResult = await prisma.regionMonthlyResult.findUnique({
+      where: { regionId_month_year: { regionId, month, year } },
+    });
+    if (!monthlyResult) {
+      throw new Error("Resultado mensal não encontrado e não pôde ser calculado.");
+    }
   }
 
   // Re-fetch cumulative paid per investor to set payoutPhase correctly on upsert

@@ -268,7 +268,7 @@ export default function RepFinancePage() {
       ) : (
         <>
           <MobileCard>
-            <MobileSectionTitle title="Minhas comissões" />
+            <MobileSectionTitle title="Comissões" />
 
             {/* Card principal: a receber esta semana */}
             <div style={{

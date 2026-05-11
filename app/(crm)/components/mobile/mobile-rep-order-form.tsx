@@ -1333,6 +1333,51 @@ router.push(targetPath);
         </div>
       </MobileCard>
 
+      {selectedDefectReturnItems.length > 0 ? (
+        <MobileCard>
+          <MobileSectionTitle title="Itens recebidos na troca" />
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {selectedDefectReturnItems.map((item) => (
+              <div
+                key={`selected-defect-${item.productId}`}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  paddingBottom: 10,
+                  borderBottom: `1px solid ${colors.border}`,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 900,
+                      color: colors.text,
+                    }}
+                  >
+                    {item.product?.name}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: colors.subtext,
+                    }}
+                  >
+                    {item.quantity}x
+                    {item.reason ? ` • ${item.reason}` : ""}
+                    {item.notes ? ` • ${item.notes}` : ""}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </MobileCard>
+      ) : null}
+
       <MobileCard>
         <MobileSectionTitle title="Pagamento" />
 

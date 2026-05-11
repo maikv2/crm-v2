@@ -821,41 +821,6 @@ router.push(targetPath);
         <MobileSectionTitle title="Cliente" />
 
         <div style={{ display: "grid", gap: 10 }}>
-          <div
-            style={{
-              position: "relative",
-            }}
-          >
-            <Search
-              size={16}
-              style={{
-                position: "absolute",
-                left: 12,
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: colors.subtext,
-              }}
-            />
-
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar produto por nome ou SKU"
-              style={{
-                width: "100%",
-                height: 44,
-                borderRadius: 14,
-                border: `1px solid ${colors.border}`,
-                background: colors.inputBg,
-                color: colors.text,
-                padding: "0 14px 0 38px",
-                outline: "none",
-                fontSize: 14,
-              }}
-            />
-          </div>
-
           <select
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
@@ -944,69 +909,96 @@ router.push(targetPath);
       </MobileCard>
 
       <MobileCard>
-        <MobileSectionTitle title="Categorias" />
+        <MobileSectionTitle title="Buscar produtos" />
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            overflowX: "auto",
-            paddingBottom: 2,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setCategoryFilter("")}
+        <div style={{ position: "relative" }}>
+          <Search
+            size={16}
             style={{
+              position: "absolute",
+              left: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: colors.subtext,
+              pointerEvents: "none",
+            }}
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome ou SKU"
+            style={{
+              width: "100%",
+              height: 44,
+              borderRadius: 14,
               border: `1px solid ${colors.border}`,
-              background:
-                !categoryFilter
-                  ? colors.isDark
-                    ? "#1d4ed8"
-                    : "#dbeafe"
-                  : colors.cardBg,
-              color: !categoryFilter ? (colors.isDark ? "#ffffff" : "#1d4ed8") : colors.text,
-              borderRadius: 999,
-              padding: "8px 12px",
-              fontSize: 12,
-              fontWeight: 800,
-              whiteSpace: "nowrap",
-              cursor: "pointer",
+              background: colors.inputBg,
+              color: colors.text,
+              padding: "0 14px 0 38px",
+              outline: "none",
+              fontSize: 14,
+            }}
+          />
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: colors.subtext, textTransform: "uppercase", marginBottom: 8 }}>
+            Categoria
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              overflowX: "auto",
+              paddingBottom: 2,
             }}
           >
-            Todas
-          </button>
+            <button
+              type="button"
+              onClick={() => setCategoryFilter("")}
+              style={{
+                border: `1px solid ${colors.border}`,
+                background: !categoryFilter ? (colors.isDark ? "#1d4ed8" : "#dbeafe") : colors.cardBg,
+                color: !categoryFilter ? (colors.isDark ? "#ffffff" : "#1d4ed8") : colors.text,
+                borderRadius: 999,
+                padding: "8px 12px",
+                fontSize: 12,
+                fontWeight: 800,
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+              }}
+            >
+              Todas
+            </button>
 
-          {categories.map((category) => {
-            const active = categoryFilter === category;
-
-            return (
-              <button
-                key={category}
-                type="button"
-                onClick={() => setCategoryFilter(category)}
-                style={{
-                  border: `1px solid ${colors.border}`,
-                  background: active
-                    ? colors.isDark
-                      ? "#1d4ed8"
-                      : "#dbeafe"
-                    : colors.cardBg,
-                  color: active ? (colors.isDark ? "#ffffff" : "#1d4ed8") : colors.text,
-                  borderRadius: 999,
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                  cursor: "pointer",
-                }}
-              >
-                {category}
-              </button>
-            );
-          })}
+            {categories.map((category) => {
+              const active = categoryFilter === category;
+              return (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setCategoryFilter(category)}
+                  style={{
+                    border: `1px solid ${colors.border}`,
+                    background: active ? (colors.isDark ? "#1d4ed8" : "#dbeafe") : colors.cardBg,
+                    color: active ? (colors.isDark ? "#ffffff" : "#1d4ed8") : colors.text,
+                    borderRadius: 999,
+                    padding: "8px 12px",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                    cursor: "pointer",
+                  }}
+                >
+                  {category}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </MobileCard>
+
 
       <div style={{ display: "grid", gap: 12 }}>
         <div
@@ -1172,6 +1164,43 @@ router.push(targetPath);
         )}
       </div>
 
+      {selectedItems.length > 0 ? (
+        <MobileCard>
+          <MobileSectionTitle title="Itens no carrinho" />
+          <div style={{ display: "grid", gap: 10 }}>
+            {selectedItems.map((item) => (
+              <div
+                key={`cart-${item.productId}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  paddingBottom: 10,
+                  borderBottom: `1px solid ${colors.border}`,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: colors.text }}>
+                    {item.product?.name}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: colors.subtext }}>
+                    {item.qty}x • {formatMoneyBR(item.unitCents)}
+                  </div>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 900, color: colors.text, whiteSpace: "nowrap" }}>
+                  {formatMoneyBR(item.subtotalCents)}
+                </div>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
+              <span style={{ fontSize: 13, color: colors.subtext }}>{selectedItems.length} item{selectedItems.length !== 1 ? "s" : ""}</span>
+              <span style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>{formatMoneyBR(subtotalCents)}</span>
+            </div>
+          </div>
+        </MobileCard>
+      ) : null}
+
       <MobileCard>
         <MobileSectionTitle title="Itens de troca" />
 
@@ -1181,12 +1210,12 @@ router.push(targetPath);
           </div>
 
           <div style={{ display: "grid", gap: 10 }}>
-            {filteredItems.length === 0 ? (
+            {selectedItems.length === 0 ? (
               <div style={{ fontSize: 14, color: colors.subtext }}>
-                Nenhum produto encontrado para registrar na troca.
+                Adicione produtos ao pedido para registrar trocas.
               </div>
             ) : (
-              filteredItems.map((item) => {
+              selectedItems.map((item) => {
                 const product = item.product;
                 if (!product) return null;
 
@@ -1541,105 +1570,6 @@ router.push(targetPath);
           </div>
         </div>
       </MobileCard>
-
-      {selectedItems.length > 0 ? (
-        <MobileCard>
-          <MobileSectionTitle title="Itens no carrinho" />
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {selectedItems.map((item) => (
-              <div
-                key={item.productId}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  paddingBottom: 10,
-                  borderBottom: `1px solid ${colors.border}`,
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 900,
-                      color: colors.text,
-                    }}
-                  >
-                    {item.product?.name}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: colors.subtext,
-                    }}
-                  >
-                    {item.qty}x • {formatMoneyBR(item.unitCents)}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 900,
-                    color: colors.text,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {formatMoneyBR(item.subtotalCents)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </MobileCard>
-      ) : null}
-
-      {selectedDefectReturnItems.length > 0 ? (
-        <MobileCard>
-          <MobileSectionTitle title="Itens recebidos na troca" />
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {selectedDefectReturnItems.map((item) => (
-              <div
-                key={`selected-defect-${item.productId}`}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  paddingBottom: 10,
-                  borderBottom: `1px solid ${colors.border}`,
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 900,
-                      color: colors.text,
-                    }}
-                  >
-                    {item.product?.name}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: colors.subtext,
-                    }}
-                  >
-                    {item.quantity}x
-                    {item.reason ? ` • ${item.reason}` : ""}
-                    {item.notes ? ` • ${item.notes}` : ""}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </MobileCard>
-      ) : null}
 
       <MobileCard>
         <div

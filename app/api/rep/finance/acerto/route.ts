@@ -71,7 +71,7 @@ export async function GET() {
       prisma.commissionPaymentConfirmation.findMany({
         where: {
           representativeId: user.id,
-          status: "CONFIRMED",
+          status: "PAID",
         },
         orderBy: { confirmedAt: "desc" },
         take: 10,

@@ -45,6 +45,22 @@ type SummaryData = {
   confirmations: RepRow[];
 };
 
+type HistoryEntry = {
+  id: string;
+  representativeId: string;
+  representative: string;
+  region: string;
+  amountCents: number;
+  weekStart: string;
+  weekEnd: string;
+  confirmedAt: string | null;
+};
+
+type HistoryData = {
+  totalPaidCents: number;
+  history: HistoryEntry[];
+};
+
 export default function FinanceCommissionsPage() {
   const { theme: mode } = useTheme();
   const theme = getThemeColors(mode);
@@ -56,16 +72,22 @@ export default function FinanceCommissionsPage() {
   const textColor = theme.text;
 
   const [data, setData] = useState<SummaryData | null>(null);
+  const [history, setHistory] = useState<HistoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   function load() {
     setLoading(true);
-    fetch("/api/finance/commissions/weekly-summary", { cache: "no-store" })
-      .then(async (res) => {
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Erro ao carregar dados.");
-        setData(json);
+    Promise.all([
+      fetch("/api/finance/commissions/weekly-summary", { cache: "no-store" }),
+      fetch("/api/finance/commissions/history", { cache: "no-store" }),
+    ])
+      .then(async ([summaryRes, historyRes]) => {
+        const summaryJson = await summaryRes.json();
+        const historyJson = await historyRes.json();
+        if (!summaryRes.ok) throw new Error(summaryJson.error || "Erro ao carregar dados.");
+        setData(summaryJson);
+        setHistory(historyJson.ok ? historyJson : null);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -245,6 +267,63 @@ export default function FinanceCommissionsPage() {
             </table>
           </div>
         </div>
+
+        {/* Histórico de pagamentos confirmados */}
+        {history && (
+          <div style={{ border: `1px solid ${border}`, borderRadius: 16, overflow: "hidden", background: cardBg, marginTop: 24 }}>
+            <div style={{
+              padding: "14px 20px",
+              borderBottom: `1px solid ${border}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>Histórico de pagamentos realizados</div>
+              {history.totalPaidCents > 0 && (
+                <div style={{ fontSize: 13, color: "#166534", fontWeight: 700 }}>
+                  Total pago: {money(history.totalPaidCents)}
+                </div>
+              )}
+            </div>
+
+            {history.history.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", color: muted, fontSize: 14 }}>
+                Nenhum pagamento confirmado ainda.
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                  <thead>
+                    <tr style={{ background: theme.isDark ? "#0d1a2d" : "#f8fafc", borderBottom: `1px solid ${border}` }}>
+                      <Th align="left">Representante</Th>
+                      <Th align="left">Região</Th>
+                      <Th align="left">Período</Th>
+                      <Th align="right">Valor pago</Th>
+                      <Th align="left">Confirmado em</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.history.map((entry) => (
+                      <tr key={entry.id} style={{ borderBottom: `1px solid ${border}` }}>
+                        <td style={{ padding: "11px 16px", fontWeight: 700 }}>{entry.representative}</td>
+                        <td style={{ padding: "11px 16px", color: muted, fontSize: 13 }}>{entry.region}</td>
+                        <td style={{ padding: "11px 16px", color: muted, fontSize: 13 }}>
+                          {dateBR(entry.weekStart)} → {dateBR(entry.weekEnd)}
+                        </td>
+                        <td style={{ padding: "11px 16px", textAlign: "right", fontWeight: 700, color: "#166534" }}>
+                          {money(entry.amountCents)}
+                        </td>
+                        <td style={{ padding: "11px 16px", fontSize: 13, color: muted }}>
+                          {entry.confirmedAt ? dateBR(entry.confirmedAt) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         <p style={{ fontSize: 12, color: muted, marginTop: 14, lineHeight: 1.7 }}>
           <strong>A pagar</strong>: comissão liberada sobre pagamentos recebidos esta semana (inclui vendas desta semana e de semanas anteriores que foram pagas agora).

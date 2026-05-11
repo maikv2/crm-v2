@@ -86,7 +86,7 @@ export async function GET() {
     // Busca confirmações pagas para saber o histórico por representante
     const confirmations = await prisma.commissionPaymentConfirmation.findMany({
       where: {
-        status: "CONFIRMED",
+        status: "PAID",
         representativeId: { in: representatives.map((r) => r.id) },
       },
       select: {

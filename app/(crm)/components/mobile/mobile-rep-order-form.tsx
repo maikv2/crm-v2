@@ -709,7 +709,7 @@ router.push(targetPath);
   }
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div style={{ display: "grid", gap: 16, width: "100%", minWidth: 0 }}>
       {error ? (
         <MobileCard
           style={{
@@ -949,9 +949,8 @@ router.push(targetPath);
           <div
             style={{
               display: "flex",
+              flexWrap: "wrap",
               gap: 8,
-              overflowX: "auto",
-              paddingBottom: 2,
             }}
           >
             <button
@@ -965,7 +964,6 @@ router.push(targetPath);
                 padding: "8px 12px",
                 fontSize: 12,
                 fontWeight: 800,
-                whiteSpace: "nowrap",
                 cursor: "pointer",
               }}
             >
@@ -987,7 +985,6 @@ router.push(targetPath);
                     padding: "8px 12px",
                     fontSize: 12,
                     fontWeight: 800,
-                    whiteSpace: "nowrap",
                     cursor: "pointer",
                   }}
                 >

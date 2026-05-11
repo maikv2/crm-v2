@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
                 grossRevenueCents: true,
                 ebitdaCents: true,
                 reserveCents: true,
+                quarterlyFundContributionCents: true,
               },
             }),
             calculateInvestorDistributionPreview(region.id, month, year),
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
           const grossRevenueCents = monthlyResult?.grossRevenueCents ?? 0;
           const ebitdaCents = monthlyResult?.ebitdaCents ?? preview.ebitdaCents ?? 0;
           const reserveCents = monthlyResult?.reserveCents ?? 0;
+          const quarterlyFundContributionCents = monthlyResult?.quarterlyFundContributionCents ?? 0;
           const operatingProfitCents = ebitdaCents + reserveCents;
 
           const investorPoolCents = (preview.investors ?? []).reduce(
@@ -80,6 +82,7 @@ export async function GET(request: NextRequest) {
             totalBaseCents: ebitdaCents + reserveCents,
             investorPoolCents,
             companyPoolCents,
+            quarterlyFundContributionCents,
             activeQuotaCount: preview.activeQuotaCount,
             companyQuotaCount: preview.companyQuotaCount,
             investorQuotaCount: preview.investorQuotaCount,
@@ -109,6 +112,7 @@ export async function GET(request: NextRequest) {
             totalBaseCents: 0,
             investorPoolCents: 0,
             companyPoolCents: 0,
+            quarterlyFundContributionCents: 0,
             activeQuotaCount: 0,
             companyQuotaCount: 0,
             investorQuotaCount: 0,

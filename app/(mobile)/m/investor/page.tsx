@@ -6,7 +6,6 @@ import {
   BadgeDollarSign,
   ChevronRight,
   Layers3,
-  LayoutDashboard,
   Smartphone,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -14,7 +13,6 @@ import MobileInvestorPageFrame from "@/app/components/mobile/mobile-investor-pag
 import {
   MobileCard,
   MobileSectionTitle,
-  MobileStatCard,
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
@@ -51,6 +49,19 @@ type DistributionItem = {
   } | null;
 };
 
+type QuarterlyDistributionItem = {
+  id: string;
+  regionId: string;
+  quarter: number;
+  year: number;
+  quotaCount: number;
+  valuePerQuotaCents: number;
+  totalDistributionCents: number;
+  quarterlyFundTotalCents: number;
+  status: string;
+  region?: { name?: string | null } | null;
+};
+
 type InvestorMeResponse = {
   investor: {
     id: string;
@@ -69,12 +80,8 @@ type InvestorMeResponse = {
   };
   shares: ShareItem[];
   distributions: DistributionItem[];
+  quarterlyFundDistributions: QuarterlyDistributionItem[];
 };
-
-function formatMonthYear(month?: number, year?: number) {
-  if (!month || !year) return "-";
-  return `${String(month).padStart(2, "0")}/${year}`;
-}
 
 function Shortcut({
   href,
@@ -93,54 +100,19 @@ function Shortcut({
   return (
     <Link href={href} style={{ textDecoration: "none" }}>
       <MobileCard style={{ padding: 14 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 14,
-              background: colors.isDark ? "#111827" : "#e8f0ff",
-              color: colors.primary,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: 14,
+            background: colors.isDark ? "#111827" : "#e8f0ff",
+            color: colors.primary,
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
             {icon}
           </div>
-
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 900,
-                color: colors.text,
-                lineHeight: 1.2,
-              }}
-            >
-              {title}
-            </div>
-
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 12,
-                color: colors.subtext,
-                lineHeight: 1.45,
-              }}
-            >
-              {subtitle}
-            </div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: colors.text, lineHeight: 1.2 }}>{title}</div>
+            <div style={{ marginTop: 6, fontSize: 12, color: colors.subtext, lineHeight: 1.45 }}>{subtitle}</div>
           </div>
-
           <ChevronRight size={16} color={colors.subtext} />
         </div>
       </MobileCard>
@@ -148,46 +120,10 @@ function Shortcut({
   );
 }
 
-function RowValue({
-  title,
-  value,
-  last = false,
-}: {
-  title: string;
-  value: string;
-  last?: boolean;
-}) {
-  const { theme } = useTheme();
-  const colors = getThemeColors(theme);
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-        padding: "12px 0",
-        borderBottom: last ? "none" : `1px solid ${colors.border}`,
-        color: colors.text,
-      }}
-    >
-      <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
-      <div
-        style={{
-          fontSize: 13,
-          color: colors.subtext,
-          textAlign: "right",
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
 export default function MobileInvestorDashboardPage() {
   const router = useRouter();
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -196,66 +132,45 @@ export default function MobileInvestorDashboardPage() {
 
   async function load(showRefreshing = false) {
     try {
-      if (showRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
+      if (showRefreshing) setRefreshing(true);
+      else setLoading(true);
       setError(null);
 
-      const res = await fetch("/api/investor-auth/me", {
-        cache: "no-store",
-      });
-
-      if (res.status === 401) {
-        router.push("/investor/login");
-        return;
-      }
+      const res = await fetch("/api/investor-auth/me", { cache: "no-store" });
+      if (res.status === 401) { router.push("/investor/login"); return; }
 
       const json = (await res.json().catch(() => null)) as InvestorMeResponse | null;
-
-      if (!res.ok) {
-        throw new Error(
-          (json as any)?.error || "Erro ao carregar painel do investidor."
-        );
-      }
-
+      if (!res.ok) throw new Error((json as any)?.error || "Erro ao carregar painel do investidor.");
       setData(json);
     } catch (err) {
-      console.error(err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Erro ao carregar painel do investidor."
-      );
+      setError(err instanceof Error ? err.message : "Erro ao carregar painel do investidor.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const investorName = data?.investor?.name?.trim() || "Investidor";
   const summary = data?.summary;
   const shares = data?.shares ?? [];
   const distributions = data?.distributions ?? [];
+  const quarterlyFundDistributions = data?.quarterlyFundDistributions ?? [];
 
-  const latestShares = useMemo(() => {
-    return [...shares].sort((a, b) => a.quotaNumber - b.quotaNumber).slice(0, 4);
-  }, [shares]);
+  const ebitdaEstimate = useMemo(() =>
+    distributions.filter((d) => d.status === "PENDING").reduce((s, d) => s + d.totalDistributionCents, 0),
+  [distributions]);
 
-  const latestDistributions = useMemo(() => {
-    return [...distributions]
-      .sort((a, b) => {
-        if ((b.year ?? 0) !== (a.year ?? 0)) return (b.year ?? 0) - (a.year ?? 0);
-        return (b.month ?? 0) - (a.month ?? 0);
-      })
-      .slice(0, 3);
-  }, [distributions]);
+  const fundoTrimestral = useMemo(() =>
+    quarterlyFundDistributions.filter((d) => d.status === "PENDING").reduce((s, d) => s + d.totalDistributionCents, 0),
+  [quarterlyFundDistributions]);
+
+  const totalAReceber = ebitdaEstimate + fundoTrimestral;
+
+  const latestShares = useMemo(() =>
+    [...shares].sort((a, b) => a.quotaNumber - b.quotaNumber).slice(0, 4),
+  [shares]);
 
   return (
     <MobileInvestorPageFrame
@@ -266,155 +181,106 @@ export default function MobileInvestorDashboardPage() {
       {loading ? (
         <MobileCard>Carregando painel...</MobileCard>
       ) : error ? (
-        <MobileCard>{error}</MobileCard>
+        <MobileCard><div style={{ color: "#dc2626", fontSize: 13 }}>{error}</div></MobileCard>
       ) : (
         <>
+          {/* Estimativa principal */}
           <MobileCard style={{ padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-              Total investido
+            <div style={{ fontSize: 12, fontWeight: 700, color: colors.subtext, textTransform: "uppercase", marginBottom: 4 }}>
+              Estimativa EBITDA
+            </div>
+            <div style={{ fontSize: 30, fontWeight: 900, color: colors.text, lineHeight: 1.1, marginBottom: 12 }}>
+              {formatMoneyBR(ebitdaEstimate)}
+            </div>
+            <div style={{ fontSize: 11, color: colors.subtext, marginBottom: 12 }}>
+              {summary?.activeQuotaCount ?? 0} cota(s) · {summary?.totalRegions ?? 0} região(ões)
             </div>
 
-            <div
-              style={{
-                fontSize: 28,
-                lineHeight: 1.1,
-                fontWeight: 900,
-                marginBottom: 8,
-              }}
-            >
-              {formatMoneyBR(summary?.totalInvestedCents ?? 0)}
-            </div>
-
-            <div style={{ fontSize: 13, opacity: 0.75, lineHeight: 1.45 }}>
-              {summary?.activeQuotaCount ?? 0} cota(s) ativa(s) •{" "}
-              {summary?.totalRegions ?? 0} região(ões) •{" "}
-              {formatMoneyBR(summary?.pendingDistributionCents ?? 0)} pendente(s)
+            {/* Breakdown: fundo + total */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ borderRadius: 12, background: "#fffbeb", border: "1px solid #fde68a", padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>Fundo trimestral</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: "#f59e0b", marginTop: 3 }}>{formatMoneyBR(fundoTrimestral)}</div>
+                <div style={{ fontSize: 10, color: "#92400e", marginTop: 2 }}>pendente</div>
+              </div>
+              <div style={{ borderRadius: 12, background: colors.isDark ? "#052e16" : "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>Total a receber</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: "#16a34a", marginTop: 3 }}>{formatMoneyBR(totalAReceber)}</div>
+                <div style={{ fontSize: 10, color: "#166534", marginTop: 2 }}>EBITDA + fundo</div>
+              </div>
             </div>
           </MobileCard>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-              gap: 12,
-            }}
-          >
-            <MobileStatCard
-              label="Cotas"
-              value={String(summary?.activeQuotaCount ?? 0)}
-              helper="Ativas"
-            />
-
-            <MobileStatCard
-              label="Distribuído"
-              value={formatMoneyBR(summary?.totalDistributedCents ?? 0)}
-              helper="Total pago"
-            />
-
-            <MobileStatCard
-              label="Regiões"
-              value={String(summary?.totalRegions ?? 0)}
-              helper="Participações"
-            />
-
-            <MobileStatCard
-              label="Pendente"
-              value={formatMoneyBR(summary?.pendingDistributionCents ?? 0)}
-              helper="A receber"
-            />
+          {/* Já recebido */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ borderRadius: 16, border: `1px solid ${colors.border}`, background: colors.cardBg, padding: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: colors.subtext, textTransform: "uppercase" }}>Já distribuído</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: colors.text, marginTop: 4 }}>{formatMoneyBR(summary?.totalDistributedCents ?? 0)}</div>
+              <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>total pago</div>
+            </div>
+            <div style={{ borderRadius: 16, border: `1px solid ${colors.border}`, background: colors.cardBg, padding: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: colors.subtext, textTransform: "uppercase" }}>Total investido</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: colors.text, marginTop: 4 }}>{formatMoneyBR(summary?.totalInvestedCents ?? 0)}</div>
+              <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>{summary?.activeQuotaCount ?? 0} cota(s)</div>
+            </div>
           </div>
 
           <MobileCard>
             <MobileSectionTitle
-              title="Atalhos principais"
+              title="Atalhos"
               action={
                 <button
                   onClick={() => load(true)}
-                  style={{
-                    height: 34,
-                    padding: "0 12px",
-                    borderRadius: 10,
-                    border: "1px solid #dbe3ef",
-                    background: "#ffffff",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                  }}
+                  style={{ height: 30, padding: "0 10px", borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.isDark ? "#0f172a" : "#f8fafc", fontSize: 11, fontWeight: 800, cursor: "pointer", color: colors.text }}
                 >
-                  {refreshing ? "Atualizando..." : "Atualizar"}
+                  {refreshing ? "..." : "↻"}
                 </button>
               }
             />
-
             <div style={{ display: "grid", gap: 12 }}>
               <Shortcut
                 href="/m/investor/quotas"
                 title="Minhas cotas"
-                subtitle="Ver cotas, regiões vinculadas e valores investidos"
+                subtitle="Ver cotas, regiões e valores investidos"
                 icon={<Layers3 size={18} />}
               />
-
               <Shortcut
                 href="/m/investor/distributions"
                 title="Distribuições"
-                subtitle="Consultar histórico de repasses e status de pagamento"
+                subtitle="Histórico de repasses — mensal e fundo trimestral"
                 icon={<BadgeDollarSign size={18} />}
               />
-
               <Shortcut
                 href="/investor"
                 title="Abrir desktop"
-                subtitle="Voltar para a versão desktop do painel do investidor"
+                subtitle="Painel completo do investidor"
                 icon={<Smartphone size={18} />}
               />
             </div>
           </MobileCard>
 
-          <MobileCard>
-            <MobileSectionTitle title="Resumo das cotas" />
-
-            {latestShares.length === 0 ? (
-              <div style={{ fontSize: 13 }}>Nenhuma cota encontrada.</div>
-            ) : (
-              latestShares.map((share, index) => (
-                <RowValue
-                  key={share.id}
-                  title={`Cota #${share.quotaNumber}`}
-                  value={share.region?.name || formatMoneyBR(share.amountCents ?? 0)}
-                  last={index === latestShares.length - 1}
-                />
-              ))
-            )}
-          </MobileCard>
-
-          <MobileCard>
-            <MobileSectionTitle title="Últimas distribuições" />
-
-            {latestDistributions.length === 0 ? (
-              <div style={{ fontSize: 13 }}>Nenhuma distribuição encontrada.</div>
-            ) : (
-              latestDistributions.map((item, index) => (
-                <RowValue
-                  key={item.id}
-                  title={`${formatMonthYear(item.month, item.year)} • ${
-                    item.region?.name || "Região"
-                  }`}
-                  value={formatMoneyBR(item.totalDistributionCents ?? 0)}
-                  last={index === latestDistributions.length - 1}
-                />
-              ))
-            )}
-          </MobileCard>
-
-          <MobileCard>
-            <MobileSectionTitle title="Visão geral" />
-            <Shortcut
-              href="/investor"
-              title="Painel completo"
-              subtitle="Abrir o dashboard desktop com visão consolidada do investidor"
-              icon={<LayoutDashboard size={18} />}
-            />
-          </MobileCard>
+          {latestShares.length > 0 && (
+            <MobileCard>
+              <MobileSectionTitle title="Minhas cotas" />
+              <div style={{ display: "grid", gap: 0 }}>
+                {latestShares.map((share, index) => (
+                  <div
+                    key={share.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "10px 0",
+                      borderBottom: index < latestShares.length - 1 ? `1px solid ${colors.border}` : "none",
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700, color: colors.text }}>Cota #{share.quotaNumber}</div>
+                    <div style={{ fontSize: 12, color: colors.subtext }}>{share.region?.name ?? formatMoneyBR(share.amountCents)}</div>
+                  </div>
+                ))}
+              </div>
+            </MobileCard>
+          )}
         </>
       )}
     </MobileInvestorPageFrame>

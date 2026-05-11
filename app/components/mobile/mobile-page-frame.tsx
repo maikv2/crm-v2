@@ -24,8 +24,7 @@ export default function MobilePageFrame({
 }) {
   const pathname = usePathname();
 
-  const isFinanceMobile =
-    pathname.startsWith("/m/admin/finance") || pathname.startsWith("/m/finance");
+  const isFinanceMobile = pathname.startsWith("/m/finance");
 
   const resolvedNavItems =
     navItems ?? (isFinanceMobile ? financeMobileNavItems : adminMobileNavItems);
@@ -36,7 +35,7 @@ export default function MobilePageFrame({
       subtitle={subtitle}
       navItems={resolvedNavItems}
       showBrand
-      brandHref="/m/admin"
+      brandHref={isFinanceMobile ? "/m/finance" : "/m/admin"}
     >
       <div
         style={{

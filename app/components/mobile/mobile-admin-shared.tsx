@@ -1,6 +1,5 @@
 import {
   BarChart3,
-  ChevronLeft,
   Home,
   Landmark,
   MoreHorizontal,
@@ -54,9 +53,9 @@ export const adminMobileNavItems = [
 
 export const financeMobileNavItems = [
   {
-    label: "Painel",
-    href: "/m/admin",
-    icon: ChevronLeft,
+    label: "Início",
+    href: "/m/finance",
+    icon: Home,
   },
   {
     label: "Receber",

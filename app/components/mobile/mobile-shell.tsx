@@ -289,6 +289,7 @@ export default function MobileShell({
         minHeight: "100vh",
         background: colors.isDark ? "#08111f" : "#f3f6fb",
         color: colors.text,
+        overflowX: "hidden",
       }}
     >
       <div
@@ -297,6 +298,7 @@ export default function MobileShell({
           margin: "0 auto",
           minHeight: "100vh",
           paddingBottom: navItems?.length ? 110 : 24,
+          overflowX: "hidden",
         }}
       >
         <div

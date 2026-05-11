@@ -36,7 +36,7 @@ export default function MobilePageFrame({
       subtitle={subtitle}
       navItems={resolvedNavItems}
       showBrand
-      brandHref={isFinanceMobile ? "/m/admin/finance" : "/m/admin"}
+      brandHref="/m/admin"
     >
       <div
         style={{

@@ -12,20 +12,12 @@ import {
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
-type CommissionsResponse = {
-  items?: Array<{
-    id: string;
-    orderNumber?: number | null;
-    clientName?: string | null;
-    commissionCents?: number | null;
-    status?: string | null;
-  }>;
-  summary?: {
-    total?: number;
-    available?: number;
-    awaitingTransfer?: number;
-    awaitingPayment?: number;
-  };
+type AcertoSummary = {
+  totalPayable: number;
+  currentWeekCents: number;
+  priorWeeksCents: number;
+  pendingOverdueCents: number;
+  pendingNormalCents: number;
 };
 
 type ReceivablesResponse = {
@@ -123,10 +115,16 @@ function FinanceMetricCard({
   label,
   value,
   highlight = false,
+  color,
+  bg,
+  borderColor,
 }: {
   label: string;
   value: string;
   highlight?: boolean;
+  color?: string;
+  bg?: string;
+  borderColor?: string;
 }) {
   const { theme } = useTheme();
   const colors = getThemeColors(theme);
@@ -135,20 +133,17 @@ function FinanceMetricCard({
     <div
       style={{
         minWidth: 0,
-        borderRadius: 18,
-        border: `1px solid ${highlight ? colors.primary : colors.border}`,
-        background: colors.cardBg,
+        borderRadius: 14,
+        border: `1px solid ${borderColor ?? (highlight ? colors.primary : colors.border)}`,
+        background: bg ?? colors.cardBg,
         padding: 14,
-        boxShadow: colors.isDark
-          ? "0 10px 24px rgba(2,6,23,0.22)"
-          : "0 10px 24px rgba(15,23,42,0.05)",
       }}
     >
       <div
         style={{
           fontSize: 12,
           fontWeight: 700,
-          color: colors.subtext,
+          color: color ?? colors.subtext,
           marginBottom: 8,
           lineHeight: 1.35,
           wordBreak: "break-word",
@@ -163,7 +158,7 @@ function FinanceMetricCard({
           fontSize: "clamp(16px, 4vw, 22px)",
           lineHeight: 1.15,
           fontWeight: 900,
-          color: highlight ? colors.primary : colors.text,
+          color: color ?? (highlight ? colors.primary : colors.text),
           letterSpacing: -0.3,
           wordBreak: "break-word",
           overflowWrap: "anywhere",
@@ -178,12 +173,8 @@ function FinanceMetricCard({
 export default function RepFinancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [commissions, setCommissions] = useState<CommissionsResponse | null>(
-    null
-  );
-  const [receivables, setReceivables] = useState<ReceivablesResponse | null>(
-    null
-  );
+  const [acerto, setAcerto] = useState<AcertoSummary | null>(null);
+  const [receivables, setReceivables] = useState<ReceivablesResponse | null>(null);
   const [transfers, setTransfers] = useState<TransfersResponse | null>(null);
 
   useEffect(() => {
@@ -194,40 +185,28 @@ export default function RepFinancePage() {
         setLoading(true);
         setError(null);
 
-        const [commissionsRes, receivablesRes, transfersRes] = await Promise.all(
-          [
-            fetch("/api/rep/finance/commissions", { cache: "no-store" }),
-            fetch("/api/rep/finance/receivables", { cache: "no-store" }),
-            fetch("/api/rep/finance/transfers", { cache: "no-store" }),
-          ]
-        );
+        const [acertoRes, receivablesRes, transfersRes] = await Promise.all([
+          fetch("/api/rep/finance/acerto", { cache: "no-store" }),
+          fetch("/api/rep/finance/receivables", { cache: "no-store" }),
+          fetch("/api/rep/finance/transfers", { cache: "no-store" }),
+        ]);
 
-        const commissionsJson = (await commissionsRes
-          .json()
-          .catch(() => null)) as CommissionsResponse | null;
-        const receivablesJson = (await receivablesRes
-          .json()
-          .catch(() => null)) as ReceivablesResponse | null;
-        const transfersJson = (await transfersRes
-          .json()
-          .catch(() => null)) as TransfersResponse | null;
+        const acertoJson = await acertoRes.json().catch(() => null);
+        const receivablesJson = (await receivablesRes.json().catch(() => null)) as ReceivablesResponse | null;
+        const transfersJson = (await transfersRes.json().catch(() => null)) as TransfersResponse | null;
 
-        if (!commissionsRes.ok) {
-          throw new Error(
-            (commissionsJson as any)?.error || "Erro ao carregar financeiro."
-          );
+        if (!acertoRes.ok) {
+          throw new Error(acertoJson?.error || "Erro ao carregar financeiro.");
         }
 
         if (active) {
-          setCommissions(commissionsJson);
+          setAcerto(acertoJson?.summary ?? null);
           setReceivables(receivablesJson);
           setTransfers(transfersJson);
         }
       } catch (err) {
         if (active) {
-          setError(
-            err instanceof Error ? err.message : "Erro ao carregar financeiro."
-          );
+          setError(err instanceof Error ? err.message : "Erro ao carregar financeiro.");
         }
       } finally {
         if (active) setLoading(false);
@@ -236,9 +215,7 @@ export default function RepFinancePage() {
 
     load();
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
   const receivablesSummary = useMemo(() => {
@@ -292,32 +269,45 @@ export default function RepFinancePage() {
         <>
           <MobileCard>
             <MobileSectionTitle title="Minhas comissões" />
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-                gap: 12,
-              }}
-            >
-              <FinanceMetricCard
-                label="Total gerado"
-                value={formatMoneyBR(commissions?.summary?.total ?? 0)}
-              />
-              <FinanceMetricCard
-                label="Aguardando pagamento"
-                value={formatMoneyBR(commissions?.summary?.awaitingPayment ?? 0)}
-              />
-              <FinanceMetricCard
-                label="Aguardando repasse"
-                value={formatMoneyBR(
-                  commissions?.summary?.awaitingTransfer ?? 0
-                )}
-              />
-              <FinanceMetricCard
-                label="Disponível"
-                value={formatMoneyBR(commissions?.summary?.available ?? 0)}
-                highlight
-              />
+
+            {/* Card principal: a receber esta semana */}
+            <div style={{
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 10,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>
+                A receber esta semana
+              </div>
+              <div style={{ fontSize: 11, color: "#4ade80", marginTop: 2 }}>
+                Comissão liberada sobre pagamentos confirmados
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#166534", marginTop: 4 }}>
+                {formatMoneyBR(acerto?.totalPayable ?? 0)}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
+              {(acerto?.pendingOverdueCents ?? 0) > 0 && (
+                <FinanceMetricCard
+                  label="⚠ Clientes em atraso"
+                  value={formatMoneyBR(acerto?.pendingOverdueCents ?? 0)}
+                  color="#dc2626"
+                  bg="#fef2f2"
+                  borderColor="#fecaca"
+                />
+              )}
+              {(acerto?.pendingNormalCents ?? 0) > 0 && (
+                <FinanceMetricCard
+                  label="Aguardando clientes"
+                  value={formatMoneyBR(acerto?.pendingNormalCents ?? 0)}
+                  color="#92400e"
+                  bg="#fffbeb"
+                  borderColor="#fde68a"
+                />
+              )}
             </div>
           </MobileCard>
 

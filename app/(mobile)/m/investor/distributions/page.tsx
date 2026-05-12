@@ -81,6 +81,7 @@ export default function MobileInvestorDistributionsPage() {
   const [data, setData] = useState<{
     distributions?: MonthlyDistribution[];
     quarterlyFundDistributions?: QuarterlyDistribution[];
+    liveEstimate?: { quarterlyFundCents: number; quarter: number; year: number } | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -105,26 +106,18 @@ export default function MobileInvestorDistributionsPage() {
 
   const distributions = useMemo(() => data?.distributions ?? [], [data]);
   const quarterlyDistributions = useMemo(() => data?.quarterlyFundDistributions ?? [], [data]);
+  const liveEstimate = data?.liveEstimate;
 
-  // Estimativa do EBITDA do investidor (pendente mensal)
-  const ebitdaPendente = useMemo(() =>
-    distributions.filter((d) => d.status === "PENDING").reduce((s, d) => s + d.totalDistributionCents, 0),
-  [distributions]);
+  // Live quarterly fund estimate (real-time, from actual revenue − expenses)
+  const liveFundoCents = liveEstimate?.quarterlyFundCents ?? 0;
 
   const ebitdaPago = useMemo(() =>
     distributions.filter((d) => d.status === "PAID").reduce((s, d) => s + d.totalDistributionCents, 0),
   [distributions]);
 
-  // Fundo trimestral do investidor (só a parte dele)
-  const fundoPendente = useMemo(() =>
-    quarterlyDistributions.filter((d) => d.status === "PENDING").reduce((s, d) => s + d.totalDistributionCents, 0),
-  [quarterlyDistributions]);
-
   const fundoPago = useMemo(() =>
     quarterlyDistributions.filter((d) => d.status === "PAID").reduce((s, d) => s + d.totalDistributionCents, 0),
   [quarterlyDistributions]);
-
-  const totalPendente = ebitdaPendente + fundoPendente;
 
   return (
     <MobileInvestorPageFrame
@@ -132,33 +125,22 @@ export default function MobileInvestorDistributionsPage() {
       subtitle="Seus repasses de EBITDA e fundo trimestral"
       desktopHref="/investor/distributions"
     >
-      {/* Resumo consolidado — sempre visível */}
+      {/* Estimativa ao vivo — sempre visível */}
       {!loading && (
         <MobileCard style={{ padding: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: colors.subtext, textTransform: "uppercase", marginBottom: 8 }}>
-            Estimativa total a receber
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: colors.text, lineHeight: 1, marginBottom: 14 }}>
-            {formatMoneyBR(totalPendente)}
-          </div>
-
-          {/* Breakdown das duas formas */}
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderRadius: 12, background: colors.isDark ? "#0f172a" : "#e8f0ff", border: `1px solid ${colors.isDark ? "#1e293b" : "#bfdbfe"}` }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: colors.primary }}>EBITDA mensal</div>
-                <div style={{ fontSize: 10, color: colors.subtext, marginTop: 1 }}>Distribuições mensais pendentes</div>
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 900, color: colors.primary }}>{formatMoneyBR(ebitdaPendente)}</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>
+              Fundo trimestral — estimativa
             </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderRadius: 12, background: "#fffbeb", border: "1px solid #fde68a" }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>Fundo trimestral</div>
-                <div style={{ fontSize: 10, color: "#92400e", opacity: 0.7, marginTop: 1 }}>Sua parte do fundo (pendente)</div>
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 900, color: "#f59e0b" }}>{formatMoneyBR(fundoPendente)}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 999, padding: "2px 8px" }}>
+              {liveEstimate ? `${liveEstimate.quarter}º tri/${liveEstimate.year}` : "ao vivo"}
             </div>
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "#f59e0b", lineHeight: 1, marginBottom: 6 }}>
+            {formatMoneyBR(liveFundoCents)}
+          </div>
+          <div style={{ fontSize: 11, color: colors.subtext }}>
+            Calculado em tempo real · receita − despesas acumuladas no trimestre
           </div>
         </MobileCard>
       )}
@@ -189,12 +171,14 @@ export default function MobileInvestorDistributionsPage() {
           {/* Resumo mensal */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div style={{ borderRadius: 16, padding: 14, background: colors.isDark ? "#052e16" : "#f0fdf4", border: "1px solid #bbf7d0" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>Recebido</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>Já recebido</div>
               <div style={{ fontSize: 20, fontWeight: 900, color: "#166534", marginTop: 4 }}>{formatMoneyBR(ebitdaPago)}</div>
             </div>
-            <div style={{ borderRadius: 16, padding: 14, background: "#fffbeb", border: "1px solid #fde68a" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>Pendente</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#92400e", marginTop: 4 }}>{formatMoneyBR(ebitdaPendente)}</div>
+            <div style={{ borderRadius: 16, padding: 14, background: colors.isDark ? "#111827" : "#f8fafc", border: `1px solid ${colors.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: colors.subtext, textTransform: "uppercase" }}>Pendente</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: colors.text, marginTop: 4 }}>
+                {formatMoneyBR(distributions.filter(d => d.status === "PENDING").reduce((s, d) => s + d.totalDistributionCents, 0))}
+              </div>
             </div>
           </div>
 
@@ -238,12 +222,12 @@ export default function MobileInvestorDistributionsPage() {
           {/* Resumo trimestral */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div style={{ borderRadius: 16, padding: 14, background: colors.isDark ? "#052e16" : "#f0fdf4", border: "1px solid #bbf7d0" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>Recebido</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>Já recebido</div>
               <div style={{ fontSize: 20, fontWeight: 900, color: "#166534", marginTop: 4 }}>{formatMoneyBR(fundoPago)}</div>
             </div>
             <div style={{ borderRadius: 16, padding: 14, background: "#fffbeb", border: "1px solid #fde68a" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>Pendente</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#92400e", marginTop: 4 }}>{formatMoneyBR(fundoPendente)}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>Estimativa</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#f59e0b", marginTop: 4 }}>{formatMoneyBR(liveFundoCents)}</div>
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
+import { calculateQuarterlyFundPreview, getQuarterForMonth } from "@/lib/investor-distribution";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,29 @@ export async function GET() {
       distributions.filter((d) => d.status === "PENDING").reduce((sum, d) => sum + (d.totalDistributionCents ?? 0), 0) +
       quarterlyFundDistributions.filter((d) => d.status === "PENDING").reduce((sum, d) => sum + (d.totalDistributionCents ?? 0), 0);
 
+    // Live estimate: calculate the investor's share of the quarterly fund in real time
+    // based on actual revenue and expenses so far this quarter, day by day.
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const currentQuarter = getQuarterForMonth(currentMonth);
+
+    const regionIds = [...new Set(activeShares.map((s) => s.regionId))];
+
+    let liveQuarterlyFundCents = 0;
+
+    await Promise.all(
+      regionIds.map(async (regionId) => {
+        try {
+          const preview = await calculateQuarterlyFundPreview(regionId, currentQuarter, currentYear);
+          const entry = preview.investors.find((inv) => inv.investorId === investor.id);
+          if (entry) liveQuarterlyFundCents += entry.totalDistributionCents;
+        } catch {
+          // Region may have no data yet — skip silently
+        }
+      })
+    );
+
     return NextResponse.json({
       investor: {
         id: investor.id,
@@ -114,6 +138,11 @@ export async function GET() {
         totalInvestedCents,
         totalDistributedCents,
         pendingDistributionCents,
+      },
+      liveEstimate: {
+        quarterlyFundCents: liveQuarterlyFundCents,
+        quarter: currentQuarter,
+        year: currentYear,
       },
       shares: activeShares,
       distributions,

@@ -78,6 +78,11 @@ type InvestorMeResponse = {
     totalDistributedCents: number;
     pendingDistributionCents: number;
   };
+  liveEstimate?: {
+    quarterlyFundCents: number;
+    quarter: number;
+    year: number;
+  } | null;
   shares: ShareItem[];
   distributions: DistributionItem[];
   quarterlyFundDistributions: QuarterlyDistributionItem[];
@@ -157,16 +162,15 @@ export default function MobileInvestorDashboardPage() {
   const shares = data?.shares ?? [];
   const distributions = data?.distributions ?? [];
   const quarterlyFundDistributions = data?.quarterlyFundDistributions ?? [];
+  const liveEstimate = data?.liveEstimate;
 
-  const ebitdaEstimate = useMemo(() =>
-    distributions.filter((d) => d.status === "PENDING").reduce((s, d) => s + d.totalDistributionCents, 0),
-  [distributions]);
+  // Live estimate: real-time fund based on actual revenue − expenses so far this quarter
+  const liveFundoCents = liveEstimate?.quarterlyFundCents ?? 0;
 
-  const fundoTrimestral = useMemo(() =>
-    quarterlyFundDistributions.filter((d) => d.status === "PENDING").reduce((s, d) => s + d.totalDistributionCents, 0),
-  [quarterlyFundDistributions]);
-
-  const totalAReceber = ebitdaEstimate + fundoTrimestral;
+  const totalDistribuidoPago = useMemo(() =>
+    distributions.filter((d) => d.status === "PAID").reduce((s, d) => s + d.totalDistributionCents, 0) +
+    quarterlyFundDistributions.filter((d) => d.status === "PAID").reduce((s, d) => s + d.totalDistributionCents, 0),
+  [distributions, quarterlyFundDistributions]);
 
   const latestShares = useMemo(() =>
     [...shares].sort((a, b) => a.quotaNumber - b.quotaNumber).slice(0, 4),
@@ -184,46 +188,37 @@ export default function MobileInvestorDashboardPage() {
         <MobileCard><div style={{ color: "#dc2626", fontSize: 13 }}>{error}</div></MobileCard>
       ) : (
         <>
-          {/* Estimativa principal */}
+          {/* Estimativa do fundo trimestral — ao vivo */}
           <MobileCard style={{ padding: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: colors.subtext, textTransform: "uppercase", marginBottom: 4 }}>
-              Estimativa EBITDA
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>
+                Fundo trimestral — estimativa
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 999, padding: "2px 8px" }}>
+                {liveEstimate ? `${liveEstimate.quarter}º tri/${liveEstimate.year}` : "ao vivo"}
+              </div>
             </div>
-            <div style={{ fontSize: 30, fontWeight: 900, color: colors.text, lineHeight: 1.1, marginBottom: 12 }}>
-              {formatMoneyBR(ebitdaEstimate)}
+            <div style={{ fontSize: 30, fontWeight: 900, color: "#f59e0b", lineHeight: 1.1, marginBottom: 6 }}>
+              {formatMoneyBR(liveFundoCents)}
             </div>
-            <div style={{ fontSize: 11, color: colors.subtext, marginBottom: 12 }}>
-              {summary?.activeQuotaCount ?? 0} cota(s) · {summary?.totalRegions ?? 0} região(ões)
+            <div style={{ fontSize: 11, color: colors.subtext, marginBottom: 14 }}>
+              {summary?.activeQuotaCount ?? 0} cota(s) · {summary?.totalRegions ?? 0} região(ões) · atualizado em tempo real
             </div>
 
-            {/* Breakdown: fundo + total */}
+            {/* Já distribuído */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div style={{ borderRadius: 12, background: "#fffbeb", border: "1px solid #fde68a", padding: "10px 12px" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>Fundo trimestral</div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: "#f59e0b", marginTop: 3 }}>{formatMoneyBR(fundoTrimestral)}</div>
-                <div style={{ fontSize: 10, color: "#92400e", marginTop: 2 }}>pendente</div>
-              </div>
               <div style={{ borderRadius: 12, background: colors.isDark ? "#052e16" : "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px 12px" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>Total a receber</div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: "#16a34a", marginTop: 3 }}>{formatMoneyBR(totalAReceber)}</div>
-                <div style={{ fontSize: 10, color: "#166534", marginTop: 2 }}>EBITDA + fundo</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>Já recebido</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: "#16a34a", marginTop: 3 }}>{formatMoneyBR(totalDistribuidoPago)}</div>
+                <div style={{ fontSize: 10, color: "#166534", marginTop: 2 }}>total pago</div>
+              </div>
+              <div style={{ borderRadius: 12, background: colors.isDark ? "#111827" : "#f8fafc", border: `1px solid ${colors.border}`, padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: colors.subtext, textTransform: "uppercase" }}>Total investido</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: colors.text, marginTop: 3 }}>{formatMoneyBR(summary?.totalInvestedCents ?? 0)}</div>
+                <div style={{ fontSize: 10, color: colors.subtext, marginTop: 2 }}>{summary?.activeQuotaCount ?? 0} cota(s)</div>
               </div>
             </div>
           </MobileCard>
-
-          {/* Já recebido */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div style={{ borderRadius: 16, border: `1px solid ${colors.border}`, background: colors.cardBg, padding: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: colors.subtext, textTransform: "uppercase" }}>Já distribuído</div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: colors.text, marginTop: 4 }}>{formatMoneyBR(summary?.totalDistributedCents ?? 0)}</div>
-              <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>total pago</div>
-            </div>
-            <div style={{ borderRadius: 16, border: `1px solid ${colors.border}`, background: colors.cardBg, padding: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: colors.subtext, textTransform: "uppercase" }}>Total investido</div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: colors.text, marginTop: 4 }}>{formatMoneyBR(summary?.totalInvestedCents ?? 0)}</div>
-              <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>{summary?.activeQuotaCount ?? 0} cota(s)</div>
-            </div>
-          </div>
 
           <MobileCard>
             <MobileSectionTitle

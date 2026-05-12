@@ -1,7 +1,5 @@
 import { prisma } from "@/lib/prisma";
 
-// Pre-payback investor rate: 60% of net result goes to investors.
-const PRE_PAY_INVESTOR_RATE = 0.60;
 
 type RegionFinancialSnapshot = {
   regionId: string;
@@ -197,12 +195,12 @@ export async function calculateRegionFinancialSnapshot(
     taxesCents -
     administrativeCents;
 
-  // Net result: revenue minus all expenses. This is the base for investor distribution.
-  const ebitdaCents = Math.max(0, operatingProfitCents);
-  // Company keeps the remaining % (40% pre-payback / 60% post-payback).
-  const reserveCents = 0;
-  // Region-level estimate: 60% of net result flows to the quarterly fund (pre-payback baseline).
-  const quarterlyFundContributionCents = Math.floor(ebitdaCents * PRE_PAY_INVESTOR_RATE);
+  // EBITDA: separate reporting metric (not used for quarterly fund distribution).
+  const ebitdaCents = Math.max(0, Math.floor(grossRevenueCents * 0.15));
+  const reserveCents = Math.max(0, operatingProfitCents - ebitdaCents);
+  // Quarterly fund base = net result (revenue minus all expenses).
+  // The investor rate (60% pre-payback / 40% post-payback) is applied per quota in the distribution engine.
+  const quarterlyFundContributionCents = Math.max(0, operatingProfitCents);
 
   return {
     regionId,

@@ -57,7 +57,8 @@ export async function GET(request: NextRequest) {
           const grossRevenueCents = monthlyResult?.grossRevenueCents ?? 0;
           const ebitdaCents = monthlyResult?.ebitdaCents ?? preview.ebitdaCents ?? 0;
           const reserveCents = monthlyResult?.reserveCents ?? 0;
-          const quarterlyFundContributionCents = monthlyResult?.quarterlyFundContributionCents ?? 0;
+          const quarterlyFundContributionCents =
+            monthlyResult?.quarterlyFundContributionCents ?? preview.quarterlyFundContributionCents ?? 0;
           const operatingProfitCents = ebitdaCents + reserveCents;
 
           const investorPoolCents = (preview.investors ?? []).reduce(

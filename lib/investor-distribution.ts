@@ -141,6 +141,8 @@ export async function calculateInvestorDistributionPreview(
     month,
     year,
     ebitdaCents,
+    quarterlyFundContributionCents:
+      monthlyResult?.quarterlyFundContributionCents ?? liveSnapshot?.quarterlyFundContributionCents ?? 0,
     activeQuotaCount,
     companyQuotaCount: companyShares.length,
     investorQuotaCount: investorShares.length,
@@ -269,26 +271,31 @@ export async function calculateQuarterlyFundPreview(
   const months = getQuarterMonths(quarter);
 
   // Sum quarterly fund contributions from the 3 months
-  const monthlyResults = await prisma.regionMonthlyResult.findMany({
-    where: {
-      regionId,
-      month: { in: months },
-      year,
-    },
-    select: {
-      id: true,
-      month: true,
-      quarterlyFundContributionCents: true,
-    },
+  const savedResults = await prisma.regionMonthlyResult.findMany({
+    where: { regionId, month: { in: months }, year },
+    select: { id: true, month: true, quarterlyFundContributionCents: true },
     orderBy: { month: "desc" },
   });
 
-  const quarterlyFundTotalCents = monthlyResults.reduce(
-    (sum, r) => sum + r.quarterlyFundContributionCents,
-    0
+  const savedMonths = new Set(savedResults.map((r) => r.month));
+
+  // For months without a saved result, calculate live from raw data
+  const liveContributions = await Promise.all(
+    months
+      .filter((m) => !savedMonths.has(m))
+      .map((m) =>
+        calculateRegionFinancialSnapshot(regionId, m, year)
+          .then((s) => s.quarterlyFundContributionCents)
+          .catch(() => 0)
+      )
   );
 
+  const quarterlyFundTotalCents =
+    savedResults.reduce((sum, r) => sum + r.quarterlyFundContributionCents, 0) +
+    liveContributions.reduce((sum, v) => sum + v, 0);
+
   // Use the last month of the quarter as the anchor result for the distribution record
+  const monthlyResults = savedResults;
   const anchorResult = monthlyResults[0] ?? null;
 
   const shares = await prisma.share.findMany({

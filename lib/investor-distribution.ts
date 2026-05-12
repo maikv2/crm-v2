@@ -270,29 +270,31 @@ export async function calculateQuarterlyFundPreview(
 ) {
   const months = getQuarterMonths(quarter);
 
-  // Sum quarterly fund contributions from the 3 months
+  // Sum net results (ebitdaCents) from the 3 months of the quarter.
+  // The investor rate (60% pre-payback / 40% post-payback) is applied once per quota below.
   const savedResults = await prisma.regionMonthlyResult.findMany({
     where: { regionId, month: { in: months }, year },
-    select: { id: true, month: true, quarterlyFundContributionCents: true },
+    select: { id: true, month: true, ebitdaCents: true },
     orderBy: { month: "desc" },
   });
 
   const savedMonths = new Set(savedResults.map((r) => r.month));
 
   // For months without a saved result, calculate live from raw data
-  const liveContributions = await Promise.all(
+  const liveNetResults = await Promise.all(
     months
       .filter((m) => !savedMonths.has(m))
       .map((m) =>
         calculateRegionFinancialSnapshot(regionId, m, year)
-          .then((s) => s.quarterlyFundContributionCents)
+          .then((s) => s.ebitdaCents)
           .catch(() => 0)
       )
   );
 
-  const quarterlyFundTotalCents =
-    savedResults.reduce((sum, r) => sum + r.quarterlyFundContributionCents, 0) +
-    liveContributions.reduce((sum, v) => sum + v, 0);
+  // Total net result for the quarter (base for distribution)
+  const quarterlyNetCents =
+    savedResults.reduce((sum, r) => sum + r.ebitdaCents, 0) +
+    liveNetResults.reduce((sum, v) => sum + v, 0);
 
   // Use the last month of the quarter as the anchor result for the distribution record
   const monthlyResults = savedResults;
@@ -349,9 +351,9 @@ export async function calculateQuarterlyFundPreview(
     const payoutPhase = paidBack ? "RECURRING" : "PAYBACK";
     const investorRate = paidBack ? share.postPayInvestorBps : share.prePayInvestorBps;
 
-    // Per quota: quarterlyFundTotal * investorRate / 10000 / activeQuotaCount
+    // Per quota: netResult × investorRate / 10000 / totalActiveQuotas
     const quotaAmount = Math.floor(
-      (quarterlyFundTotalCents * investorRate) / 10000 / activeQuotaCount
+      (quarterlyNetCents * investorRate) / 10000 / activeQuotaCount
     );
 
     const existing = grouped.get(share.investorId);
@@ -384,10 +386,16 @@ export async function calculateQuarterlyFundPreview(
         )
       : 0;
 
+  const quarterlyFundTotalCents = Array.from(grouped.values()).reduce(
+    (s, i) => s + i.totalDistributionCents,
+    0
+  );
+
   return {
     regionId,
     quarter,
     year,
+    quarterlyNetCents,
     quarterlyFundTotalCents,
     activeQuotaCount,
     investorQuotaCount: investorShares.length,
@@ -412,8 +420,8 @@ export async function generateQuarterlyFundDistributions(
     );
   }
 
-  if (preview.quarterlyFundTotalCents === 0) {
-    throw new Error("Fundo trimestral zerado: sem eficiência administrativa no período.");
+  if (preview.quarterlyNetCents === 0) {
+    throw new Error("Fundo trimestral zerado: resultado líquido do trimestre é zero.");
   }
 
   const shares = await prisma.share.findMany({

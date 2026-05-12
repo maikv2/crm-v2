@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
-// Admin overhead is provisioned at 32% of gross revenue per V2 budget model.
-// The difference between provisioned and actual admin cost flows to the quarterly fund.
-const PROJECTED_ADMIN_PCT = 0.32;
+// Pre-payback investor rate: 60% of net result goes to investors.
+const PRE_PAY_INVESTOR_RATE = 0.60;
 
 type RegionFinancialSnapshot = {
   regionId: string;
@@ -198,14 +197,12 @@ export async function calculateRegionFinancialSnapshot(
     taxesCents -
     administrativeCents;
 
-  const ebitdaCents = Math.max(0, Math.floor(grossRevenueCents * 0.15));
-  const reserveCents = Math.max(0, operatingProfitCents - ebitdaCents);
-
-  // Monthly contribution to the quarterly fund:
-  // projected admin budget (32% of revenue) minus actual admin spend.
-  // Efficiency surplus flows to investors quarterly via the fundo trimestral.
-  const projectedAdminCents = Math.floor(grossRevenueCents * PROJECTED_ADMIN_PCT);
-  const quarterlyFundContributionCents = Math.max(0, projectedAdminCents - administrativeCents);
+  // Net result: revenue minus all expenses. This is the base for investor distribution.
+  const ebitdaCents = Math.max(0, operatingProfitCents);
+  // Company keeps the remaining % (40% pre-payback / 60% post-payback).
+  const reserveCents = 0;
+  // Region-level estimate: 60% of net result flows to the quarterly fund (pre-payback baseline).
+  const quarterlyFundContributionCents = Math.floor(ebitdaCents * PRE_PAY_INVESTOR_RATE);
 
   return {
     regionId,

@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw } from "lucide-react";
+import { FileBarChart2, RefreshCw, Target } from "lucide-react";
+
+const GOAL_PDVS = 400;
+const GOAL_REVENUE_CENTS = 5_300_000;
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -72,6 +75,16 @@ type InvestorPortalResponse = {
     totalDistributedCents: number;
     pendingDistributionCents: number;
   };
+  liveEstimate?: {
+    ebitdaCents: number;
+    quarterlyFundCents: number;
+    quarter: number;
+    year: number;
+  } | null;
+  goalProgress?: {
+    activePdvs: number;
+    grossRevenueCents: number;
+  } | null;
   shares: ShareItem[];
   distributions: DistributionItem[];
 };
@@ -767,6 +780,96 @@ export default function InvestorDashboardPage() {
             accent="#8b5cf6"
           />
         </div>
+
+        {/* Live estimates */}
+        {data.liveEstimate && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
+            <div style={{
+              background: theme.isDark ? "#0f172a" : "#fffbeb",
+              border: "1px solid #fde68a", borderRadius: 18, padding: 20,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", textTransform: "uppercase", marginBottom: 4 }}>
+                EBITDA — estimativa do mês · ao vivo
+              </div>
+              <div style={{ fontSize: 36, fontWeight: 900, color: "#f59e0b", lineHeight: 1.1, marginBottom: 6 }}>
+                {money(data.liveEstimate.ebitdaCents)}
+              </div>
+              <div style={{ fontSize: 13, color: muted }}>Sua parte · atualizado em tempo real</div>
+            </div>
+            <div style={{
+              background: theme.isDark ? "#0f172a" : "#eff6ff",
+              border: "1px solid #bfdbfe", borderRadius: 18, padding: 20,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1e40af", textTransform: "uppercase", marginBottom: 4 }}>
+                Fundo trimestral — estimativa · {data.liveEstimate.quarter}º tri/{data.liveEstimate.year}
+              </div>
+              <div style={{ fontSize: 36, fontWeight: 900, color: "#2563eb", lineHeight: 1.1, marginBottom: 6 }}>
+                {money(data.liveEstimate.quarterlyFundCents)}
+              </div>
+              <div style={{ fontSize: 13, color: muted }}>Receita − despesas acumuladas no trimestre</div>
+            </div>
+          </div>
+        )}
+
+        {/* Meta */}
+        {data.goalProgress != null && (
+          <div style={{
+            background: theme.isDark ? "#0f172a" : "#ffffff",
+            border: `1px solid ${theme.border}`,
+            borderRadius: 18, padding: 20, marginBottom: 20,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+              <Target size={20} color={theme.isDark ? "#94a3b8" : "#2563eb"} />
+              <div style={{ fontSize: 18, fontWeight: 900, color: theme.text }}>Nossa meta</div>
+              <div style={{ fontSize: 12, color: muted, background: theme.isDark ? "#111827" : "#f1f5f9", borderRadius: 999, padding: "3px 10px", border: `1px solid ${theme.border}`, marginLeft: "auto" }}>
+                mês atual
+              </div>
+              <a href="/investor/relatorio" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none", background: theme.isDark ? "#1e293b" : "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "4px 12px" }}>
+                <FileBarChart2 size={14} /> Ver relatório
+              </a>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              {[
+                {
+                  label: "PDVs ativos",
+                  current: data.goalProgress.activePdvs,
+                  goal: GOAL_PDVS,
+                  format: (v: number) => `${v} PDVs`,
+                },
+                {
+                  label: "Faturamento bruto",
+                  current: data.goalProgress.grossRevenueCents,
+                  goal: GOAL_REVENUE_CENTS,
+                  format: (v: number) => money(v),
+                },
+              ].map(({ label, current, goal, format }) => {
+                const pct = goal > 0 ? (current / goal) * 100 : 0;
+                const clampedPct = Math.min(pct, 110);
+                const exceeded = pct >= 100;
+                return (
+                  <div key={label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: muted, textTransform: "uppercase" }}>{label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: exceeded ? "#16a34a" : "#2563eb" }}>
+                        {Math.round(pct)}%
+                      </div>
+                    </div>
+                    <div style={{ width: "100%", height: 10, borderRadius: 999, background: theme.isDark ? "#1e293b" : "#e2e8f0", overflow: "hidden", marginBottom: 8 }}>
+                      <div style={{ width: `${clampedPct}%`, height: "100%", borderRadius: 999, background: exceeded ? "#16a34a" : "#2563eb" }} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div style={{ fontSize: 13, fontWeight: 900, color: exceeded ? "#16a34a" : theme.text }}>
+                        {format(current)}
+                        {exceeded && <span style={{ marginLeft: 8, fontSize: 11, color: "#16a34a" }}>✓ Meta atingida!</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: muted }}>meta: {format(goal)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div
           style={{

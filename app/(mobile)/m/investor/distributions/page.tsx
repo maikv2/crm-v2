@@ -41,6 +41,37 @@ function formatMonthYear(month?: number, year?: number) {
   return `${String(month).padStart(2, "0")}/${year}`;
 }
 
+function formatDate(d: Date) {
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+function getNextEbitdaDate(): Date {
+  const now = new Date();
+  const day = now.getDate();
+  if (day < 5) {
+    return new Date(now.getFullYear(), now.getMonth(), 5);
+  }
+  return new Date(now.getFullYear(), now.getMonth() + 1, 5);
+}
+
+function getNextQuarterlyFundDate(): Date {
+  const now = new Date();
+  const m = now.getMonth() + 1; // 1-12
+  const quarterEndMonth = m <= 3 ? 3 : m <= 6 ? 6 : m <= 9 ? 9 : 12;
+  const payoutMonth = quarterEndMonth + 1;
+  const payoutYear = payoutMonth > 12 ? now.getFullYear() + 1 : now.getFullYear();
+  const adjPayoutMonth = payoutMonth > 12 ? 1 : payoutMonth;
+  const payoutDate = new Date(payoutYear, adjPayoutMonth - 1, 5);
+  if (now > payoutDate) {
+    const nextQEnd = quarterEndMonth + 3;
+    const nextPM = nextQEnd + 1;
+    const nextPY = nextPM > 12 ? payoutYear + 1 : payoutYear;
+    const adjNextPM = nextPM > 12 ? nextPM - 12 : nextPM;
+    return new Date(nextPY, adjNextPM - 1, 5);
+  }
+  return payoutDate;
+}
+
 function StatusBadge({ status }: { status: string }) {
   const paid = status === "PAID";
   return (
@@ -81,7 +112,8 @@ export default function MobileInvestorDistributionsPage() {
   const [data, setData] = useState<{
     distributions?: MonthlyDistribution[];
     quarterlyFundDistributions?: QuarterlyDistribution[];
-    liveEstimate?: { quarterlyFundCents: number; quarter: number; year: number } | null;
+    liveEstimate?: { ebitdaCents: number; quarterlyFundCents: number; quarter: number; year: number } | null;
+    summary?: { totalInvestedCents: number; activeQuotaCount: number } | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -108,8 +140,9 @@ export default function MobileInvestorDistributionsPage() {
   const quarterlyDistributions = useMemo(() => data?.quarterlyFundDistributions ?? [], [data]);
   const liveEstimate = data?.liveEstimate;
 
-  // Live quarterly fund estimate (real-time, from actual revenue − expenses)
+  const liveEbitdaCents = liveEstimate?.ebitdaCents ?? 0;
   const liveFundoCents = liveEstimate?.quarterlyFundCents ?? 0;
+  const totalInvestedCents = data?.summary?.totalInvestedCents ?? 0;
 
   const ebitdaPago = useMemo(() =>
     distributions.filter((d) => d.status === "PAID").reduce((s, d) => s + d.totalDistributionCents, 0),
@@ -119,30 +152,77 @@ export default function MobileInvestorDistributionsPage() {
     quarterlyDistributions.filter((d) => d.status === "PAID").reduce((s, d) => s + d.totalDistributionCents, 0),
   [quarterlyDistributions]);
 
+  const nextEbitdaDate = getNextEbitdaDate();
+  const nextFundoDate = getNextQuarterlyFundDate();
+
   return (
     <MobileInvestorPageFrame
       title="Distribuições"
       subtitle="Seus repasses de EBITDA e fundo trimestral"
       desktopHref="/investor/distributions"
     >
-      {/* Estimativa ao vivo — sempre visível */}
+      {/* Live estimates — always visible */}
       {!loading && (
-        <MobileCard style={{ padding: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>
-              Fundo trimestral — estimativa
+        <>
+          {/* EBITDA ao vivo */}
+          <MobileCard style={{ padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>
+                EBITDA — estimativa do mês
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 999, padding: "2px 8px" }}>
+                ao vivo
+              </div>
             </div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 999, padding: "2px 8px" }}>
-              {liveEstimate ? `${liveEstimate.quarter}º tri/${liveEstimate.year}` : "ao vivo"}
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#f59e0b", lineHeight: 1, marginBottom: 6 }}>
+              {formatMoneyBR(liveEbitdaCents)}
             </div>
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "#f59e0b", lineHeight: 1, marginBottom: 6 }}>
-            {formatMoneyBR(liveFundoCents)}
-          </div>
-          <div style={{ fontSize: 11, color: colors.subtext }}>
-            Calculado em tempo real · receita − despesas acumuladas no trimestre
-          </div>
-        </MobileCard>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 11, color: colors.subtext }}>Sua parte · atualizado em tempo real</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "2px 7px" }}>
+                Próx: {nextEbitdaDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+              </div>
+            </div>
+          </MobileCard>
+
+          {/* Fundo trimestral ao vivo */}
+          <MobileCard style={{ padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1e40af", textTransform: "uppercase" }}>
+                Fundo trimestral — estimativa
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "2px 8px" }}>
+                {liveEstimate ? `${liveEstimate.quarter}º tri/${liveEstimate.year}` : "ao vivo"}
+              </div>
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#2563eb", lineHeight: 1, marginBottom: 6 }}>
+              {formatMoneyBR(liveFundoCents)}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 11, color: colors.subtext }}>Receita − despesas · acumulado trimestre</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#166534", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 999, padding: "2px 7px" }}>
+                Próx: {nextFundoDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+              </div>
+            </div>
+          </MobileCard>
+
+          {/* Próximas datas */}
+          <MobileCard style={{ padding: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: colors.text, marginBottom: 10, textTransform: "uppercase" }}>
+              Próximas retiradas
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ borderRadius: 12, padding: "10px 12px", background: colors.isDark ? "#1c1917" : "#fffbeb", border: "1px solid #fde68a" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#92400e", textTransform: "uppercase", marginBottom: 4 }}>EBITDA</div>
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#f59e0b" }}>{formatDate(nextEbitdaDate)}</div>
+              </div>
+              <div style={{ borderRadius: 12, padding: "10px 12px", background: colors.isDark ? "#0c1a2e" : "#eff6ff", border: "1px solid #bfdbfe" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#1e40af", textTransform: "uppercase", marginBottom: 4 }}>Fundo Trim.</div>
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#2563eb" }}>{formatDate(nextFundoDate)}</div>
+              </div>
+            </div>
+          </MobileCard>
+        </>
       )}
 
       {/* Tabs */}
@@ -225,9 +305,9 @@ export default function MobileInvestorDistributionsPage() {
               <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", textTransform: "uppercase" }}>Já recebido</div>
               <div style={{ fontSize: 20, fontWeight: 900, color: "#166534", marginTop: 4 }}>{formatMoneyBR(fundoPago)}</div>
             </div>
-            <div style={{ borderRadius: 16, padding: 14, background: "#fffbeb", border: "1px solid #fde68a" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase" }}>Estimativa</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#f59e0b", marginTop: 4 }}>{formatMoneyBR(liveFundoCents)}</div>
+            <div style={{ borderRadius: 16, padding: 14, background: colors.isDark ? "#0c1a2e" : "#eff6ff", border: "1px solid #bfdbfe" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#1e40af", textTransform: "uppercase" }}>Estimativa</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#2563eb", marginTop: 4 }}>{formatMoneyBR(liveFundoCents)}</div>
             </div>
           </div>
 
@@ -249,7 +329,7 @@ export default function MobileInvestorDistributionsPage() {
                         </div>
                       </div>
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <div style={{ fontSize: 15, fontWeight: 900, color: "#f59e0b" }}>{formatMoneyBR(dist.totalDistributionCents)}</div>
+                        <div style={{ fontSize: 15, fontWeight: 900, color: "#2563eb" }}>{formatMoneyBR(dist.totalDistributionCents)}</div>
                         <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>{formatMoneyBR(dist.valuePerQuotaCents)}/cota</div>
                       </div>
                     </div>
@@ -259,6 +339,57 @@ export default function MobileInvestorDistributionsPage() {
             )}
           </MobileCard>
         </>
+      )}
+
+      {/* Seção motivacional: 10x */}
+      {!loading && (liveEbitdaCents > 0 || liveFundoCents > 0 || totalInvestedCents > 0) && (
+        <MobileCard style={{ padding: 16, background: colors.isDark ? "#0c0f1a" : "#f0f4ff", border: "1px solid #bfdbfe" }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: "#1e40af", textTransform: "uppercase", marginBottom: 4 }}>
+            E se você tivesse 10x mais?
+          </div>
+          <div style={{ fontSize: 11, color: colors.subtext, marginBottom: 14, lineHeight: 1.5 }}>
+            Imagine ter 10x o investimento atual. Veja como ficariam seus rendimentos estimados:
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${colors.isDark ? "#1e293b" : "#dbeafe"}` }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: colors.subtext }}>Investimento atual</div>
+                <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>10x seria</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 14, fontWeight: 900, color: colors.text }}>{formatMoneyBR(totalInvestedCents)}</div>
+                <div style={{ fontSize: 14, fontWeight: 900, color: "#2563eb" }}>{formatMoneyBR(totalInvestedCents * 10)}</div>
+              </div>
+            </div>
+            {liveEbitdaCents > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${colors.isDark ? "#1e293b" : "#dbeafe"}` }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: colors.subtext }}>EBITDA mensal atual</div>
+                  <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>10x seria por mês</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: "#f59e0b" }}>{formatMoneyBR(liveEbitdaCents)}</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: "#2563eb" }}>{formatMoneyBR(liveEbitdaCents * 10)}</div>
+                </div>
+              </div>
+            )}
+            {liveFundoCents > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: colors.subtext }}>Fundo trimestral atual</div>
+                  <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>10x seria por trimestre</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: "#f59e0b" }}>{formatMoneyBR(liveFundoCents)}</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: "#2563eb" }}>{formatMoneyBR(liveFundoCents * 10)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ marginTop: 12, fontSize: 11, color: "#1e40af", fontWeight: 700, textAlign: "center", lineHeight: 1.5 }}>
+            Fale com um de nossos representantes e escale sua participação.
+          </div>
+        </MobileCard>
       )}
     </MobileInvestorPageFrame>
   );

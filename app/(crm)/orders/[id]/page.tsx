@@ -462,26 +462,6 @@ function NFeBlock({
     }
   }
 
-  async function handleSendBoletoRequest() {
-    if (!order?.id) return;
-    try {
-      const res = await fetch("/api/whatsapp/send-boleto-request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(`Erro ao solicitar boleto: ${data?.error || res.status}`);
-        return;
-      }
-      alert(data?.message || "Solicitação de boleto enviada ao financeiro.");
-    } catch (err) {
-      console.error("Erro ao solicitar boleto:", err);
-      alert("Erro ao solicitar boleto.");
-    }
-  }
-
   const canDownload = status === "ISSUED";
   const hasWhatsApp = !!(order.client?.whatsapp || order.client?.phone);
   const canSync = true; // sempre visível para buscar o status no Focus
@@ -886,6 +866,26 @@ export default function OrderDetailPage() {
     } catch (err) {
       console.error("Erro ao recarregar pedido:", err);
       // mantém os dados atuais na tela, não limpa
+    }
+  }
+
+  async function handleSendBoletoRequest() {
+    if (!order?.id) return;
+    try {
+      const res = await fetch("/api/whatsapp/send-boleto-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Erro ao solicitar boleto: ${data?.error || res.status}`);
+        return;
+      }
+      alert(data?.message || "Solicitação de boleto enviada ao financeiro.");
+    } catch (err) {
+      console.error("Erro ao solicitar boleto:", err);
+      alert("Erro ao solicitar boleto.");
     }
   }
 

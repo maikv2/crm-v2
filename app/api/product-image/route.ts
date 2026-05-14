@@ -62,6 +62,28 @@ function getSkuPrefix(sku: string) {
   return match?.[0] ?? "";
 }
 
+async function getProductImageFiles() {
+  const dirs = [
+    path.join(process.cwd(), "public", "products"),
+    path.join(process.cwd(), "public"),
+  ];
+
+  const files: { dir: string; file: string }[] = [];
+
+  for (const dir of dirs) {
+    try {
+      const dirFiles = await fs.readdir(dir);
+      dirFiles
+        .filter(isImageFile)
+        .forEach((file) => files.push({ dir, file }));
+    } catch {
+      continue;
+    }
+  }
+
+  return files;
+}
+
 function buildAliases(sku: string, name: string) {
   const aliases = new Set<string>();
   const normalizedName = normalize(name);
@@ -155,21 +177,10 @@ function scoreFile(fileName: string, sku: string, name: string) {
 
   let score = 0;
 
-  /*
-    Regra mais importante:
-    quando o arquivo é "timestamp-NOME DO PRODUTO.png",
-    o nome limpo do arquivo precisa bater exatamente com o nome do produto.
-    Isso evita o erro FN004 pegando a imagem do FN005.
-  */
   if (normalizedName && normalizedFile === normalizedName) {
     score += 10000;
   }
 
-  /*
-    Segunda prioridade:
-    se algum dia você renomear arquivos para conter o SKU,
-    o SKU exato também ganha prioridade alta.
-  */
   if (sku && normalizedFile === normalize(sku)) {
     score += 9000;
   }
@@ -208,69 +219,59 @@ function scoreFile(fileName: string, sku: string, name: string) {
 async function findExactImageByName(name: string) {
   if (!name) return null;
 
-  const productsDir = path.join(process.cwd(), "public", "products");
-  const files = await fs.readdir(productsDir);
-  const imageFiles = files.filter(isImageFile);
+  const files = await getProductImageFiles();
   const normalizedTarget = normalize(name);
 
-  const exactMatch = imageFiles.find((file) => {
+  const exactMatch = files.find(({ file }) => {
     const normalizedFile = normalize(cleanImageName(file));
     return normalizedFile === normalizedTarget;
   });
 
   if (!exactMatch) return null;
 
-  return path.join(productsDir, exactMatch);
+  return path.join(exactMatch.dir, exactMatch.file);
 }
 
 async function findExactImageBySku(sku: string) {
   if (!sku) return null;
 
-  const productsDir = path.join(process.cwd(), "public", "products");
-  const files = await fs.readdir(productsDir);
-  const imageFiles = files.filter(isImageFile);
+  const files = await getProductImageFiles();
   const normalizedSku = normalize(sku);
 
-  const exactMatch = imageFiles.find((file) => {
+  const exactMatch = files.find(({ file }) => {
     const normalizedFile = normalize(cleanImageName(file));
     return normalizedFile === normalizedSku || normalizedFile.includes(normalizedSku);
   });
 
   if (!exactMatch) return null;
 
-  return path.join(productsDir, exactMatch);
+  return path.join(exactMatch.dir, exactMatch.file);
 }
 
 async function findBestImageFile(sku: string, name: string) {
-  const productsDir = path.join(process.cwd(), "public", "products");
-  const files = await fs.readdir(productsDir);
-  const imageFiles = files.filter(isImageFile);
+  const imageFiles = await getProductImageFiles();
 
   if (!imageFiles.length) return null;
 
-  /*
-    Antes de usar pontuação/heurística, tenta correspondência exata.
-    Isso preserva o código grande antigo, mas impede a troca errada de imagens.
-  */
   const exactByName = await findExactImageByName(name);
   if (exactByName) return exactByName;
 
   const exactBySku = await findExactImageBySku(sku);
   if (exactBySku) return exactBySku;
 
-  let bestMatch: { file: string; score: number } | null = null;
+  let bestMatch: { dir: string; file: string; score: number } | null = null;
 
-  for (const file of imageFiles) {
+  for (const { dir, file } of imageFiles) {
     const score = scoreFile(file, sku, name);
 
     if (!bestMatch || score > bestMatch.score) {
-      bestMatch = { file, score };
+      bestMatch = { dir, file, score };
     }
   }
 
   if (!bestMatch || bestMatch.score <= 0) return null;
 
-  return path.join(productsDir, bestMatch.file);
+  return path.join(bestMatch.dir, bestMatch.file);
 }
 
 async function findImageByProductId(productId: string) {
@@ -327,11 +328,6 @@ export async function GET(request: NextRequest) {
       foundPath = await findImageByProductId(id);
     }
 
-    /*
-      Como atualmente o Product não possui campo de imagem no banco,
-      normalmente a busca por id vai retornar null.
-      Então usamos name/sku como fallback, com prioridade para nome exato do arquivo.
-    */
     if (!foundPath && (sku || name)) {
       foundPath = await findBestImageFile(sku, name);
     }

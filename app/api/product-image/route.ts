@@ -274,7 +274,9 @@ async function findBestImageFile(sku: string, name: string) {
   return path.join(bestMatch.dir, bestMatch.file);
 }
 
-async function findImageByProductId(productId: string) {
+async function findImageByProductId(
+  productId: string
+): Promise<string | { type: "external"; url: string } | null> {
   const product = await prisma.product.findUnique({
     where: { id: productId },
   });
@@ -282,7 +284,7 @@ async function findImageByProductId(productId: string) {
   if (!product) return null;
 
   const productData = product as any;
-  const rawImagePath =
+  const rawImagePath: string | null =
     productData.imageUrl ||
     productData.image ||
     productData.photoUrl ||
@@ -292,7 +294,11 @@ async function findImageByProductId(productId: string) {
     null;
 
   if (!rawImagePath || typeof rawImagePath !== "string") return null;
-  if (rawImagePath.startsWith("http://") || rawImagePath.startsWith("https://")) return null;
+
+  // External URL (e.g. Supabase Storage, S3, CDN) — proxy it
+  if (rawImagePath.startsWith("http://") || rawImagePath.startsWith("https://")) {
+    return { type: "external", url: rawImagePath };
+  }
 
   const normalizedPath = rawImagePath.startsWith("/") ? rawImagePath.slice(1) : rawImagePath;
   return path.join(process.cwd(), "public", normalizedPath);
@@ -323,9 +329,32 @@ export async function GET(request: NextRequest) {
     }
 
     let foundPath: string | null = null;
+    let externalUrl: string | null = null;
 
     if (id) {
-      foundPath = await findImageByProductId(id);
+      const result = await findImageByProductId(id);
+      if (result && typeof result === "object" && result.type === "external") {
+        externalUrl = result.url;
+      } else if (typeof result === "string") {
+        foundPath = result;
+      }
+    }
+
+    // Proxy external URL (Supabase Storage, S3, CDN, etc.)
+    if (externalUrl) {
+      const extRes = await fetch(externalUrl, { cache: "no-store" });
+      if (!extRes.ok) {
+        return new NextResponse("Imagem não encontrada", { status: 404 });
+      }
+      const buffer = Buffer.from(await extRes.arrayBuffer());
+      const contentType = extRes.headers.get("content-type") || "image/jpeg";
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=3600",
+        },
+      });
     }
 
     if (!foundPath && (sku || name)) {

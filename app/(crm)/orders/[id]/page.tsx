@@ -423,6 +423,17 @@ function NFeBlock({
   async function handleSendWhatsApp() {
     if (!order?.id) return;
     try {
+      // Se status ainda não está autorizado, sincroniza com Focus antes de enviar
+      const currentStatus = order.nfe?.status;
+      if (currentStatus !== "ISSUED") {
+        try {
+          const syncRes = await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
+          if (syncRes.ok) await reloadOrder();
+        } catch {
+          // ignora erro de sync, tenta enviar mesmo assim
+        }
+      }
+
       const res = await fetch("/api/whatsapp/send-nfe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -448,6 +459,26 @@ function NFeBlock({
     } catch (err) {
       console.error("Erro ao enviar NF-e por WhatsApp:", err);
       alert("Erro ao enviar NF-e por WhatsApp.");
+    }
+  }
+
+  async function handleSendBoletoRequest() {
+    if (!order?.id) return;
+    try {
+      const res = await fetch("/api/whatsapp/send-boleto-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Erro ao solicitar boleto: ${data?.error || res.status}`);
+        return;
+      }
+      alert(data?.message || "Solicitação de boleto enviada ao financeiro.");
+    } catch (err) {
+      console.error("Erro ao solicitar boleto:", err);
+      alert("Erro ao solicitar boleto.");
     }
   }
 
@@ -1031,8 +1062,8 @@ export default function OrderDetailPage() {
                   );
                   return;
                 }
-                // Aguarda 2 segundos e consulta o status atualizado no Focus
-                await new Promise((r) => setTimeout(r, 2000));
+                // Aguarda 3 segundos e consulta o status atualizado no Focus
+                await new Promise((r) => setTimeout(r, 3000));
                 await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
                 await reloadOrder();
               } catch (err) {
@@ -1041,6 +1072,15 @@ export default function OrderDetailPage() {
               }
             }}
           />
+          {order?.paymentMethod === "BOLETO" && (
+            <ActionButton
+              label="🏦 Solicitar boleto"
+              theme={theme}
+              color="#2563eb"
+              primary
+              onClick={handleSendBoletoRequest}
+            />
+          )}
         </div>
       </div>
 

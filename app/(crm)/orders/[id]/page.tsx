@@ -428,7 +428,7 @@ function NFeBlock({
       if (currentStatus !== "ISSUED") {
         try {
           const syncRes = await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
-          if (syncRes.ok) await reloadOrder();
+          if (syncRes.ok) await onReload();
         } catch {
           // ignora erro de sync, tenta enviar mesmo assim
         }

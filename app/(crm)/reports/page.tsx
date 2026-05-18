@@ -6,6 +6,7 @@ import { useTheme } from "../../providers/theme-provider";
 import { getThemeColors } from "../../../lib/theme";
 import {
   BarChart3,
+  BadgeDollarSign,
   Boxes,
   ShoppingCart,
   DollarSign,
@@ -832,6 +833,21 @@ export default function ReportsPage() {
           transition: "opacity 0.2s ease",
         }}
       >
+        <ReportCard
+          icon={BadgeDollarSign}
+          iconBg={isDark ? "rgba(245,158,11,0.18)" : "#fef9e7"}
+          iconFg="#d97706"
+          title="Comissões"
+          description="Detalhamento completo das comissões por representante"
+          items={[
+            "Comissões mensais por representante",
+            "Acertos semanais e saldo líquido",
+            "Histórico de pagamentos confirmados",
+            "Filtros por rep., região e status",
+          ]}
+          onClick={() => navigateTo("commissions")}
+          theme={theme}
+        />
         <ReportCard
           icon={Boxes}
           iconBg={isDark ? "rgba(124,58,237,0.18)" : "#f3ebff"}

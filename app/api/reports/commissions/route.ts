@@ -142,16 +142,24 @@ export async function GET(request: Request) {
         status: s.status,
         closedAt: s.closedAt,
       })),
-      confirmations: confirmations.map((c) => ({
-        id: c.id,
-        representative: c.representative.name,
-        region: c.region?.name ?? "—",
-        weekStart: c.weekStart,
-        weekEnd: c.weekEnd,
-        amountCents: c.amountCents,
-        confirmedAt: c.confirmedAt,
-        status: c.status,
-      })),
+      confirmations: confirmations.map((c) => {
+        const meta = (c.metadata ?? {}) as Record<string, unknown>;
+        return {
+          id: c.id,
+          representative: c.representative.name,
+          region: c.region?.name ?? "—",
+          weekStart: c.weekStart,
+          weekEnd: c.weekEnd,
+          amountCents: c.amountCents,
+          pendingCents: c.pendingCents,
+          confirmedAt: c.confirmedAt,
+          status: c.status,
+          totalSalesCents: typeof meta.totalSalesCents === "number" ? meta.totalSalesCents : null,
+          totalCommissionCents: typeof meta.totalCommissionCents === "number" ? meta.totalCommissionCents : null,
+          payableCurrentWeekCents: typeof meta.payableCurrentWeekCents === "number" ? meta.payableCurrentWeekCents : null,
+          payablePriorWeekCents: typeof meta.payablePriorWeekCents === "number" ? meta.payablePriorWeekCents : null,
+        };
+      }),
       filterOptions: {
         representatives: representatives.map((r) => ({
           id: r.id,

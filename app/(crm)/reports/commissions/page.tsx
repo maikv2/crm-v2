@@ -56,8 +56,13 @@ type ConfirmationRow = {
   weekStart: string;
   weekEnd: string;
   amountCents: number;
+  pendingCents: number;
   confirmedAt: string | null;
   status: string;
+  totalSalesCents: number | null;
+  totalCommissionCents: number | null;
+  payableCurrentWeekCents: number | null;
+  payablePriorWeekCents: number | null;
 };
 
 type Summary = {
@@ -665,64 +670,131 @@ export default function CommissionsReportPage() {
 
           {/* ── Tab: Pagamentos confirmados ── */}
           {tab === "payments" && (
-            <div style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 18, overflow: "hidden" }}>
-              <div style={{ padding: "20px 20px 0" }}>
-                <SectionTitle title="Histórico de pagamentos confirmados" count={filteredConfirmations.length} theme={theme} />
-                <div style={{
-                  borderRadius: 12, padding: "10px 16px", marginBottom: 16,
-                  background: subtleBg, border: `1px solid ${border}`,
-                  display: "inline-flex", gap: 24, alignItems: "center",
-                }}>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: muted }}>Total confirmado no período</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: "#16a34a" }}>
-                      {money(filteredConfirmations.reduce((s, c) => s + c.amountCents, 0))}
-                    </div>
+            <div>
+              {/* Totals bar */}
+              <div style={{
+                background: cardBg, border: `1px solid ${border}`, borderRadius: 16,
+                padding: "14px 20px", marginBottom: 18,
+                display: "flex", gap: 32, alignItems: "center", flexWrap: "wrap",
+              }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: muted, marginBottom: 3 }}>Total pago no período</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: "#16a34a" }}>
+                    {money(filteredConfirmations.reduce((s, c) => s + c.amountCents, 0))}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: muted }}>Confirmações</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: theme.text }}>{filteredConfirmations.length}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: muted, marginBottom: 3 }}>Da semana de referência</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#1e40af" }}>
+                    {money(filteredConfirmations.reduce((s, c) => s + (c.payableCurrentWeekCents ?? 0), 0))}
                   </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: muted, marginBottom: 3 }}>De semanas anteriores</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#7e22ce" }}>
+                    {money(filteredConfirmations.reduce((s, c) => s + (c.payablePriorWeekCents ?? 0), 0))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: muted, marginBottom: 3 }}>Migrado p/ próx. acerto</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#d97706" }}>
+                    {money(filteredConfirmations.reduce((s, c) => s + (c.pendingCents ?? 0), 0))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: muted, marginBottom: 3 }}>Confirmações</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: theme.text }}>{filteredConfirmations.length}</div>
                 </div>
               </div>
 
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: theadBg, color: muted }}>
-                      <Th>Representante</Th>
-                      <Th>Região</Th>
-                      <Th>Semana de referência</Th>
-                      <Th right>Valor pago</Th>
-                      <Th>Confirmado em</Th>
-                      <Th>Status</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredConfirmations.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} style={{ padding: 32, textAlign: "center", color: muted, fontSize: 14 }}>
-                          Nenhum pagamento confirmado no período selecionado.
-                        </td>
-                      </tr>
-                    ) : filteredConfirmations.map((row, i) => (
-                      <tr key={row.id} style={{
-                        borderTop: `1px solid ${border}`,
-                        background: i % 2 === 0 ? "transparent" : (isDark ? "rgba(255,255,255,0.015)" : "rgba(0,0,0,0.012)"),
+              {filteredConfirmations.length === 0 ? (
+                <div style={{
+                  background: cardBg, border: `1px solid ${border}`, borderRadius: 18,
+                  padding: 40, textAlign: "center", color: muted, fontSize: 14,
+                }}>
+                  Nenhum pagamento confirmado no período selecionado.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {filteredConfirmations.map((row) => (
+                    <div
+                      key={row.id}
+                      style={{
+                        background: cardBg, border: `1px solid ${border}`, borderRadius: 18,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {/* Card header */}
+                      <div style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+                        padding: "16px 20px 12px", gap: 16, flexWrap: "wrap",
+                        borderBottom: `1px solid ${border}`,
                       }}>
-                        <Td theme={theme}><strong>{row.representative}</strong></Td>
-                        <Td muted theme={theme}>{row.region}</Td>
-                        <Td muted theme={theme}>{fmtWeek(row.weekStart, row.weekEnd)}</Td>
-                        <Td right theme={theme}>
-                          <strong style={{ color: "#16a34a" }}>{money(row.amountCents)}</strong>
-                        </Td>
-                        <Td theme={theme}>{row.confirmedAt ? fmtDate(row.confirmedAt) : "—"}</Td>
-                        <Td theme={theme}><Badge label={statusLabel(row.status)} color={statusColor(row.status)} /></Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        <div>
+                          <div style={{ fontWeight: 900, fontSize: 16 }}>{row.representative}</div>
+                          <div style={{ fontSize: 13, color: muted, marginTop: 3 }}>
+                            {row.region} · Semana {fmtWeek(row.weekStart, row.weekEnd)}
+                          </div>
+                          {row.confirmedAt && (
+                            <div style={{ fontSize: 12, color: muted, marginTop: 2 }}>
+                              Confirmado em {fmtDate(row.confirmedAt)}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 26, fontWeight: 900, color: "#16a34a" }}>
+                            {money(row.amountCents)}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#16a34a", marginTop: 1 }}>valor pago</div>
+                          <div style={{ marginTop: 6 }}>
+                            <Badge label={statusLabel(row.status)} color={statusColor(row.status)} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Breakdown grid */}
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                        gap: 10, padding: "14px 20px",
+                      }}>
+                        {row.totalSalesCents != null && (
+                          <div style={{ borderRadius: 12, padding: "10px 14px", background: subtleBg, border: `1px solid ${border}` }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: "uppercase", marginBottom: 4 }}>Total vendido considerado</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: theme.text }}>{money(row.totalSalesCents)}</div>
+                          </div>
+                        )}
+                        {row.totalCommissionCents != null && (
+                          <div style={{ borderRadius: 12, padding: "10px 14px", background: subtleBg, border: `1px solid ${border}` }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: "uppercase", marginBottom: 4 }}>Comissão total apurada</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: theme.text }}>{money(row.totalCommissionCents)}</div>
+                          </div>
+                        )}
+                        {(row.payableCurrentWeekCents ?? 0) > 0 && (
+                          <div style={{ borderRadius: 12, padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#1e40af", textTransform: "uppercase", marginBottom: 4 }}>Da semana de referência</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: "#1e40af" }}>{money(row.payableCurrentWeekCents!)}</div>
+                          </div>
+                        )}
+                        {(row.payablePriorWeekCents ?? 0) > 0 && (
+                          <div style={{ borderRadius: 12, padding: "10px 14px", background: "#faf5ff", border: "1px solid #e9d5ff" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#7e22ce", textTransform: "uppercase", marginBottom: 4 }}>De semanas anteriores</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: "#7e22ce" }}>{money(row.payablePriorWeekCents!)}</div>
+                            <div style={{ fontSize: 10, color: "#a78bfa", marginTop: 2 }}>pendente de acertos anteriores</div>
+                          </div>
+                        )}
+                        {(row.pendingCents ?? 0) > 0 && (
+                          <div style={{ borderRadius: 12, padding: "10px 14px", background: "#fffbeb", border: "1px solid #fde68a" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#92400e", textTransform: "uppercase", marginBottom: 4 }}>Ficou pendente</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: "#92400e" }}>{money(row.pendingCents)}</div>
+                            <div style={{ fontSize: 10, color: "#b45309", marginTop: 2 }}>migrado para o próximo acerto</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>

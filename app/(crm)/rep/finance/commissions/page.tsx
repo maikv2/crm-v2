@@ -32,9 +32,14 @@ type OrderRow = {
 type PaidEntry = {
   id: string;
   amountCents: number;
+  pendingCents: number;
   weekStart: string;
   weekEnd: string;
   confirmedAt: string | null;
+  totalSalesCents: number | null;
+  totalCommissionCents: number | null;
+  payableCurrentWeekCents: number | null;
+  payablePriorWeekCents: number | null;
 };
 
 type Summary = {
@@ -255,26 +260,64 @@ export default function RepFinanceCommissionsPage() {
               <div
                 key={entry.id}
                 style={{
-                  padding: "12px 16px",
+                  padding: "14px 16px",
                   borderBottom: `1px solid ${border}`,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 12,
                 }}
               >
-                <div>
-                  <div style={{ fontSize: 13, color: muted }}>
-                    Semana {dateBR(entry.weekStart)} → {dateBR(entry.weekEnd)}
+                {/* Cabeçalho da entrada */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>
+                      Semana {dateBR(entry.weekStart)} → {dateBR(entry.weekEnd)}
+                    </div>
+                    {entry.confirmedAt && (
+                      <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>
+                        Confirmado em {dateBR(entry.confirmedAt)}
+                      </div>
+                    )}
                   </div>
-                  {entry.confirmedAt && (
-                    <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>
-                      Confirmado em {dateBR(entry.confirmedAt)}
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontWeight: 900, color: "#166534", fontSize: 18 }}>
+                      {money(entry.amountCents)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#166534" }}>valor pago</div>
+                  </div>
+                </div>
+
+                {/* Breakdown detalhado */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                  {entry.totalSalesCents != null && (
+                    <div style={{ background: theme.isDark ? "#0a1628" : "#f8fafc", border: `1px solid ${border}`, borderRadius: 10, padding: "8px 12px" }}>
+                      <div style={{ fontSize: 10, color: muted, fontWeight: 700, textTransform: "uppercase" }}>Total vendido considerado</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: theme.text, marginTop: 2 }}>{money(entry.totalSalesCents)}</div>
                     </div>
                   )}
-                </div>
-                <div style={{ fontWeight: 800, color: "#166534", fontSize: 15 }}>
-                  {money(entry.amountCents)}
+                  {entry.totalCommissionCents != null && (
+                    <div style={{ background: theme.isDark ? "#0a1628" : "#f8fafc", border: `1px solid ${border}`, borderRadius: 10, padding: "8px 12px" }}>
+                      <div style={{ fontSize: 10, color: muted, fontWeight: 700, textTransform: "uppercase" }}>Comissão total apurada</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: theme.text, marginTop: 2 }}>{money(entry.totalCommissionCents)}</div>
+                    </div>
+                  )}
+                  {(entry.payableCurrentWeekCents ?? 0) > 0 && (
+                    <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "8px 12px" }}>
+                      <div style={{ fontSize: 10, color: "#1e40af", fontWeight: 700, textTransform: "uppercase" }}>Da semana de referência</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#1e40af", marginTop: 2 }}>{money(entry.payableCurrentWeekCents!)}</div>
+                    </div>
+                  )}
+                  {(entry.payablePriorWeekCents ?? 0) > 0 && (
+                    <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: "8px 12px" }}>
+                      <div style={{ fontSize: 10, color: "#7e22ce", fontWeight: 700, textTransform: "uppercase" }}>De semanas anteriores</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#7e22ce", marginTop: 2 }}>{money(entry.payablePriorWeekCents!)}</div>
+                      <div style={{ fontSize: 10, color: "#a78bfa", marginTop: 2 }}>pendente de acertos anteriores</div>
+                    </div>
+                  )}
+                  {(entry.pendingCents ?? 0) > 0 && (
+                    <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "8px 12px" }}>
+                      <div style={{ fontSize: 10, color: "#92400e", fontWeight: 700, textTransform: "uppercase" }}>Ficou pendente</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#92400e", marginTop: 2 }}>{money(entry.pendingCents)}</div>
+                      <div style={{ fontSize: 10, color: "#b45309", marginTop: 2 }}>migrado para o próximo acerto</div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

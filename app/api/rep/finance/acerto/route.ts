@@ -78,9 +78,11 @@ export async function GET() {
         select: {
           id: true,
           amountCents: true,
+          pendingCents: true,
           weekStart: true,
           weekEnd: true,
           confirmedAt: true,
+          metadata: true,
         },
       }),
     ]);
@@ -208,7 +210,21 @@ export async function GET() {
         totalAlreadyConfirmedCents,
       },
       orders: orderRows,
-      paidHistory: paidConfirmations,
+      paidHistory: paidConfirmations.map((c) => {
+        const meta = (c.metadata ?? {}) as Record<string, unknown>;
+        return {
+          id: c.id,
+          amountCents: c.amountCents,
+          pendingCents: c.pendingCents,
+          weekStart: c.weekStart,
+          weekEnd: c.weekEnd,
+          confirmedAt: c.confirmedAt,
+          totalSalesCents: typeof meta.totalSalesCents === "number" ? meta.totalSalesCents : null,
+          totalCommissionCents: typeof meta.totalCommissionCents === "number" ? meta.totalCommissionCents : null,
+          payableCurrentWeekCents: typeof meta.payableCurrentWeekCents === "number" ? meta.payableCurrentWeekCents : null,
+          payablePriorWeekCents: typeof meta.payablePriorWeekCents === "number" ? meta.payablePriorWeekCents : null,
+        };
+      }),
     });
   } catch (error) {
     console.error("GET /api/rep/finance/acerto error:", error);

@@ -34,9 +34,14 @@ type OrderRow = {
 type PaidEntry = {
   id: string;
   amountCents: number;
+  pendingCents: number;
   weekStart: string;
   weekEnd: string;
   confirmedAt: string | null;
+  totalSalesCents: number | null;
+  totalCommissionCents: number | null;
+  payableCurrentWeekCents: number | null;
+  payablePriorWeekCents: number | null;
 };
 
 type Summary = {
@@ -229,41 +234,79 @@ export default function MobileRepCommissionsPage() {
 
           {/* Histórico */}
           {data.paidHistory.length > 0 && (
-            <MobileCard>
+            <>
               <MobileSectionTitle title="Histórico de pagamentos recebidos" />
               {data.paidHistory.map((entry) => (
-                <div
-                  key={entry.id}
-                  style={{
-                    padding: "10px 0",
-                    borderBottom: `1px solid ${colors.isDark ? "#1e293b" : "#f1f5f9"}`,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 12, color: colors.subtext }}>
-                      {dateBR(entry.weekStart)} → {dateBR(entry.weekEnd)}
+                <MobileCard key={entry.id}>
+                  {/* Cabeçalho */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: colors.text }}>
+                        Semana {dateBR(entry.weekStart)} → {dateBR(entry.weekEnd)}
+                      </div>
+                      {entry.confirmedAt && (
+                        <div style={{ fontSize: 11, color: colors.subtext, marginTop: 2 }}>
+                          Confirmado em {dateBR(entry.confirmedAt)}
+                        </div>
+                      )}
                     </div>
-                    {entry.confirmedAt && (
-                      <div style={{ fontSize: 11, color: colors.subtext }}>
-                        Confirmado {dateBR(entry.confirmedAt)}
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontWeight: 900, fontSize: 20, color: "#166534" }}>
+                        {formatMoneyBR(entry.amountCents)}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#166534" }}>valor pago</div>
+                    </div>
+                  </div>
+                  {/* Breakdown */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {entry.totalSalesCents != null && (
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderRadius: 10, background: colors.isDark ? "#0a1628" : "#f8fafc", border: `1px solid ${colors.isDark ? "#1e293b" : "#e2e8f0"}` }}>
+                        <span style={{ fontSize: 12, color: colors.subtext, fontWeight: 700 }}>Total vendido considerado</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: colors.text }}>{formatMoneyBR(entry.totalSalesCents)}</span>
+                      </div>
+                    )}
+                    {entry.totalCommissionCents != null && (
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderRadius: 10, background: colors.isDark ? "#0a1628" : "#f8fafc", border: `1px solid ${colors.isDark ? "#1e293b" : "#e2e8f0"}` }}>
+                        <span style={{ fontSize: 12, color: colors.subtext, fontWeight: 700 }}>Comissão total apurada</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: colors.text }}>{formatMoneyBR(entry.totalCommissionCents)}</span>
+                      </div>
+                    )}
+                    {(entry.payableCurrentWeekCents ?? 0) > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+                        <span style={{ fontSize: 12, color: "#1e40af", fontWeight: 700 }}>Da semana de referência</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: "#1e40af" }}>{formatMoneyBR(entry.payableCurrentWeekCents!)}</span>
+                      </div>
+                    )}
+                    {(entry.payablePriorWeekCents ?? 0) > 0 && (
+                      <div style={{ padding: "8px 12px", borderRadius: 10, background: "#faf5ff", border: "1px solid #e9d5ff" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 12, color: "#7e22ce", fontWeight: 700 }}>De semanas anteriores</span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: "#7e22ce" }}>{formatMoneyBR(entry.payablePriorWeekCents!)}</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#a78bfa", marginTop: 2 }}>pendente de acertos anteriores</div>
+                      </div>
+                    )}
+                    {(entry.pendingCents ?? 0) > 0 && (
+                      <div style={{ padding: "8px 12px", borderRadius: 10, background: "#fffbeb", border: "1px solid #fde68a" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 12, color: "#92400e", fontWeight: 700 }}>Ficou pendente</span>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: "#92400e" }}>{formatMoneyBR(entry.pendingCents)}</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#b45309", marginTop: 2 }}>migrado para o próximo acerto</div>
                       </div>
                     )}
                   </div>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: "#166534" }}>
-                    {formatMoneyBR(entry.amountCents)}
-                  </div>
-                </div>
+                </MobileCard>
               ))}
               {data.summary.totalAlreadyConfirmedCents > 0 && (
-                <div style={{ paddingTop: 10, display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-                  <span style={{ fontSize: 12, color: colors.subtext }}>Total recebido</span>
-                  <span style={{ fontSize: 14, color: "#166534" }}>{formatMoneyBR(data.summary.totalAlreadyConfirmedCents)}</span>
-                </div>
+                <MobileCard>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                    <span style={{ fontSize: 13, color: colors.subtext }}>Total já recebido (histórico)</span>
+                    <span style={{ fontSize: 15, color: "#166534" }}>{formatMoneyBR(data.summary.totalAlreadyConfirmedCents)}</span>
+                  </div>
+                </MobileCard>
               )}
-            </MobileCard>
+            </>
           )}
 
           {/* Botão atualizar */}

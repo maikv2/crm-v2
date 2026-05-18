@@ -9,6 +9,7 @@ import {
   Shield,
   KeyRound,
   Users,
+  Smartphone,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "../providers/theme-provider";
@@ -97,6 +98,13 @@ type LoggedUser = {
   email: string;
   role: string;
 };
+
+function resolveMobileHref(role?: string | null): string {
+  if (role === "ADMIN") return "/m/admin";
+  if (role === "REPRESENTATIVE") return "/m/rep";
+  if (role === "ADMINISTRATIVE") return "/m/finance";
+  return "/choose/crm";
+}
 
 function startsWithSegment(pathname: string, base: string) {
   return pathname === base || pathname.startsWith(`${base}/`);
@@ -509,6 +517,32 @@ export default function Header() {
             {userLabel}
           </div>
         </div>
+
+        <button
+          type="button"
+          title="Versão mobile"
+          onClick={() => {
+            try { localStorage.setItem("v2_view_mode", "mobile"); } catch { /* noop */ }
+            router.push(resolveMobileHref(user?.role));
+          }}
+          style={{
+            height: 40,
+            padding: "0 12px",
+            borderRadius: 12,
+            border: `1px solid ${colors.border}`,
+            background: colors.cardBg,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            cursor: "pointer",
+            color: colors.text,
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
+          <Smartphone size={15} />
+          Mobile
+        </button>
 
         <button
           type="button"

@@ -121,7 +121,7 @@ function buildAddress(order?: OrderDetail | null) {
   return parts.length ? parts.join(" - ") : "-";
 }
 
-type BusyAction = null | "send-order" | "emit-nfe" | "send-nfe" | "sync-nfe";
+type BusyAction = null | "send-order" | "emit-nfe" | "send-nfe" | "sync-nfe" | "boleto";
 
 export default function MobileRepOrderDetailsPage() {
   const params = useParams<{ id: string }>();
@@ -289,6 +289,29 @@ export default function MobileRepOrderDetailsPage() {
     }
   }
 
+  async function handleSendBoleto() {
+    if (!order?.id) return;
+    setBusy("boleto");
+    try {
+      const res = await fetch("/api/whatsapp/send-boleto-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      alert(
+        res.ok
+          ? data?.message || "Solicitação de boleto enviada ao financeiro."
+          : `Erro: ${data?.error || res.status}`,
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao solicitar boleto.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function handleDownloadNfePdf() {
     if (!order?.id) return;
     window.open(
@@ -368,30 +391,23 @@ export default function MobileRepOrderDetailsPage() {
                 href={`/api/orders/${order.id}/pdf`}
                 target="_blank"
                 rel="noreferrer"
-                style={{ textDecoration: "none" }}
-                >a
-              
-                <div
-                  style={{
-                    minHeight: 42,
-                    borderRadius: 12,
-                    background: "#2563eb",
-                    color: "#ffffff",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    padding: "0 14px",
-                    fontSize: 13,
-                    fontWeight: 900,
-                  }}
-                >
-                  <Download size={14} />
-                  Baixar PDF
-                </div>
+                style={{
+                  ...buttonBase,
+                  background: "#475569",
+                  textDecoration: "none",
+                  cursor: "pointer",
+                  opacity: 1,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Download size={14} />
+                Baixar PDF
               </a>
 
               <button
+                type="button"
                 disabled={busy !== null || !hasWhatsApp}
                 onClick={handleSendOrder}
                 style={{
@@ -407,6 +423,7 @@ export default function MobileRepOrderDetailsPage() {
 
               {!nfeAuthorized && (
                 <button
+                  type="button"
                   disabled={busy !== null}
                   onClick={handleEmitNfe}
                   style={{ ...buttonBase, background: "#7c3aed" }}
@@ -417,6 +434,7 @@ export default function MobileRepOrderDetailsPage() {
 
               {nfeAuthorized && (
                 <button
+                  type="button"
                   disabled={busy !== null || !hasWhatsApp}
                   onClick={handleSendNfe}
                   style={{
@@ -428,6 +446,17 @@ export default function MobileRepOrderDetailsPage() {
                   title={hasWhatsApp ? "" : "Cliente sem WhatsApp cadastrado"}
                 >
                   {busy === "send-nfe" ? "Enviando..." : "📲 Enviar NF-e"}
+                </button>
+              )}
+
+              {order.paymentMethod === "BOLETO" && (
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={handleSendBoleto}
+                  style={{ ...buttonBase, background: "#2563eb" }}
+                >
+                  {busy === "boleto" ? "Enviando..." : "🏦 Solicitar boleto"}
                 </button>
               )}
             </div>

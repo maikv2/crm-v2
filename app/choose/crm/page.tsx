@@ -169,6 +169,21 @@ export default function ChooseCrmPage() {
             router.replace("/login?access=CRM");
             return;
           }
+
+          // Auto-redirect if user already has a saved preference
+          try {
+            const saved = localStorage.getItem("v2_view_mode");
+            if (saved === "desktop") {
+              router.replace(resolveDesktop(nextRole));
+              return;
+            }
+            if (saved === "mobile") {
+              router.replace(resolveMobile(nextRole));
+              return;
+            }
+          } catch {
+            // localStorage not available
+          }
         }
       } catch (error) {
         console.error(error);
@@ -315,14 +330,20 @@ export default function ChooseCrmPage() {
             subtitle="Abrir a interface completa do CRM."
             icon={<Laptop size={20} />}
             primary
-            onClick={() => router.replace(resolveDesktop(role))}
+            onClick={() => {
+              try { localStorage.setItem("v2_view_mode", "desktop"); } catch { /* noop */ }
+              router.replace(resolveDesktop(role));
+            }}
           />
 
           <OptionButton
             title="Versão mobile"
             subtitle="Abrir a interface otimizada para celular."
             icon={<Smartphone size={20} />}
-            onClick={() => router.replace(resolveMobile(role))}
+            onClick={() => {
+              try { localStorage.setItem("v2_view_mode", "mobile"); } catch { /* noop */ }
+              router.replace(resolveMobile(role));
+            }}
           />
         </div>
       </div>

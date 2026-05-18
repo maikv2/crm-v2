@@ -2,11 +2,19 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { Moon, Plus, Sun, X } from "lucide-react";
+import { Laptop, Moon, Plus, Sun, X } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
+
+function resolveDesktopHref(pathname: string): string {
+  if (pathname.startsWith("/m/admin")) return "/dashboard";
+  if (pathname.startsWith("/m/rep")) return "/rep";
+  if (pathname.startsWith("/m/finance")) return "/finance";
+  if (pathname.startsWith("/m/investor")) return "/investor";
+  return "/choose/crm";
+}
 
 export type MobileNavItem = {
   label: string;
@@ -269,8 +277,10 @@ export default function MobileShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const colors = getThemeColors(theme);
+  const desktopHref = resolveDesktopHref(pathname);
 
   const [openFab, setOpenFab] = useState(false);
 
@@ -391,27 +401,51 @@ export default function MobileShell({
             {rightSlot ? (
               rightSlot
             ) : (
-              <button
-                type="button"
-                onClick={toggleTheme}
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 14,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.cardBg,
-                  color: colors.text,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-                aria-label="Alternar tema"
-                title="Alternar tema"
-              >
-                {colors.isDark ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    try { localStorage.setItem("v2_view_mode", "desktop"); } catch { /* noop */ }
+                    router.push(desktopHref);
+                  }}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 14,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.cardBg,
+                    color: colors.primary,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                  aria-label="Versão desktop"
+                  title="Versão desktop"
+                >
+                  <Laptop size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 14,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.cardBg,
+                    color: colors.text,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                  aria-label="Alternar tema"
+                  title="Alternar tema"
+                >
+                  {colors.isDark ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+              </div>
             )}
           </div>
         </div>

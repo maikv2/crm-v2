@@ -303,7 +303,7 @@ export default function MobileAdminOrdersPage() {
         ) : (
           filtered.map((order, index) => (
             <MobileAppear key={order.id} delay={Math.min(index * 35, 180)}>
-              <Link href="/orders" style={{ textDecoration: "none" }}>
+              <Link href={`/m/admin/orders/${order.id}`} style={{ textDecoration: "none" }}>
                 <MobileCard style={{ padding: 14 }}>
                   <div
                     style={{

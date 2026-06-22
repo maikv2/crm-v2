@@ -19,6 +19,7 @@ import {
   CircleDollarSign,
   Map,
   CalendarDays,
+  CalendarClock,
   UserCog,
   BriefcaseBusiness,
   Bell,
@@ -236,6 +237,11 @@ export default function Sidebar() {
             label="Comissões"
             path="/finance/commissions"
           />
+          <Item
+            icon={CalendarClock}
+            label="Despesas Fixas"
+            path="/finance/fixed-expenses"
+          />
 
           <Section title="INVESTIDORES" />
           <Item icon={BarChart3} label="Cotistas" path="/investors/dashboard" />
@@ -351,6 +357,11 @@ export default function Sidebar() {
             icon={BadgeDollarSign}
             label="Comissões"
             path="/finance/commissions"
+          />
+          <Item
+            icon={CalendarClock}
+            label="Despesas Fixas"
+            path="/finance/fixed-expenses"
           />
 
           <Section title="COTAS" />

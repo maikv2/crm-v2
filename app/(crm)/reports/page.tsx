@@ -14,6 +14,7 @@ import {
   ChevronRight,
   CalendarDays,
   ArrowRight,
+  BookOpen,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -893,6 +894,22 @@ export default function ReportsPage() {
             "Resultado por conta financeira",
           ]}
           onClick={() => navigateTo("finance")}
+          theme={theme}
+        />
+
+        <ReportCard
+          icon={BookOpen}
+          iconBg={isDark ? "rgba(99,102,241,0.18)" : "#eef2ff"}
+          iconFg="#6366f1"
+          title="Contabilidade"
+          description="Relatório completo para envio mensal ao contador"
+          items={[
+            "Faturamento bruto e descontos",
+            "Receitas e despesas por categoria",
+            "Comissões e distribuições a investidores",
+            "Exportar PDF ou CSV para o contador",
+          ]}
+          onClick={() => navigateTo("accounting")}
           theme={theme}
         />
       </div>

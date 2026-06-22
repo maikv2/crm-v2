@@ -504,7 +504,7 @@ export default function ReportsAccountingPage() {
                     Exportar CSV
                   </button>
                   <button
-                    onClick={() => window.print()}
+                    onClick={() => window.open(`/print/accounting?from=${from}&to=${to}`, "_blank", "width=1000,height=800")}
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, border: "none", background: "#6366f1", color: "#ffffff", cursor: "pointer", fontWeight: 700, fontSize: 13 }}
                   >
                     <Download size={15} />

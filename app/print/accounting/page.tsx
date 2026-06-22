@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 // ─── Types (same as accounting page) ─────────────────────────────────────────
@@ -44,7 +44,7 @@ function monthLabel(month: number, year: number) {
 
 // ─── Print page ───────────────────────────────────────────────────────────────
 
-export default function PrintAccountingPage() {
+function PrintAccountingContent() {
   const searchParams = useSearchParams();
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
@@ -337,6 +337,14 @@ export default function PrintAccountingPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function PrintAccountingPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, fontFamily: "sans-serif", color: "#64748b" }}>Preparando relatório...</div>}>
+      <PrintAccountingContent />
+    </Suspense>
   );
 }
 

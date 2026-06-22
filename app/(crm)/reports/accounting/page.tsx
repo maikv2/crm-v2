@@ -18,6 +18,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarDays,
+  FileArchive,
+  FileText,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -85,6 +87,7 @@ type AccountingReport = {
     paymentMethod: string;
     paymentStatus: string;
     nfeNumber: string | null;
+    nfeKey: string | null;
     nfeStatus: string | null;
   }>;
 };
@@ -428,6 +431,7 @@ export default function ReportsAccountingPage() {
   const [data, setData] = useState<AccountingReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [zipLoading, setZipLoading] = useState(false);
 
   const loadReport = useCallback(async (f: string, t: string) => {
     let active = true;
@@ -450,6 +454,30 @@ export default function ReportsAccountingPage() {
   useEffect(() => {
     if (from && to) loadReport(from, to);
   }, [from, to, loadReport]);
+
+  async function handleDownloadZip() {
+    if (!from || !to) return;
+    try {
+      setZipLoading(true);
+      const res = await fetch(`/api/reports/accounting/nfe-zip?from=${from}&to=${to}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        alert(json.error ?? "Erro ao baixar XMLs.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `nfe-xml-${from}_${to}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Erro ao gerar ZIP das NF-e.");
+    } finally {
+      setZipLoading(false);
+    }
+  }
 
   const netPositive = (data?.net ?? 0) >= 0;
   const periodLabel = data ? fmtPeriod(data.period.from, data.period.to) : getPeriodLabel();
@@ -502,6 +530,14 @@ export default function ReportsAccountingPage() {
                   >
                     <FileSpreadsheet size={15} color="#16a34a" />
                     Exportar CSV
+                  </button>
+                  <button
+                    onClick={handleDownloadZip}
+                    disabled={zipLoading}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, border: `1px solid ${border}`, background: cardBg, color: theme.text, cursor: zipLoading ? "wait" : "pointer", fontWeight: 700, fontSize: 13, opacity: zipLoading ? 0.7 : 1 }}
+                  >
+                    <FileArchive size={15} color="#ea580c" />
+                    {zipLoading ? "Gerando ZIP..." : "XMLs NF-e (.zip)"}
                   </button>
                   <button
                     onClick={() => window.open(`/print/accounting?from=${from}&to=${to}`, "_blank", "width=1000,height=800")}
@@ -819,6 +855,54 @@ export default function ReportsAccountingPage() {
                   <div style={{ fontSize: 12, color: muted, marginTop: 4 }}>{p.count} lançamento{p.count !== 1 ? "s" : ""}</div>
                 </div>
               ))}
+            </div>
+          </Block>
+        )}
+
+        {/* NF-e emitidas */}
+        {data.orders.filter((o) => o.nfeNumber).length > 0 && (
+          <Block title={`Notas Fiscais Emitidas (${data.orders.filter((o) => o.nfeNumber).length})`} theme={theme}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    {["NF-e", "Data", "Cliente", "CNPJ/CPF", "Região", "Forma Pgto", "Total", "Status", "XML"].map((h) => (
+                      <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: muted, fontWeight: 700, borderBottom: `1px solid ${border}`, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.orders.filter((o) => o.nfeNumber).map((o) => (
+                    <tr key={o.id} style={{ borderBottom: `1px solid ${border}` }}>
+                      <td style={{ padding: "9px 10px", fontWeight: 700, color: theme.text, whiteSpace: "nowrap" }}>#{o.nfeNumber}</td>
+                      <td style={{ padding: "9px 10px", color: muted, whiteSpace: "nowrap" }}>{fmtDate(o.issuedAt)}</td>
+                      <td style={{ padding: "9px 10px", color: theme.text, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.clientName}</td>
+                      <td style={{ padding: "9px 10px", color: muted, whiteSpace: "nowrap" }}>{o.clientDocument ?? "—"}</td>
+                      <td style={{ padding: "9px 10px", color: muted }}>{o.regionName}</td>
+                      <td style={{ padding: "9px 10px", color: muted }}>{o.paymentMethod}</td>
+                      <td style={{ padding: "9px 10px", fontWeight: 700, color: theme.text, textAlign: "right", whiteSpace: "nowrap" }}>{money(o.totalCents)}</td>
+                      <td style={{ padding: "9px 10px" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: o.nfeStatus === "autorizada" ? (isDark ? "rgba(34,197,94,0.15)" : "#eaf8ef") : (isDark ? "rgba(249,115,22,0.14)" : "#fff7ed"), color: o.nfeStatus === "autorizada" ? "#16a34a" : "#ea580c" }}>
+                          {o.nfeStatus ?? "—"}
+                        </span>
+                      </td>
+                      <td style={{ padding: "9px 10px" }}>
+                        {o.nfeNumber ? (
+                          <a
+                            href={`/api/orders/${o.id}/nfe/xml`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "#2563eb", textDecoration: "none" }}
+                          >
+                            <FileText size={13} />
+                            XML
+                          </a>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Block>
         )}

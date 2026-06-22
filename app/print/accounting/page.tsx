@@ -21,7 +21,7 @@ type AccountingReport = {
   byCategory: Array<{ label: string; type: string; totalCents: number; paidCents: number; count: number }>;
   byPaymentMethod: Array<{ label: string; totalCents: number; count: number }>;
   transactions: Array<{ id: string; type: string; category: string; categoryLabel: string; description: string; amountCents: number; status: string; paymentMethod: string | null; regionName: string | null; dueDate: string | null; paidAt: string | null; createdAt: string; notes: string | null }>;
-  orders: Array<{ id: string; number: number; issuedAt: string; clientName: string; clientDocument: string | null; regionName: string; sellerName: string | null; totalCents: number; discountCents: number; paymentMethod: string; paymentStatus: string; nfeNumber: string | null; nfeStatus: string | null }>;
+  orders: Array<{ id: string; number: number; issuedAt: string; clientName: string; clientDocument: string | null; regionName: string; sellerName: string | null; totalCents: number; discountCents: number; paymentMethod: string; paymentStatus: string; nfeNumber: string | null; nfeStatus: string | null; nfeKey: string | null }>;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -290,9 +290,56 @@ function PrintAccountingContent() {
           </>
         )}
 
+        {/* ── NF-e Emitidas ── */}
+        {data.orders.filter((o) => o.nfeNumber).length > 0 && (
+          <>
+            <div className="page-break" />
+            <div style={S.sectionTitle}>7. NOTAS FISCAIS EMITIDAS ({data.orders.filter((o) => o.nfeNumber).length})</div>
+            <div style={{ ...S.tableWrap, marginBottom: 20 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>NF-e</th>
+                    <th>Data</th>
+                    <th>Cliente</th>
+                    <th>CNPJ/CPF</th>
+                    <th>Região</th>
+                    <th>Forma Pgto</th>
+                    <th style={{ textAlign: "right" }}>Total</th>
+                    <th>Status</th>
+                    <th>Chave de Acesso</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.orders.filter((o) => o.nfeNumber).map((o) => (
+                    <tr key={o.id}>
+                      <td style={{ fontWeight: 700 }}>#{o.nfeNumber}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{fmtDate(o.issuedAt)}</td>
+                      <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.clientName}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{o.clientDocument ?? "—"}</td>
+                      <td>{o.regionName}</td>
+                      <td>{o.paymentMethod}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{money(o.totalCents)}</td>
+                      <td style={{ color: o.nfeStatus === "autorizada" ? "#16a34a" : "#ea580c", fontWeight: 700 }}>{o.nfeStatus ?? "—"}</td>
+                      <td style={{ fontSize: 9, color: "#475569", wordBreak: "break-all" }}>{o.nfeKey ?? "—"}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: "#f8fafc" }}>
+                    <td colSpan={6} style={{ fontWeight: 800 }}>TOTAL FATURADO</td>
+                    <td style={{ textAlign: "right", fontWeight: 800 }}>
+                      {money(data.orders.filter((o) => o.nfeNumber).reduce((s, o) => s + o.totalCents, 0))}
+                    </td>
+                    <td colSpan={2} />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
         {/* ── Lançamentos completos ── */}
         <div className="page-break" />
-        <div style={S.sectionTitle}>7. TODOS OS LANÇAMENTOS FINANCEIROS ({data.transactions.length})</div>
+        <div style={S.sectionTitle}>8. TODOS OS LANÇAMENTOS FINANCEIROS ({data.transactions.length})</div>
         <div style={S.tableWrap}>
           <table>
             <thead>

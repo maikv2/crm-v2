@@ -214,6 +214,7 @@ export async function GET(request: Request) {
       paymentMethod: PAYMENT_LABELS[o.paymentMethod] ?? o.paymentMethod,
       paymentStatus: o.paymentStatus,
       nfeNumber: o.nfeNumber,
+      nfeKey: o.nfeKey,
       nfeStatus: o.nfeStatus,
     }));
 

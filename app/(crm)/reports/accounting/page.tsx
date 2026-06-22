@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "../../../providers/theme-provider";
 import { getThemeColors } from "../../../../lib/theme";
@@ -15,6 +15,9 @@ import {
   ShoppingCart,
   Download,
   FileSpreadsheet,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -86,12 +89,92 @@ type AccountingReport = {
   }>;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Period helpers ───────────────────────────────────────────────────────────
+
+type PeriodMode = "month" | "custom";
+type DateRange = { start: Date | null; end: Date | null };
 
 const MONTH_NAMES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
+const WEEKDAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+function formatMonthYear(year: number, month: number) {
+  return `${MONTH_NAMES[month]} de ${year}`;
+}
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+function getFirstDayOfMonth(year: number, month: number) {
+  return new Date(year, month, 1).getDay();
+}
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+function isInRange(date: Date, start: Date | null, end: Date | null) {
+  if (!start || !end) return false;
+  return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
+}
+
+// ─── Mini Calendar ────────────────────────────────────────────────────────────
+
+function MiniCalendar({
+  year, month, range, onDayClick, onPrev, onNext, theme,
+}: {
+  year: number; month: number; range: DateRange;
+  onDayClick: (d: Date) => void; onPrev: () => void; onNext: () => void;
+  theme: ReturnType<typeof getThemeColors>;
+}) {
+  const isDark = theme.isDark;
+  const muted = isDark ? "#94a3b8" : "#64748b";
+  const border = isDark ? "#1e293b" : "#e5e7eb";
+  const calBg = isDark ? "#0f172a" : "#ffffff";
+  const hoverBg = isDark ? "#1e293b" : "#eff6ff";
+  const daysInMonth = getDaysInMonth(year, month);
+  const firstDay = getFirstDayOfMonth(year, month);
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  return (
+    <div style={{ background: calBg, border: `1px solid ${border}`, borderRadius: 16, padding: 18, width: 272, boxShadow: isDark ? "0 10px 30px rgba(2,6,23,0.45)" : "0 8px 24px rgba(15,23,42,0.10)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <button onClick={onPrev} style={{ background: "none", border: "none", cursor: "pointer", color: muted, padding: 4, borderRadius: 8, display: "flex", alignItems: "center" }}><ChevronLeft size={16} /></button>
+        <span style={{ fontWeight: 800, fontSize: 13, color: theme.text }}>{formatMonthYear(year, month)}</span>
+        <button onClick={onNext} style={{ background: "none", border: "none", cursor: "pointer", color: muted, padding: 4, borderRadius: 8, display: "flex", alignItems: "center" }}><ChevronRight size={16} /></button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
+        {WEEKDAY_NAMES.map((d) => <div key={d} style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: muted }}>{d}</div>)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+        {cells.map((day, idx) => {
+          if (!day) return <div key={`e-${idx}`} />;
+          const date = new Date(year, month, day);
+          const isStart = range.start ? isSameDay(date, range.start) : false;
+          const isEnd = range.end ? isSameDay(date, range.end) : false;
+          const inRange = isInRange(date, range.start, range.end);
+          const isSelected = isStart || isEnd;
+          return (
+            <button
+              key={day}
+              onClick={() => onDayClick(date)}
+              style={{
+                background: isSelected ? "#6366f1" : inRange ? (isDark ? "rgba(99,102,241,0.18)" : "#eef2ff") : "transparent",
+                color: isSelected ? "#fff" : theme.text,
+                border: "none",
+                borderRadius: isStart ? "8px 0 0 8px" : isEnd ? "0 8px 8px 0" : inRange ? "0" : 8,
+                padding: "5px 0", cursor: "pointer", fontWeight: isSelected ? 800 : 500, fontSize: 12, textAlign: "center",
+              }}
+              onMouseEnter={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = hoverBg; }}
+              onMouseLeave={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = inRange ? (isDark ? "rgba(99,102,241,0.18)" : "#eef2ff") : "transparent"; }}
+            >{day}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function money(cents: number) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -281,54 +364,97 @@ export default function ReportsAccountingPage() {
   const muted = isDark ? "#94a3b8" : "#64748b";
   const border = isDark ? "#1e293b" : "#e5e7eb";
   const subtle = isDark ? "#0b1324" : "#f8fafc";
+  const cardBg = isDark ? "#0f172a" : "#ffffff";
 
-  const from = searchParams.get("from") ?? "";
-  const to = searchParams.get("to") ?? "";
+  // ── Period state ─────────────────────────────────────────────────────────────
+  const initFrom = searchParams.get("from");
+  const initTo = searchParams.get("to");
 
+  const today = new Date();
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
+  const [selectedMonth, setSelectedMonth] = useState(
+    initFrom ? new Date(initFrom).getMonth() : today.getMonth()
+  );
+  const [selectedYear, setSelectedYear] = useState(
+    initFrom ? new Date(initFrom).getFullYear() : today.getFullYear()
+  );
+  const [range, setRange] = useState<DateRange>({
+    start: initFrom ? new Date(initFrom) : null,
+    end: initTo ? new Date(initTo) : null,
+  });
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const [showCal, setShowCal] = useState(false);
+
+  function getQueryDates(): { from: string; to: string } | null {
+    if (periodMode === "month") {
+      const start = new Date(selectedYear, selectedMonth, 1);
+      const end = new Date(selectedYear, selectedMonth + 1, 0);
+      return { from: start.toISOString().split("T")[0], to: end.toISOString().split("T")[0] };
+    }
+    if (range.start && range.end) {
+      return { from: range.start.toISOString().split("T")[0], to: range.end.toISOString().split("T")[0] };
+    }
+    return null;
+  }
+
+  const periodReady = periodMode === "month" || (range.start !== null && range.end !== null);
+  const dates = getQueryDates();
+  const from = dates?.from ?? "";
+  const to = dates?.to ?? "";
+
+  function getPeriodLabel() {
+    if (periodMode === "month") return formatMonthYear(selectedYear, selectedMonth);
+    if (range.start && range.end) return `${range.start.toLocaleDateString("pt-BR")} → ${range.end.toLocaleDateString("pt-BR")}`;
+    if (range.start) return `${range.start.toLocaleDateString("pt-BR")} → ...`;
+    return "Selecione o período";
+  }
+
+  function handleDayClick(date: Date) {
+    if (!range.start || (range.start && range.end)) {
+      setRange({ start: date, end: null });
+    } else {
+      setRange(date < range.start ? { start: date, end: range.start } : { start: range.start, end: date });
+      setShowCal(false);
+    }
+  }
+
+  function prevCalMonth() { calMonth === 0 ? (setCalMonth(11), setCalYear((y) => y - 1)) : setCalMonth((m) => m - 1); }
+  function nextCalMonth() { calMonth === 11 ? (setCalMonth(0), setCalYear((y) => y + 1)) : setCalMonth((m) => m + 1); }
+  function prevMonth() { selectedMonth === 0 ? (setSelectedMonth(11), setSelectedYear((y) => y - 1)) : setSelectedMonth((m) => m - 1); }
+  function nextMonth() { selectedMonth === 11 ? (setSelectedMonth(0), setSelectedYear((y) => y + 1)) : setSelectedMonth((m) => m + 1); }
+
+  // ── Data fetching ─────────────────────────────────────────────────────────────
   const [data, setData] = useState<AccountingReport | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!from || !to) return;
+  const loadReport = useCallback(async (f: string, t: string) => {
     let active = true;
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await fetch(`/api/reports/accounting?from=${from}&to=${to}`, { cache: "no-store" });
-        if (!res.ok) throw new Error();
-        const json = await res.json();
-        if (active) setData(json);
-      } catch {
-        if (active) setError("Não foi possível carregar o relatório contábil.");
-      } finally {
-        if (active) setLoading(false);
-      }
+    try {
+      setLoading(true);
+      setError(null);
+      setData(null);
+      const res = await fetch(`/api/reports/accounting?from=${f}&to=${t}`, { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      if (active) setData(json);
+    } catch {
+      if (active) setError("Não foi possível carregar o relatório contábil.");
+    } finally {
+      if (active) setLoading(false);
     }
-    load();
     return () => { active = false; };
-  }, [from, to]);
+  }, []);
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: "100vh", background: pageBg, display: "flex", alignItems: "center", justifyContent: "center", color: theme.text, fontWeight: 700 }}>
-        Carregando relatório contábil...
-      </div>
-    );
-  }
-  if (error || !data) {
-    return (
-      <div style={{ minHeight: "100vh", background: pageBg, display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", fontWeight: 700 }}>
-        {error ?? "Erro ao carregar."}
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (from && to) loadReport(from, to);
+  }, [from, to, loadReport]);
 
-  const netPositive = data.net >= 0;
-  const periodLabel = fmtPeriod(data.period.from, data.period.to);
-  const incomeCategories = data.byCategory.filter((c) => c.type === "INCOME");
-  const expenseCategories = data.byCategory.filter((c) => c.type === "EXPENSE");
+  const netPositive = (data?.net ?? 0) >= 0;
+  const periodLabel = data ? fmtPeriod(data.period.from, data.period.to) : getPeriodLabel();
+  const incomeCategories = data?.byCategory.filter((c) => c.type === "INCOME") ?? [];
+  const expenseCategories = data?.byCategory.filter((c) => c.type === "EXPENSE") ?? [];
 
   return (
     <>
@@ -344,10 +470,10 @@ export default function ReportsAccountingPage() {
       <div style={{ color: theme.text, background: pageBg, minHeight: "100vh", padding: 24 }}>
 
         {/* Header */}
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 20 }}>
           <button
             className="no-print"
-            onClick={() => router.push(`/reports?from=${from}&to=${to}`)}
+            onClick={() => router.push("/reports")}
             style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: muted, fontWeight: 700, fontSize: 13, marginBottom: 10, padding: 0 }}
           >
             <ArrowLeft size={14} /> Voltar para Relatórios
@@ -361,61 +487,138 @@ export default function ReportsAccountingPage() {
               <div>
                 <div style={{ fontSize: 22, fontWeight: 900, color: theme.text }}>Relatório Contábil</div>
                 <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>
-                  {data.company ? `${data.company.tradeName} · ` : ""}{periodLabel}
+                  {data?.company ? `${data.company.tradeName} · ` : ""}Selecione o período e clique em Gerar
                 </div>
-                {data.company?.cnpj && (
-                  <div style={{ fontSize: 12, color: muted }}>
-                    CNPJ: {data.company.cnpj}
-                    {data.company.taxRegime ? ` · Regime: ${data.company.taxRegime}` : ""}
-                  </div>
-                )}
               </div>
             </div>
 
             {/* Action buttons */}
             <div className="no-print" style={{ display: "flex", gap: 10, flexShrink: 0 }}>
-              <button
-                onClick={() => exportCSV(data, periodLabel)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "10px 18px",
-                  borderRadius: 10,
-                  border: `1px solid ${border}`,
-                  background: isDark ? "#0f172a" : "#ffffff",
-                  color: theme.text,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                <FileSpreadsheet size={15} color="#16a34a" />
-                Exportar CSV
-              </button>
-
-              <button
-                onClick={() => window.print()}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "10px 20px",
-                  borderRadius: 10,
-                  border: "none",
-                  background: "#6366f1",
-                  color: "#ffffff",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                <Download size={15} />
-                Baixar PDF
-              </button>
+              {data && (
+                <>
+                  <button
+                    onClick={() => exportCSV(data, periodLabel)}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, border: `1px solid ${border}`, background: cardBg, color: theme.text, cursor: "pointer", fontWeight: 700, fontSize: 13 }}
+                  >
+                    <FileSpreadsheet size={15} color="#16a34a" />
+                    Exportar CSV
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, border: "none", background: "#6366f1", color: "#ffffff", cursor: "pointer", fontWeight: 700, fontSize: 13 }}
+                  >
+                    <Download size={15} />
+                    Baixar PDF
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Period selector */}
+        <div
+          className="no-print"
+          style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 18, padding: 22, marginBottom: 24, boxShadow: isDark ? "0 10px 30px rgba(2,6,23,0.35)" : "0 8px 24px rgba(15,23,42,0.06)" }}
+        >
+          <div style={{ fontSize: 15, fontWeight: 800, color: theme.text, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <CalendarDays size={17} color="#6366f1" />
+            Período do Relatório
+          </div>
+
+          {/* Mode toggle */}
+          <div style={{ display: "inline-flex", background: isDark ? "#0b1324" : "#f1f5f9", borderRadius: 10, padding: 4, marginBottom: 18 }}>
+            {(["month", "custom"] as PeriodMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => { setPeriodMode(m); setShowCal(false); }}
+                style={{ padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: periodMode === m ? "#6366f1" : "transparent", color: periodMode === m ? "#ffffff" : muted, transition: "all 0.15s ease" }}
+              >
+                {m === "month" ? "Por Mês" : "Por Período"}
+              </button>
+            ))}
+          </div>
+
+          {/* Month selector */}
+          {periodMode === "month" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button onClick={prevMonth} style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${border}`, background: cardBg, color: theme.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ChevronLeft size={15} />
+              </button>
+              <div style={{ padding: "8px 24px", borderRadius: 10, border: `1px solid ${border}`, background: isDark ? "#0b1324" : "#f8fafc", fontWeight: 800, fontSize: 14, color: theme.text, minWidth: 200, textAlign: "center" }}>
+                {formatMonthYear(selectedYear, selectedMonth)}
+              </div>
+              <button onClick={nextMonth} style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${border}`, background: cardBg, color: theme.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          )}
+
+          {/* Custom range */}
+          {periodMode === "custom" && (
+            <div style={{ position: "relative" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  onClick={() => setShowCal(!showCal)}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", borderRadius: 10, border: `1px solid ${showCal ? "#6366f1" : border}`, background: isDark ? "#0b1324" : "#f8fafc", color: theme.text, cursor: "pointer", fontWeight: 700, fontSize: 13 }}
+                >
+                  <CalendarDays size={15} color="#6366f1" />
+                  {range.start && range.end
+                    ? `${range.start.toLocaleDateString("pt-BR")} → ${range.end.toLocaleDateString("pt-BR")}`
+                    : range.start
+                    ? `${range.start.toLocaleDateString("pt-BR")} → ...`
+                    : "Selecione as datas"}
+                </button>
+                {range.start && range.end && (
+                  <button onClick={() => setRange({ start: null, end: null })} style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${border}`, background: "transparent", color: muted, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+                    Limpar
+                  </button>
+                )}
+              </div>
+              {showCal && (
+                <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 100 }}>
+                  <MiniCalendar year={calYear} month={calMonth} range={range} onDayClick={handleDayClick} onPrev={prevCalMonth} onNext={nextCalMonth} theme={theme} />
+                  {range.start && !range.end && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: muted, fontWeight: 600, textAlign: "center" }}>
+                      Agora clique na data final
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Generate button */}
+          <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              disabled={!periodReady}
+              onClick={() => { if (from && to) loadReport(from, to); }}
+              style={{ padding: "10px 28px", borderRadius: 10, border: "none", background: periodReady ? "#6366f1" : (isDark ? "#1e293b" : "#e5e7eb"), color: periodReady ? "#ffffff" : muted, cursor: periodReady ? "pointer" : "not-allowed", fontWeight: 800, fontSize: 14, transition: "all 0.15s ease" }}
+            >
+              {loading ? "Gerando..." : "Gerar Relatório"}
+            </button>
+            {data && !loading && (
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#6366f1" }}>
+                ✓ {periodLabel}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Loading / error states */}
+        {loading && (
+          <div style={{ textAlign: "center", padding: "60px 0", color: muted, fontWeight: 700 }}>
+            Carregando relatório contábil...
+          </div>
+        )}
+        {error && (
+          <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontWeight: 700 }}>
+            {error}
+          </div>
+        )}
+
+        {/* Report content — only shown when data is loaded */}
+        {!loading && !error && data && (<>
 
         {/* Summary cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
@@ -671,6 +874,7 @@ export default function ReportsAccountingPage() {
         <div style={{ marginTop: 8, fontSize: 12, color: muted, textAlign: "right" }}>
           Gerado em {new Date().toLocaleDateString("pt-BR")} — Sistema V2 CRM
         </div>
+      </>)}
       </div>
     </>
   );

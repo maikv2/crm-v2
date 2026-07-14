@@ -26,35 +26,92 @@ export async function GET(request: Request) {
       ? new Date(to + "T23:59:59.999Z")
       : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
-    const fromMonth = dateFrom.getUTCMonth() + 1;
-    const fromYear = dateFrom.getUTCFullYear();
-    const toMonth = dateTo.getUTCMonth() + 1;
-    const toYear = dateTo.getUTCFullYear();
-
-    // ── 1. Comissões mensais (RepresentativeCommission) ──────────────────────
-    const monthlyWhere: any = {
-      OR: [] as any[],
+    // ── 1. Comissões por representante / mês (derivado dos pedidos reais) ──────
+    // A tabela RepresentativeCommission não é alimentada pelo fluxo do sistema;
+    // a comissão real vive em order.commissionTotalCents. Agregamos por
+    // representante + região + mês, mesma base do relatório de Vendas.
+    const commissionOrderWhere: any = {
+      type: "SALE",
+      issuedAt: { gte: dateFrom, lte: dateTo },
     };
+    if (repId) commissionOrderWhere.sellerId = repId;
+    if (regionId) commissionOrderWhere.regionId = regionId;
 
-    // Build month/year range filter
-    for (let y = fromYear; y <= toYear; y++) {
-      const mStart = y === fromYear ? fromMonth : 1;
-      const mEnd = y === toYear ? toMonth : 12;
-      for (let m = mStart; m <= mEnd; m++) {
-        monthlyWhere.OR.push({ year: y, month: m });
-      }
-    }
-    if (repId) monthlyWhere.representativeId = repId;
-    if (regionId) monthlyWhere.regionId = regionId;
-
-    const monthlyCommissions = await prisma.representativeCommission.findMany({
-      where: monthlyWhere,
-      orderBy: [{ year: "desc" }, { month: "desc" }, { region: { name: "asc" } }],
-      include: {
-        representative: { select: { id: true, name: true } },
-        region: { select: { id: true, name: true } },
+    const commissionSourceOrders = await prisma.order.findMany({
+      where: commissionOrderWhere,
+      select: {
+        totalCents: true,
+        commissionTotalCents: true,
+        paymentStatus: true,
+        issuedAt: true,
+        sellerId: true,
+        seller: { select: { id: true, name: true } },
+        regionId: true,
+        region: { select: { name: true } },
+        items: { select: { qty: true, product: { select: { commissionCents: true } } } },
       },
     });
+
+    type MonthlyAgg = {
+      id: string;
+      representativeId: string;
+      representative: { id: string; name: string };
+      regionId: string;
+      region: { name: string };
+      month: number;
+      year: number;
+      grossRevenueCents: number;
+      commissionCents: number;
+      paidCommissionCents: number;
+      commissionPercent: number;
+      status: "PAID" | "PENDING";
+      paidAt: Date | null;
+    };
+
+    const monthlyMap = new Map<string, MonthlyAgg>();
+    for (const o of commissionSourceOrders) {
+      const rId = o.sellerId ?? "none";
+      const y = o.issuedAt.getUTCFullYear();
+      const m = o.issuedAt.getUTCMonth() + 1;
+      const key = `${rId}|${o.regionId}|${y}|${m}`;
+      const itemComm = o.items.reduce(
+        (s, it) => s + it.qty * (it.product?.commissionCents ?? 0),
+        0
+      );
+      const comm = o.commissionTotalCents ?? itemComm;
+      const existing = monthlyMap.get(key) ?? {
+        id: key,
+        representativeId: rId,
+        representative: { id: rId, name: o.seller?.name ?? "Sem representante" },
+        regionId: o.regionId,
+        region: { name: o.region?.name ?? "—" },
+        month: m,
+        year: y,
+        grossRevenueCents: 0,
+        commissionCents: 0,
+        paidCommissionCents: 0,
+        commissionPercent: 0,
+        status: "PENDING" as "PAID" | "PENDING",
+        paidAt: null,
+      };
+      existing.grossRevenueCents += o.totalCents;
+      existing.commissionCents += comm;
+      if (o.paymentStatus === "PAID") existing.paidCommissionCents += comm;
+      monthlyMap.set(key, existing);
+    }
+
+    const monthlyCommissions = Array.from(monthlyMap.values())
+      .map((r) => ({
+        ...r,
+        commissionPercent:
+          r.grossRevenueCents > 0 ? (r.commissionCents / r.grossRevenueCents) * 100 : 0,
+        status: (r.commissionCents > 0 && r.paidCommissionCents >= r.commissionCents
+          ? "PAID"
+          : "PENDING") as "PAID" | "PENDING",
+      }))
+      .sort(
+        (a, b) => b.year - a.year || b.month - a.month || a.region.name.localeCompare(b.region.name)
+      );
 
     // ── 2. Acertos semanais (RepresentativeSettlement) ───────────────────────
     const settlementWhere: any = {
@@ -105,9 +162,9 @@ export async function GET(request: Request) {
 
     // ── 5. Totais ─────────────────────────────────────────────────────────────
     const summary = {
-      totalGeneratedCents: monthlyCommissions.reduce((s, r) => s + (r.commissionCents ?? 0), 0),
-      totalPaidCents: monthlyCommissions.filter((r) => r.status === "PAID").reduce((s, r) => s + (r.commissionCents ?? 0), 0),
-      totalPendingCents: monthlyCommissions.filter((r) => r.status === "PENDING").reduce((s, r) => s + (r.commissionCents ?? 0), 0),
+      totalGeneratedCents: monthlyCommissions.reduce((s, r) => s + r.commissionCents, 0),
+      totalPaidCents: monthlyCommissions.reduce((s, r) => s + r.paidCommissionCents, 0),
+      totalPendingCents: monthlyCommissions.reduce((s, r) => s + (r.commissionCents - r.paidCommissionCents), 0),
       totalConfirmedPaymentsCents: confirmations.reduce((s, c) => s + (c.amountCents ?? 0), 0),
       settlementsCount: settlements.length,
       repsCount: new Set(monthlyCommissions.map((r) => r.representativeId)).size,

@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { OrderType, PaymentStatus, UserRole } from "@prisma/client";
 
-function parseDateParam(value: string | null): Date | null {
+function parseDateParam(value: string | null, endOfDay = false): Date | null {
   if (!value) return null;
-  const d = new Date(value);
+  // "YYYY-MM-DD" é fixado no limite do dia em UTC para evitar deslocamento de fuso.
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const d = dateOnly
+    ? new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`)
+    : new Date(value);
   return isNaN(d.getTime()) ? null : d;
 }
 
@@ -37,7 +41,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const from = parseDateParam(searchParams.get("from"));
-    const to = parseDateParam(searchParams.get("to"));
+    const to = parseDateParam(searchParams.get("to"), true);
     const regionId = normalizeId(searchParams.get("regionId"));
     const sellerId = normalizeId(searchParams.get("sellerId"));
 
@@ -48,8 +52,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const toEnd = new Date(to);
-    toEnd.setHours(23, 59, 59, 999);
+    const toEnd = to;
 
     const where = {
       issuedAt: {

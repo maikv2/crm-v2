@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "../../../providers/theme-provider";
 import { getThemeColors } from "../../../../lib/theme";
@@ -495,60 +495,74 @@ export default function ReportsStockPage() {
   const muted = isDark ? "#94a3b8" : "#64748b";
   const border = isDark ? "#1e293b" : "#e5e7eb";
 
-  const from = searchParams.get("from") ?? "";
-  const to = searchParams.get("to") ?? "";
-  const scope = searchParams.get("scope") ?? "all";
-  const regionId = searchParams.get("regionId") ?? "";
+  const today = new Date();
+  const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
+  const defaultTo = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0];
+
+  const [from, setFrom] = useState(searchParams.get("from") || defaultFrom);
+  const [to, setTo] = useState(searchParams.get("to") || defaultTo);
+  const [scope, setScope] = useState(searchParams.get("scope") ?? "all");
+  const [regionId, setRegionId] = useState(searchParams.get("regionId") ?? "");
 
   const [data, setData] = useState<StockReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const loadReport = useCallback(async (nextFrom: string, nextTo: string, nextScope: string, nextRegionId: string) => {
+    if (!nextFrom || !nextTo) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const query = new URLSearchParams({ from: nextFrom, to: nextTo, scope: nextScope });
+      if (nextScope === "region" && nextRegionId) query.set("regionId", nextRegionId);
+      const res = await fetch(`/api/reports/stock?${query.toString()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setData(json);
+    } catch {
+      setError("Não foi possível carregar o relatório de estoque.");
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
+    loadReport(from, to, scope, regionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function applyPeriod() {
     if (!from || !to) return;
-    let active = true;
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        const query = new URLSearchParams({ from, to, scope });
-        if (scope === "region" && regionId) query.set("regionId", regionId);
-        const res = await fetch(`/api/reports/stock?${query.toString()}`, { cache: "no-store" });
-        if (!res.ok) throw new Error();
-        const json = await res.json();
-        if (active) setData(json);
-      } catch {
-        if (active) setError("Não foi possível carregar o relatório de estoque.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    load();
-    return () => { active = false; };
-  }, [from, to, scope, regionId]);
-
-  if (loading) return <div style={{ minHeight: "100vh", background: pageBg, display: "flex", alignItems: "center", justifyContent: "center", color: theme.text, fontWeight: 700 }}>Carregando relatório...</div>;
-  if (error || !data) return <div style={{ minHeight: "100vh", background: pageBg, display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", fontWeight: 700 }}>{error ?? "Erro."}</div>;
-
-  const { summary } = data;
-  const totalValueCents = data.currentPosition.reduce((s, p) => s + p.totalValueCents, 0);
-
-  function changeStockFilter(value: string) {
-    const params = new URLSearchParams({ from, to });
-    if (value === "matrix") {
-      params.set("scope", "matrix");
-    } else if (value.startsWith("region:")) {
-      params.set("scope", "region");
-      params.set("regionId", value.replace("region:", ""));
-    } else {
-      params.set("scope", "all");
-    }
-    router.push(`/reports/stock?${params.toString()}`);
+    const params = new URLSearchParams({ from, to, scope });
+    if (scope === "region" && regionId) params.set("regionId", regionId);
+    router.replace(`/reports/stock?${params.toString()}`);
+    loadReport(from, to, scope, regionId);
   }
 
-  const selectedFilterValue = data.filter.scope === "region" && data.filter.regionId
+  const summary = data?.summary;
+  const totalValueCents = data ? data.currentPosition.reduce((s, p) => s + p.totalValueCents, 0) : 0;
+
+  function changeStockFilter(value: string) {
+    let nextScope = "all";
+    let nextRegionId = "";
+    if (value === "matrix") {
+      nextScope = "matrix";
+    } else if (value.startsWith("region:")) {
+      nextScope = "region";
+      nextRegionId = value.replace("region:", "");
+    }
+    setScope(nextScope);
+    setRegionId(nextRegionId);
+    const params = new URLSearchParams({ from, to, scope: nextScope });
+    if (nextScope === "region" && nextRegionId) params.set("regionId", nextRegionId);
+    router.replace(`/reports/stock?${params.toString()}`);
+    loadReport(from, to, nextScope, nextRegionId);
+  }
+
+  const selectedFilterValue = data && data.filter.scope === "region" && data.filter.regionId
     ? `region:${data.filter.regionId}`
-    : data.filter.scope;
+    : data?.filter.scope ?? scope;
 
   return (
     <div style={{ color: theme.text, background: pageBg, minHeight: "100vh", padding: 24 }}>
@@ -563,12 +577,53 @@ export default function ReportsStockPage() {
           </div>
           <div>
             <div style={{ fontSize: 22, fontWeight: 900, color: theme.text }}>Relatório de Estoque</div>
-            <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>{fmtPeriod(data.period.from, data.period.to)} • {data.filter.label}</div>
+            <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>{data ? `${fmtPeriod(data.period.from, data.period.to)} • ${data.filter.label}` : fmtPeriod(from, to)}</div>
           </div>
         </div>
       </div>
 
+      {/* Period selector */}
+      <div style={{
+        background: isDark ? "#0f172a" : "#ffffff", border: `1px solid ${border}`, borderRadius: 16,
+        padding: "14px 20px", marginBottom: 24,
+        display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap",
+        boxShadow: isDark ? "0 10px 30px rgba(2,6,23,0.35)" : "0 8px 24px rgba(15,23,42,0.06)",
+      }}>
+        <div>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: muted, marginBottom: 6 }}>De</label>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            style={{ height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${border}`, background: isDark ? "#0b1324" : "#ffffff", color: theme.text, fontWeight: 700, fontSize: 13, outline: "none" }}
+          />
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: muted, marginBottom: 6 }}>Até</label>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            style={{ height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${border}`, background: isDark ? "#0b1324" : "#ffffff", color: theme.text, fontWeight: 700, fontSize: 13, outline: "none" }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={applyPeriod}
+          style={{ height: 38, padding: "0 20px", borderRadius: 10, border: "none", background: "#7c3aed", color: "#ffffff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+        >
+          Aplicar
+        </button>
+      </div>
 
+      {loading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: muted, fontWeight: 700 }}>Carregando relatório...</div>
+      )}
+      {error && !loading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontWeight: 700 }}>{error}</div>
+      )}
+
+      {!loading && !error && data && summary && (<>
 
       <div style={{ background: isDark ? "#0f172a" : "#ffffff", border: `1px solid ${border}`, borderRadius: 16, padding: 18, marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", boxShadow: isDark ? "0 10px 30px rgba(2,6,23,0.35)" : "0 8px 24px rgba(15,23,42,0.06)" }}>
         <div>
@@ -752,6 +807,7 @@ export default function ReportsStockPage() {
           </table>
         </div>
       </Block>
+      </>)}
     </div>
   );
 }

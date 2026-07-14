@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -261,31 +261,43 @@ export default function CommissionsReportPage() {
   const [filterRegion, setFilterRegion] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
 
-  const from = searchParams.get("from") || "";
-  const to = searchParams.get("to") || "";
+  const today = new Date();
+  const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
+  const defaultTo = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0];
+
+  const [from, setFrom] = useState(searchParams.get("from") || defaultFrom);
+  const [to, setTo] = useState(searchParams.get("to") || defaultTo);
+
+  const loadReport = useCallback(async (nextFrom: string, nextTo: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const params = new URLSearchParams();
+      if (nextFrom) params.set("from", nextFrom);
+      if (nextTo) params.set("to", nextTo);
+      const res = await fetch(`/api/reports/commissions?${params}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Erro ao carregar.");
+      setData(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao carregar.");
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        const params = new URLSearchParams();
-        if (from) params.set("from", from);
-        if (to) params.set("to", to);
-        const res = await fetch(`/api/reports/commissions?${params}`, { cache: "no-store" });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || "Erro ao carregar.");
-        if (active) setData(json);
-      } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : "Erro ao carregar.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    load();
-    return () => { active = false; };
-  }, [from, to]);
+    loadReport(from, to);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function applyPeriod() {
+    if (!from || !to) return;
+    const params = new URLSearchParams({ from, to });
+    router.replace(`/reports/commissions?${params.toString()}`);
+    loadReport(from, to);
+  }
 
   const periodLabel = useMemo(() => {
     if (from && to) return `${fmtDate(from + "T00:00:00")} – ${fmtDate(to + "T00:00:00")}`;
@@ -387,6 +399,39 @@ export default function CommissionsReportPage() {
             <ArrowLeft size={15} /> Voltar
           </button>
         </div>
+      </div>
+
+      {/* Period selector */}
+      <div style={{
+        background: cardBg, border: `1px solid ${border}`, borderRadius: 16,
+        padding: "14px 20px", marginBottom: 24,
+        display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap",
+      }}>
+        <div>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: muted, marginBottom: 6 }}>De</label>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            style={{ height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${border}`, background: cardBg, color: theme.text, fontWeight: 700, fontSize: 13, outline: "none" }}
+          />
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: muted, marginBottom: 6 }}>Até</label>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            style={{ height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${border}`, background: cardBg, color: theme.text, fontWeight: 700, fontSize: 13, outline: "none" }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={applyPeriod}
+          style={{ height: 38, padding: "0 20px", borderRadius: 10, border: "none", background: "#2563eb", color: "#ffffff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+        >
+          Aplicar
+        </button>
       </div>
 
       {loading ? (

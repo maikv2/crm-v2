@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "../../../providers/theme-provider";
 import { getThemeColors } from "../../../../lib/theme";
@@ -140,39 +140,50 @@ export default function ReportsFinancePage() {
   const border = isDark ? "#1e293b" : "#e5e7eb";
   const subtle = isDark ? "#0b1324" : "#f8fafc";
 
-  const from = searchParams.get("from") ?? "";
-  const to = searchParams.get("to") ?? "";
+  const today = new Date();
+  const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
+  const defaultTo = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0];
+
+  const [from, setFrom] = useState(searchParams.get("from") || defaultFrom);
+  const [to, setTo] = useState(searchParams.get("to") || defaultTo);
 
   const [data, setData] = useState<FinanceReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!from || !to) return;
-    let active = true;
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await fetch(`/api/reports/finance?from=${from}&to=${to}`, { cache: "no-store" });
-        if (!res.ok) throw new Error();
-        const json = await res.json();
-        if (active) setData(json);
-      } catch {
-        if (active) setError("Não foi possível carregar o relatório financeiro.");
-      } finally {
-        if (active) setLoading(false);
-      }
+  const loadReport = useCallback(async (nextFrom: string, nextTo: string) => {
+    if (!nextFrom || !nextTo) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch(`/api/reports/finance?from=${nextFrom}&to=${nextTo}`, { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setData(json);
+    } catch {
+      setError("Não foi possível carregar o relatório financeiro.");
+      setData(null);
+    } finally {
+      setLoading(false);
     }
-    load();
-    return () => { active = false; };
-  }, [from, to]);
+  }, []);
 
-  if (loading) return <div style={{ minHeight: "100vh", background: pageBg, display: "flex", alignItems: "center", justifyContent: "center", color: theme.text, fontWeight: 700 }}>Carregando relatório...</div>;
-  if (error || !data) return <div style={{ minHeight: "100vh", background: pageBg, display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", fontWeight: 700 }}>{error ?? "Erro."}</div>;
+  useEffect(() => {
+    loadReport(from, to);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const { summary, receivables, transfers } = data;
-  const netPositive = summary.netCents >= 0;
+  function applyPeriod() {
+    if (!from || !to) return;
+    const params = new URLSearchParams({ from, to });
+    router.replace(`/reports/finance?${params.toString()}`);
+    loadReport(from, to);
+  }
+
+  const summary = data?.summary;
+  const receivables = data?.receivables;
+  const transfers = data?.transfers;
+  const netPositive = (summary?.netCents ?? 0) >= 0;
 
   return (
     <div style={{ color: theme.text, background: pageBg, minHeight: "100vh", padding: 24 }}>
@@ -187,10 +198,52 @@ export default function ReportsFinancePage() {
           </div>
           <div>
             <div style={{ fontSize: 22, fontWeight: 900, color: theme.text }}>Relatório Financeiro</div>
-            <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>{fmtPeriod(data.period.from, data.period.to)}</div>
+            <div style={{ fontSize: 13, color: muted, marginTop: 4 }}>{data ? fmtPeriod(data.period.from, data.period.to) : fmtPeriod(from, to)}</div>
           </div>
         </div>
       </div>
+
+      {/* Period selector */}
+      <div style={{
+        background: isDark ? "#0f172a" : "#ffffff", border: `1px solid ${border}`, borderRadius: 16,
+        padding: "14px 20px", marginBottom: 24,
+        display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap",
+      }}>
+        <div>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: muted, marginBottom: 6 }}>De</label>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            style={{ height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${border}`, background: isDark ? "#020617" : "#ffffff", color: theme.text, fontWeight: 700, fontSize: 13, outline: "none" }}
+          />
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: muted, marginBottom: 6 }}>Até</label>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            style={{ height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${border}`, background: isDark ? "#020617" : "#ffffff", color: theme.text, fontWeight: 700, fontSize: 13, outline: "none" }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={applyPeriod}
+          style={{ height: 38, padding: "0 20px", borderRadius: 10, border: "none", background: "#2563eb", color: "#ffffff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+        >
+          Aplicar
+        </button>
+      </div>
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: muted, fontWeight: 700 }}>Carregando relatório...</div>
+      )}
+      {error && !loading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: "#ef4444", fontWeight: 700 }}>{error}</div>
+      )}
+
+      {!loading && !error && data && summary && receivables && transfers && (<>
 
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
@@ -343,6 +396,7 @@ export default function ReportsFinancePage() {
           </table>
         </div>
       </Block>
+      </>)}
     </div>
   );
 }

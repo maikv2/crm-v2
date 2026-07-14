@@ -18,13 +18,18 @@ export async function GET(request: Request) {
     const repId = searchParams.get("repId") || null;
     const regionId = searchParams.get("regionId") || null;
 
-    const dateFrom = from ? new Date(from + "T00:00:00.000Z") : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const dateTo = to ? new Date(to + "T23:59:59.999Z") : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999);
+    const now = new Date();
+    const dateFrom = from
+      ? new Date(from + "T00:00:00.000Z")
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+    const dateTo = to
+      ? new Date(to + "T23:59:59.999Z")
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
 
-    const fromMonth = dateFrom.getMonth() + 1;
-    const fromYear = dateFrom.getFullYear();
-    const toMonth = dateTo.getMonth() + 1;
-    const toYear = dateTo.getFullYear();
+    const fromMonth = dateFrom.getUTCMonth() + 1;
+    const fromYear = dateFrom.getUTCFullYear();
+    const toMonth = dateTo.getUTCMonth() + 1;
+    const toYear = dateTo.getUTCFullYear();
 
     // ── 1. Comissões mensais (RepresentativeCommission) ──────────────────────
     const monthlyWhere: any = {

@@ -5,12 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   ChevronRight,
+  KeyRound,
   MapPin,
   MessageCircle,
-  Package,
   Phone,
-  Store,
-  User2,
 } from "lucide-react";
 import MobilePageFrame from "@/app/components/mobile/mobile-page-frame";
 import {
@@ -22,10 +20,15 @@ import {
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
+import {
+  buildPortalAccessMessage,
+  buildPortalAccessWhatsappUrl,
+} from "@/lib/portal-access-message";
 import { getThemeColors } from "@/lib/theme";
 
 type ClientDetails = {
   id: string;
+  code?: string | null;
   name: string;
   tradeName?: string | null;
   legalName?: string | null;
@@ -157,6 +160,36 @@ export default function MobileAdminClientDetailsPage() {
     (sum, item) => sum + Number(item.totalCents || 0),
     0
   );
+
+  function handleSendPortalAccess() {
+    if (!client) return;
+
+    const accessCode = client.code?.trim();
+    if (!accessCode) {
+      alert("Este cliente ainda não possui código de acesso cadastrado.");
+      return;
+    }
+
+    const phone = client.whatsapp || client.phone;
+    if (!phone) {
+      alert("Este cliente não possui WhatsApp ou telefone cadastrado.");
+      return;
+    }
+
+    const message = buildPortalAccessMessage({
+      clientName: client.tradeName || client.name,
+      accessCode,
+      portalUrl: `${window.location.origin}/portal/login`,
+    });
+    const whatsappUrl = buildPortalAccessWhatsappUrl({ phone, message });
+
+    if (!whatsappUrl) {
+      alert("O WhatsApp/telefone do cliente está inválido.");
+      return;
+    }
+
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  }
 
   return (
     <MobilePageFrame
@@ -309,6 +342,30 @@ export default function MobileAdminClientDetailsPage() {
                 </div>
               </Link>
             </div>
+
+            <button
+              type="button"
+              onClick={handleSendPortalAccess}
+              style={{
+                width: "100%",
+                minHeight: 46,
+                marginTop: 10,
+                borderRadius: 14,
+                border: `1px solid ${colors.border}`,
+                background: colors.isDark ? "#102344" : "#eff6ff",
+                color: colors.primary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                fontSize: 13,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              <KeyRound size={15} />
+              Enviar acesso ao portal
+            </button>
           </MobileCard>
 
           <div

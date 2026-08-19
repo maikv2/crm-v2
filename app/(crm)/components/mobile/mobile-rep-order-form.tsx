@@ -18,6 +18,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
+import { clientMatchesSearch } from "@/lib/client-search";
 import { getThemeColors } from "@/lib/theme";
 import {
   MobileCard,
@@ -27,9 +28,18 @@ import {
 
 type Client = {
   id: string;
+  code?: string | null;
   name: string;
+  tradeName?: string | null;
+  legalName?: string | null;
+  city?: string | null;
+  state?: string | null;
+  district?: string | null;
   phone?: string | null;
   whatsapp?: string | null;
+  email?: string | null;
+  cnpj?: string | null;
+  cpf?: string | null;
   regionId?: string | null;
   region?: {
     id: string;
@@ -80,6 +90,7 @@ type AuthResponse = {
 
 type OrderCreateResponse = {
   ok?: boolean;
+  error?: string;
   message?: string;
   order?: {
     id: string;
@@ -238,12 +249,12 @@ export default function MobileRepOrderForm() {
 
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [regions, setRegions] = useState<RegionItem[]>([]);
   const [stockByProductAndLocation, setStockByProductAndLocation] = useState<
     Record<string, Record<string, number>>
   >({});
 
   const [selectedClientId, setSelectedClientId] = useState(clientIdFromQuery);
+  const [clientSearch, setClientSearch] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
@@ -361,7 +372,6 @@ export default function MobileRepOrderForm() {
           setRepStockLocationName(representativeStockLocation?.name ?? "Estoque");
           setClients(filteredClients);
           setProducts(activeProducts);
-          setRegions(nextRegions);
           setStockByProductAndLocation(stockMap);
           setCart(
             activeProducts.map((product) => ({
@@ -405,6 +415,23 @@ export default function MobileRepOrderForm() {
   const selectedClient = useMemo(() => {
     return clients.find((item) => item.id === selectedClientId) ?? null;
   }, [clients, selectedClientId]);
+
+  const filteredClients = useMemo(() => {
+    return clients
+      .filter((client) => clientMatchesSearch(client, clientSearch))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [clients, clientSearch]);
+
+  const clientOptions = useMemo(() => {
+    if (
+      selectedClient &&
+      !filteredClients.some((client) => client.id === selectedClient.id)
+    ) {
+      return [selectedClient, ...filteredClients];
+    }
+
+    return filteredClients;
+  }, [filteredClients, selectedClient]);
 
   const categories = useMemo(() => {
     return Array.from(
@@ -680,7 +707,7 @@ export default function MobileRepOrderForm() {
       const json = (await res.json().catch(() => null)) as OrderCreateResponse | null;
 
       if (!res.ok) {
-        throw new Error(json?.message || (json as any)?.error || "Erro ao salvar pedido.");
+        throw new Error(json?.message || json?.error || "Erro ao salvar pedido.");
       }
 
       const createdOrderId = json?.order?.id ?? "";
@@ -832,6 +859,38 @@ router.push(targetPath);
         <MobileSectionTitle title="Cliente" />
 
         <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ position: "relative" }}>
+            <Search
+              size={16}
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: colors.subtext,
+                pointerEvents: "none",
+              }}
+            />
+
+            <input
+              type="text"
+              value={clientSearch}
+              onChange={(e) => setClientSearch(e.target.value)}
+              placeholder="Buscar cliente por nome, código ou telefone"
+              style={{
+                width: "100%",
+                height: 44,
+                borderRadius: 14,
+                border: `1px solid ${colors.border}`,
+                background: colors.inputBg,
+                color: colors.text,
+                padding: "0 14px 0 38px",
+                outline: "none",
+                fontSize: 14,
+              }}
+            />
+          </div>
+
           <select
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
@@ -848,12 +907,18 @@ router.push(targetPath);
             }}
           >
             <option value="">Selecione um cliente</option>
-            {clients.map((client) => (
+            {clientOptions.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name}
               </option>
             ))}
           </select>
+
+          {clientSearch.trim() && filteredClients.length === 0 ? (
+            <div style={{ fontSize: 12, color: colors.subtext }}>
+              Nenhum cliente encontrado para essa busca.
+            </div>
+          ) : null}
 
           {selectedClient ? (
             <div

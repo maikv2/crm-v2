@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   CheckCircle2,
   ChevronLeft,
-  ChevronRight,
   FileText,
   MessageCircle,
   Minus,
@@ -19,6 +18,7 @@ import {
   User2,
 } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
+import { clientMatchesSearch } from "@/lib/client-search";
 import { getThemeColors } from "@/lib/theme";
 import {
   MobileCard,
@@ -28,9 +28,18 @@ import {
 
 type Client = {
   id: string;
+  code?: string | null;
   name: string;
+  tradeName?: string | null;
+  legalName?: string | null;
+  city?: string | null;
+  state?: string | null;
+  district?: string | null;
   phone?: string | null;
   whatsapp?: string | null;
+  email?: string | null;
+  cnpj?: string | null;
+  cpf?: string | null;
   regionId?: string | null;
   region?: {
     id: string;
@@ -81,6 +90,7 @@ type AuthResponse = {
 
 type OrderCreateResponse = {
   ok?: boolean;
+  error?: string;
   message?: string;
   order?: {
     id: string;
@@ -242,6 +252,7 @@ export default function MobileAdminOrderForm() {
   >({});
 
   const [selectedClientId, setSelectedClientId] = useState(clientIdFromQuery);
+  const [clientSearch, setClientSearch] = useState("");
   const [selectedStockLocationId, setSelectedStockLocationId] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -368,6 +379,23 @@ export default function MobileAdminOrderForm() {
   const selectedClient = useMemo(() => {
     return clients.find((item) => item.id === selectedClientId) ?? null;
   }, [clients, selectedClientId]);
+
+  const filteredClients = useMemo(() => {
+    return clients
+      .filter((client) => clientMatchesSearch(client, clientSearch))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [clients, clientSearch]);
+
+  const clientOptions = useMemo(() => {
+    if (
+      selectedClient &&
+      !filteredClients.some((client) => client.id === selectedClient.id)
+    ) {
+      return [selectedClient, ...filteredClients];
+    }
+
+    return filteredClients;
+  }, [filteredClients, selectedClient]);
 
   useEffect(() => {
     if (!selectedClient?.regionId) return;
@@ -638,7 +666,7 @@ export default function MobileAdminOrderForm() {
       const json = (await res.json().catch(() => null)) as OrderCreateResponse | null;
 
       if (!res.ok) {
-        throw new Error(json?.message || (json as any)?.error || "Erro ao salvar pedido.");
+        throw new Error(json?.message || json?.error || "Erro ao salvar pedido.");
       }
 
       const createdOrderId = json?.order?.id ?? "";
@@ -806,9 +834,9 @@ router.push(targetPath);
 
             <input
               type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar produto por nome ou SKU"
+              value={clientSearch}
+              onChange={(e) => setClientSearch(e.target.value)}
+              placeholder="Buscar cliente por nome, código ou telefone"
               style={{
                 width: "100%",
                 height: 44,
@@ -839,16 +867,19 @@ router.push(targetPath);
             }}
           >
             <option value="">Selecione um cliente</option>
-            {clients
-              .slice()
-              .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
-              .map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                  {client.region?.name ? ` • ${client.region.name}` : ""}
-                </option>
-              ))}
+            {clientOptions.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+                {client.region?.name ? ` • ${client.region.name}` : ""}
+              </option>
+            ))}
           </select>
+
+          {clientSearch.trim() && filteredClients.length === 0 ? (
+            <div style={{ fontSize: 12, color: colors.subtext }}>
+              Nenhum cliente encontrado para essa busca.
+            </div>
+          ) : null}
 
           {selectedClient ? (
             <div
@@ -910,7 +941,44 @@ router.push(targetPath);
       </MobileCard>
 
       <MobileCard>
-        <MobileSectionTitle title="Categorias" />
+        <MobileSectionTitle title="Buscar produtos" />
+
+        <div
+          style={{
+            position: "relative",
+            marginBottom: 12,
+          }}
+        >
+          <Search
+            size={16}
+            style={{
+              position: "absolute",
+              left: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: colors.subtext,
+              pointerEvents: "none",
+            }}
+          />
+
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar produto por nome ou SKU"
+            style={{
+              width: "100%",
+              height: 44,
+              borderRadius: 14,
+              border: `1px solid ${colors.border}`,
+              background: colors.inputBg,
+              color: colors.text,
+              padding: "0 14px 0 38px",
+              outline: "none",
+              fontSize: 14,
+            }}
+          />
+        </div>
 
         <div
           style={{

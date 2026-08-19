@@ -24,10 +24,15 @@ import {
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
+import {
+  buildPortalAccessMessage,
+  buildPortalAccessWhatsappUrl,
+} from "@/lib/portal-access-message";
 import { getThemeColors } from "@/lib/theme";
 
 type ClientDetails = {
   id: string;
+  code?: string | null;
   name: string;
   tradeName?: string | null;
   legalName?: string | null;
@@ -161,6 +166,37 @@ export default function MobileRepClientDetailsPage() {
     0
   );
 
+  function handleSendPortalAccess() {
+    if (!client) return;
+
+    const accessCode = client.code?.trim();
+    if (!accessCode) {
+      alert("Este cliente ainda não possui código de acesso cadastrado.");
+      return;
+    }
+
+    const phone = client.whatsapp || client.phone;
+    if (!phone) {
+      alert("Este cliente não possui WhatsApp ou telefone cadastrado.");
+      return;
+    }
+
+    const portalUrl = `${window.location.origin}/portal/login`;
+    const message = buildPortalAccessMessage({
+      clientName: client.tradeName || client.name,
+      accessCode,
+      portalUrl,
+    });
+    const whatsappUrl = buildPortalAccessWhatsappUrl({ phone, message });
+
+    if (!whatsappUrl) {
+      alert("O WhatsApp/telefone do cliente está inválido.");
+      return;
+    }
+
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <MobileRepPageFrame
       title="Cliente"
@@ -232,7 +268,7 @@ export default function MobileRepClientDetailsPage() {
               style={{
                 marginTop: 14,
                 display: "grid",
-                gridTemplateColumns: "repeat(5, minmax(0,1fr))",
+                gridTemplateColumns: "repeat(3, minmax(0,1fr))",
                 gap: 8,
               }}
             >
@@ -336,26 +372,48 @@ export default function MobileRepClientDetailsPage() {
                 </div>
               </Link>
 
-                 <div
-  style={{
-    minHeight: 42,
-    borderRadius: 12,
-    border: `1px solid ${colors.border}`,
-    background: colors.cardBg,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    fontSize: 12,
-    fontWeight: 800,
-    color: colors.text,
-    cursor: "pointer",
-  }}
-  onClick={() => router.push(`/clients/${id}/edit`)}
->
-  <Pencil size={14} />
-  Editar
-</div>
+              <button
+                type="button"
+                onClick={handleSendPortalAccess}
+                style={{
+                  minHeight: 42,
+                  borderRadius: 12,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.cardBg,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: colors.text,
+                  cursor: "pointer",
+                }}
+              >
+                <MessageCircle size={14} />
+                Acesso
+              </button>
+
+              <div
+                style={{
+                  minHeight: 42,
+                  borderRadius: 12,
+                  border: `1px solid ${colors.border}`,
+                  background: colors.cardBg,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: colors.text,
+                  cursor: "pointer",
+                }}
+                onClick={() => router.push(`/clients/${id}/edit`)}
+              >
+                <Pencil size={14} />
+                Editar
+              </div>
             </div>
           </MobileCard>
 

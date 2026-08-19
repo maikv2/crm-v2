@@ -2,14 +2,22 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { MessageCircle } from "lucide-react";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import { MobileCard, MobileSectionTitle } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
+import {
+  buildPortalAccessMessage,
+  buildPortalAccessWhatsappUrl,
+} from "@/lib/portal-access-message";
 import { getThemeColors } from "@/lib/theme";
 
 type Client = {
   id: string;
+  code?: string | null;
   name: string;
+  phone?: string | null;
+  whatsapp?: string | null;
   city?: string | null;
   neighborhood?: string | null;
   address?: string | null;
@@ -58,21 +66,23 @@ function MobileRepVisitPageContent() {
       setError(null);
 
       const res = await fetch("/api/rep/clients", { cache: "no-store" });
-      const data = await res.json();
+      const data = (await res.json()) as { items?: Client[]; error?: string };
 
       if (!res.ok) {
         throw new Error(data?.error || "Erro ao carregar clientes.");
       }
 
-       setClients(Array.isArray(data?.items) ? data.items : []);
-  } catch (err: any) {
-    console.error(err);
-    setError(err?.message || "Erro ao carregar clientes.");
-    setClients([]);
-  } finally {
-    setLoading(false);
+      setClients(Array.isArray(data?.items) ? data.items : []);
+    } catch (err: unknown) {
+      console.error(err);
+      setError(
+        err instanceof Error ? err.message : "Erro ao carregar clientes."
+      );
+      setClients([]);
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   useEffect(() => {
     loadClients();
@@ -151,12 +161,45 @@ function MobileRepVisitPageContent() {
       }
 
       router.push("/m/rep");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err?.message || "Erro ao registrar visita.");
+      setError(
+        err instanceof Error ? err.message : "Erro ao registrar visita."
+      );
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleSendPortalAccess() {
+    if (!selectedClient) return;
+
+    const accessCode = selectedClient.code?.trim();
+    if (!accessCode) {
+      alert("Este cliente ainda não possui código de acesso cadastrado.");
+      return;
+    }
+
+    const phone = selectedClient.whatsapp || selectedClient.phone;
+    if (!phone) {
+      alert("Este cliente não possui WhatsApp ou telefone cadastrado.");
+      return;
+    }
+
+    const portalUrl = `${window.location.origin}/portal/login`;
+    const message = buildPortalAccessMessage({
+      clientName: selectedClient.name,
+      accessCode,
+      portalUrl,
+    });
+    const whatsappUrl = buildPortalAccessWhatsappUrl({ phone, message });
+
+    if (!whatsappUrl) {
+      alert("O WhatsApp/telefone do cliente está inválido.");
+      return;
+    }
+
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
   const inputStyle: React.CSSProperties = {
@@ -251,6 +294,28 @@ function MobileRepVisitPageContent() {
                 <div style={{ color: colors.subtext, fontSize: 12 }}>
                   {selectedClient.address || "-"}
                 </div>
+                <button
+                  type="button"
+                  onClick={handleSendPortalAccess}
+                  style={{
+                    minHeight: 42,
+                    marginTop: 4,
+                    borderRadius: 12,
+                    border: `1px solid ${colors.border}`,
+                    background: colors.cardBg,
+                    color: colors.text,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    fontSize: 13,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  <MessageCircle size={15} />
+                  Enviar acesso ao portal
+                </button>
               </div>
             ) : null}
           </div>

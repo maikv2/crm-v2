@@ -143,9 +143,23 @@ export default function CRMLayout({
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: colors.pageBg }}>
+    <div
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        minWidth: 1180,
+        background: colors.pageBg,
+      }}
+    >
       <Sidebar />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <Header />
         <main style={{ flex: 1, padding: 0, background: colors.pageBg }}>
           {children}

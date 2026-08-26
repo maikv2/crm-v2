@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { PaymentStatus, ReceivableStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendText, ZApiConfigError, ZApiRequestError } from "@/lib/zapi";
 
@@ -6,16 +7,27 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BRT_OFFSET_MS = -3 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const STAGES = [0, 3, 5, 8] as const;
 type Stage = (typeof STAGES)[number];
 
-function todayBrtMidnightUtc(): Date {
-  const now = Date.now();
-  const brt = new Date(now + BRT_OFFSET_MS);
+function brtMidnightUtc(date: Date): Date {
+  const brt = new Date(date.getTime() + BRT_OFFSET_MS);
   const y = brt.getUTCFullYear();
   const m = brt.getUTCMonth();
   const d = brt.getUTCDate();
   return new Date(Date.UTC(y, m, d) - BRT_OFFSET_MS);
+}
+
+function todayBrtMidnightUtc(): Date {
+  return brtMidnightUtc(new Date());
+}
+
+function daysLate(today: Date, dueDate: Date): number {
+  return Math.max(
+    0,
+    Math.floor((today.getTime() - brtMidnightUtc(dueDate).getTime()) / DAY_MS)
+  );
 }
 
 function ymd(d: Date): string {
@@ -143,8 +155,164 @@ function alreadyNotified(notes: string | null | undefined, stage: Stage): boolea
   return notes.includes(`[NOTIF_D${stage}_`);
 }
 
+function alreadyFinanceNotified(
+  notes: string | null | undefined,
+  stage: Stage
+): boolean {
+  if (!notes) return false;
+  return notes.includes(`[FIN_NOTIF_D${stage}_`);
+}
+
+function alreadyAnyFinanceNotified(notes: string | null | undefined): boolean {
+  if (!notes) return false;
+  return notes.includes("[FIN_OVERDUE_") || notes.includes("[FIN_NOTIF_D");
+}
+
 function notifMarker(stage: Stage, today: Date): string {
   return `[NOTIF_D${stage}_${ymd(today)}]`;
+}
+
+function financeNotifMarker(stage: Stage, today: Date): string {
+  return `[FIN_NOTIF_D${stage}_${ymd(today)}]`;
+}
+
+function financeOverdueMarker(today: Date): string {
+  return `[FIN_OVERDUE_${ymd(today)}]`;
+}
+
+async function appendInstallmentMarker(installmentId: string, marker: string) {
+  const current = await prisma.accountsReceivableInstallment.findUnique({
+    where: { id: installmentId },
+    select: { notes: true },
+  });
+
+  if (!current || current.notes?.includes(marker)) return;
+
+  await prisma.accountsReceivableInstallment.update({
+    where: { id: installmentId },
+    data: {
+      notes: current.notes ? `${current.notes}\n${marker}` : marker,
+    },
+  });
+}
+
+async function findFinanceRecipient() {
+  const envPhone = process.env.FINANCEIRO_WHATSAPP?.trim();
+  if (envPhone) return { name: "Financeiro", phone: envPhone };
+
+  const preferred = await prisma.user.findFirst({
+    where: {
+      role: "ADMINISTRATIVE",
+      active: true,
+      phone: { not: null },
+      name: { contains: "Patricia", mode: "insensitive" },
+    },
+    select: { name: true, phone: true },
+  });
+
+  if (preferred?.phone) return preferred;
+
+  return prisma.user.findFirst({
+    where: {
+      role: "ADMINISTRATIVE",
+      active: true,
+      phone: { not: null },
+    },
+    orderBy: { name: "asc" },
+    select: { name: true, phone: true },
+  });
+}
+
+function buildFinanceMessage(
+  stage: number,
+  params: {
+    clientName: string;
+    orderNumber: number;
+    remainingCents: number;
+    dueDate: Date;
+    clientPhone?: string | null;
+    boletoLink?: string | null;
+    barcode?: string | null;
+  }
+): string {
+  const num = `#${String(params.orderNumber).padStart(6, "0")}`;
+  const link = params.boletoLink || buildSegundaViaUrl(params.orderNumber);
+  const clientPhone = params.clientPhone || "-";
+  const linhaDigitavel = params.barcode
+    ? `\nLinha digitável:\n${params.barcode}\n`
+    : "";
+
+  return (
+    `Boleto em atraso - V2 Distribuidora\n\n` +
+    `Cliente: ${params.clientName}\n` +
+    `Pedido: ${num}\n` +
+    `Valor em aberto: ${formatBRL(params.remainingCents)}\n` +
+    `Vencimento: ${formatDateBR(params.dueDate)}\n` +
+    `Atraso: ${stage} dia${stage > 1 ? "s" : ""}\n` +
+    `Telefone do cliente: ${clientPhone}\n\n` +
+    `Boleto / 2ª via:\n${link}\n` +
+    linhaDigitavel +
+    `\nEsse aviso foi enviado automaticamente porque o boleto ainda não consta como pago.`
+  );
+}
+
+async function sendFinanceOverdueNotice(params: {
+  stage: number;
+  today: Date;
+  installmentId: string;
+  clientName: string;
+  orderNumber: number;
+  remainingCents: number;
+  dueDate: Date;
+  clientPhone?: string | null;
+  boletoLink?: string | null;
+  barcode?: string | null;
+}) {
+  const financeRecipient = await findFinanceRecipient();
+  if (!financeRecipient?.phone) {
+    return { sent: false, skipped: "financeiro_sem_whatsapp" };
+  }
+
+  const message = buildFinanceMessage(params.stage, {
+    clientName: params.clientName,
+    orderNumber: params.orderNumber,
+    remainingCents: params.remainingCents,
+    dueDate: params.dueDate,
+    clientPhone: params.clientPhone,
+    boletoLink: params.boletoLink,
+    barcode: params.barcode,
+  });
+
+  await sendText({ phone: financeRecipient.phone, message });
+  await appendInstallmentMarker(
+    params.installmentId,
+    financeOverdueMarker(params.today)
+  );
+
+  return { sent: true };
+}
+
+async function markInstallmentOverdue(params: {
+  installmentId: string;
+  accountsReceivableId: string;
+  orderId: string;
+}) {
+  await prisma.$transaction(async (tx) => {
+    await tx.accountsReceivableInstallment.update({
+      where: { id: params.installmentId },
+      data: { status: ReceivableStatus.OVERDUE },
+    });
+
+    await tx.accountsReceivable.update({
+      where: { id: params.accountsReceivableId },
+      data: { status: ReceivableStatus.OVERDUE },
+    });
+
+    await tx.order.update({
+      where: { id: params.orderId },
+      data: { paymentStatus: PaymentStatus.OVERDUE },
+    });
+  });
 }
 
 type StageResult = {
@@ -153,20 +321,20 @@ type StageResult = {
   orderNumber: number;
   phone: string | null;
   sent: boolean;
+  financeSent?: boolean;
+  financeSkipped?: string;
+  financeError?: string;
   skipped?: string;
   error?: string;
 };
 
-async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
-  const start = new Date(today);
-  start.setUTCDate(start.getUTCDate() - stage);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-
+async function processInitialOverdueFinanceAlerts(
+  today: Date
+): Promise<StageResult[]> {
   const installments = await prisma.accountsReceivableInstallment.findMany({
     where: {
       status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
-      dueDate: { gte: start, lt: end },
+      dueDate: { lt: today },
       accountsReceivable: {
         paymentMethod: "BOLETO",
       },
@@ -176,7 +344,6 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
         include: {
           client: {
             select: {
-              id: true,
               name: true,
               whatsapp: true,
               phone: true,
@@ -184,6 +351,7 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
           },
           order: {
             select: {
+              id: true,
               number: true,
             },
           },
@@ -214,18 +382,134 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
     const boleto = inst.externalPayments?.[0];
     const clientName = client?.name ?? "cliente";
     const orderNumber = order?.number ?? 0;
+    const phone = client?.whatsapp || client?.phone || null;
+    const remainingCents = (inst.amountCents ?? 0) - (inst.receivedCents ?? 0);
+    const result: StageResult = {
+      installmentId: inst.id,
+      clientName,
+      orderNumber,
+      phone,
+      sent: false,
+    };
 
-    if (alreadyNotified(inst.notes, stage)) {
-      results.push({
+    if (remainingCents <= 0) {
+      results.push({ ...result, skipped: "valor_zerado" });
+      continue;
+    }
+
+    if (ar?.id && order?.id) {
+      await markInstallmentOverdue({
         installmentId: inst.id,
-        clientName,
-        orderNumber,
-        phone: null,
-        sent: false,
-        skipped: "ja_notificado",
+        accountsReceivableId: ar.id,
+        orderId: order.id,
+      });
+    }
+
+    if (alreadyAnyFinanceNotified(inst.notes)) {
+      results.push({
+        ...result,
+        financeSkipped: "financeiro_ja_notificado",
       });
       continue;
     }
+
+    try {
+      const financeResult = await sendFinanceOverdueNotice({
+        stage: daysLate(today, inst.dueDate),
+        today,
+        installmentId: inst.id,
+        clientName,
+        orderNumber,
+        remainingCents,
+        dueDate: inst.dueDate,
+        clientPhone: phone,
+        boletoLink: boleto?.boletoLink ?? null,
+        barcode: boleto?.barcode ?? null,
+      });
+
+      results.push({
+        ...result,
+        financeSent: financeResult.sent,
+        financeSkipped: financeResult.skipped,
+      });
+    } catch (err: any) {
+      results.push({
+        ...result,
+        financeError:
+          err instanceof ZApiRequestError
+            ? `${err.message} (${err.status})`
+            : err instanceof ZApiConfigError
+            ? err.message
+            : err?.message || "erro desconhecido",
+      });
+    }
+  }
+
+  return results;
+}
+
+async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
+  const start = new Date(today);
+  start.setUTCDate(start.getUTCDate() - stage);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+
+  const installments = await prisma.accountsReceivableInstallment.findMany({
+    where: {
+      status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
+      dueDate: { gte: start, lt: end },
+      accountsReceivable: {
+        paymentMethod: "BOLETO",
+      },
+    },
+    include: {
+      accountsReceivable: {
+        include: {
+          client: {
+            select: {
+              id: true,
+              name: true,
+              whatsapp: true,
+              phone: true,
+            },
+          },
+          order: {
+            select: {
+              id: true,
+              number: true,
+            },
+          },
+        },
+      },
+      externalPayments: {
+        where: {
+          provider: "EFI",
+          type: { in: ["BOLETO", "BOLIX"] },
+          status: { in: ["PENDING", "OVERDUE"] },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          boletoLink: true,
+          barcode: true,
+        },
+      },
+    },
+  });
+
+  const results: StageResult[] = [];
+
+  for (const inst of installments) {
+    const ar = inst.accountsReceivable;
+    const client = ar?.client;
+    const order = ar?.order;
+    const boleto = inst.externalPayments?.[0];
+    const clientName = client?.name ?? "cliente";
+    const orderNumber = order?.number ?? 0;
+    const clientAlreadyNotified = alreadyNotified(inst.notes, stage);
+    const financeAlreadyNotified =
+      alreadyFinanceNotified(inst.notes, stage) ||
+      alreadyAnyFinanceNotified(inst.notes);
 
     const remainingCents = (inst.amountCents ?? 0) - (inst.receivedCents ?? 0);
     if (remainingCents <= 0) {
@@ -241,13 +525,64 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
     }
 
     const phone = client?.whatsapp || client?.phone || null;
+    const result: StageResult = {
+      installmentId: inst.id,
+      clientName,
+      orderNumber,
+      phone,
+      sent: false,
+    };
+    const overdueStage = stage === 0 ? null : stage;
+
+    if (overdueStage && ar?.id && order?.id) {
+      await markInstallmentOverdue({
+        installmentId: inst.id,
+        accountsReceivableId: ar.id,
+        orderId: order.id,
+      });
+
+      if (financeAlreadyNotified) {
+        result.financeSkipped = "financeiro_ja_notificado";
+      } else {
+        try {
+          const financeResult = await sendFinanceOverdueNotice({
+            stage: overdueStage,
+            today,
+            installmentId: inst.id,
+            clientName,
+            orderNumber,
+            remainingCents,
+            dueDate: inst.dueDate,
+            clientPhone: phone,
+            boletoLink: boleto?.boletoLink ?? null,
+            barcode: boleto?.barcode ?? null,
+          });
+
+          result.financeSent = financeResult.sent;
+          result.financeSkipped = financeResult.skipped;
+          await appendInstallmentMarker(inst.id, financeNotifMarker(stage, today));
+        } catch (err: any) {
+          result.financeError =
+            err instanceof ZApiRequestError
+              ? `${err.message} (${err.status})`
+              : err instanceof ZApiConfigError
+              ? err.message
+              : err?.message || "erro desconhecido";
+        }
+      }
+    }
+
+    if (clientAlreadyNotified) {
+      results.push({
+        ...result,
+        skipped: "ja_notificado",
+      });
+      continue;
+    }
+
     if (!phone) {
       results.push({
-        installmentId: inst.id,
-        clientName,
-        orderNumber,
-        phone: null,
-        sent: false,
+        ...result,
         skipped: "sem_whatsapp",
       });
       continue;
@@ -265,18 +600,10 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
     try {
       await sendText({ phone, message });
 
-      const marker = notifMarker(stage, today);
-      const newNotes = inst.notes ? `${inst.notes}\n${marker}` : marker;
-      await prisma.accountsReceivableInstallment.update({
-        where: { id: inst.id },
-        data: { notes: newNotes },
-      });
+      await appendInstallmentMarker(inst.id, notifMarker(stage, today));
 
       results.push({
-        installmentId: inst.id,
-        clientName,
-        orderNumber,
-        phone,
+        ...result,
         sent: true,
       });
     } catch (err: any) {
@@ -288,10 +615,7 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
           : err?.message || "erro desconhecido";
 
       results.push({
-        installmentId: inst.id,
-        clientName,
-        orderNumber,
-        phone,
+        ...result,
         sent: false,
         error: errMsg,
       });
@@ -317,6 +641,8 @@ async function handle(request: Request) {
     const today = todayBrtMidnightUtc();
     const summary: Record<string, StageResult[]> = {};
 
+    summary.financeiroAtraso = await processInitialOverdueFinanceAlerts(today);
+
     for (const stage of STAGES) {
       summary[`d${stage}`] = await processStage(stage, today);
     }
@@ -326,12 +652,22 @@ async function handle(request: Request) {
         acc[key] = {
           total: list.length,
           enviados: list.filter((r) => r.sent).length,
+          financeiroEnviados: list.filter((r) => r.financeSent).length,
           pulados: list.filter((r) => !!r.skipped).length,
-          erros: list.filter((r) => !!r.error).length,
+          erros: list.filter((r) => !!r.error || !!r.financeError).length,
         };
         return acc;
       },
-      {} as Record<string, { total: number; enviados: number; pulados: number; erros: number }>
+      {} as Record<
+        string,
+        {
+          total: number;
+          enviados: number;
+          financeiroEnviados: number;
+          pulados: number;
+          erros: number;
+        }
+      >
     );
 
     return NextResponse.json({

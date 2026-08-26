@@ -45,6 +45,7 @@ export async function GET(
             transfers: true,
           },
         },
+        externalPayments: true,
         stockMovements: true,
         financeTransactions: true,
       },

@@ -49,6 +49,10 @@ type ReceivableInstallment = {
   dueDate: string;
   paidAt?: string | null;
   status: string;
+  externalPayments?: Array<{
+    boletoLink?: string | null;
+    boletoPdfUrl?: string | null;
+  }>;
   accountsReceivable?: {
     id: string;
     paymentMethod?: string | null;
@@ -1303,9 +1307,15 @@ export default function FinancePage() {
                       <ActionButton
                         label="Abrir boleto"
                         theme={theme}
-                        onClick={() =>
-                          alert("Botão do boleto ainda não está ativo.")
-                        }
+                        onClick={() => {
+                          const boleto = item.externalPayments?.[0];
+                          const url = boleto?.boletoLink || boleto?.boletoPdfUrl;
+                          if (!url) {
+                            alert("Boleto ainda não emitido para esta parcela.");
+                            return;
+                          }
+                          window.open(url, "_blank", "noopener,noreferrer");
+                        }}
                       />
                     </td>
                   </tr>

@@ -1,0 +1,246 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { OrderAccessError, requireOrderAccess } from "@/lib/order-auth";
+import {
+  EfiChargesApiError,
+  EfiChargesConfigError,
+  ensureEfiBilletsForOrder,
+} from "@/lib/efi-payment-service";
+import {
+  sendDocument,
+  sendText,
+  ZApiConfigError,
+  ZApiRequestError,
+} from "@/lib/zapi";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function centsToBRL(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format((value || 0) / 100);
+}
+
+function dateToBR(date: Date | null | undefined) {
+  if (!date) return "-";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function orderNumber(value: number) {
+  return String(value).padStart(6, "0");
+}
+
+function buildMessage(params: {
+  clientName: string;
+  orderNumber: number;
+  payments: Awaited<ReturnType<typeof ensureEfiBilletsForOrder>>;
+}) {
+  const lines = [
+    `Olá, ${params.clientName}!`,
+    "",
+    `Segue o boleto do pedido #${orderNumber(params.orderNumber)} da V2 Distribuidora.`,
+    "",
+  ];
+
+  for (const item of params.payments) {
+    const payment = item.payment;
+    lines.push(
+      `Parcela: ${centsToBRL(payment.amountCents)}`,
+      `Vencimento: ${dateToBR(payment.dueDate)}`,
+      payment.boletoLink ? `Link: ${payment.boletoLink}` : "",
+      payment.barcode ? `Linha digitável: ${payment.barcode}` : "",
+      payment.pixCopyPaste ? `Pix copia e cola: ${payment.pixCopyPaste}` : "",
+      ""
+    );
+  }
+
+  lines.push(
+    "Se já realizou o pagamento, pode desconsiderar esta mensagem.",
+    "Qualquer dúvida, é só nos chamar por aqui."
+  );
+
+  return lines.filter((line, index, all) => line || all[index - 1]).join("\n");
+}
+
+async function trySendSinglePdf(params: {
+  phone: string;
+  pdfUrl: string | null;
+  orderNumber: number;
+}) {
+  if (!params.pdfUrl) {
+    return { sent: false, skipped: "sem_pdf" };
+  }
+
+  try {
+    const res = await fetch(params.pdfUrl, { cache: "no-store" });
+    if (!res.ok) {
+      return { sent: false, skipped: `pdf_http_${res.status}` };
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const fileName = `boleto-${orderNumber(params.orderNumber)}.pdf`;
+    const zapi = await sendDocument({
+      phone: params.phone,
+      document: buffer,
+      extension: "pdf",
+      fileName,
+      caption: "Boleto V2 Distribuidora",
+    });
+
+    return { sent: true, fileName, zapi };
+  } catch (error) {
+    return {
+      sent: false,
+      skipped: error instanceof Error ? error.message : "erro_pdf",
+    };
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const idFromQuery = url.searchParams.get("id");
+    const body = await request
+      .json()
+      .catch(() => ({} as Record<string, unknown>));
+
+    const orderId =
+      (typeof body.orderId === "string" && body.orderId) ||
+      idFromQuery ||
+      "";
+    const installmentId =
+      typeof body.installmentId === "string" ? body.installmentId : null;
+
+    if (!orderId) {
+      return NextResponse.json(
+        { error: "ID do pedido é obrigatório." },
+        { status: 400 }
+      );
+    }
+
+    await requireOrderAccess(orderId);
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        number: true,
+        paymentMethod: true,
+        client: {
+          select: {
+            name: true,
+            tradeName: true,
+            whatsapp: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return NextResponse.json(
+        { error: "Pedido não encontrado." },
+        { status: 404 }
+      );
+    }
+
+    if (order.paymentMethod !== "BOLETO") {
+      return NextResponse.json(
+        { error: "Este pedido não está marcado como boleto." },
+        { status: 400 }
+      );
+    }
+
+    const phoneOverride =
+      typeof body.phone === "string" ? body.phone.trim() : "";
+    const phone = phoneOverride || order.client?.whatsapp || order.client?.phone || "";
+
+    if (!phone) {
+      return NextResponse.json(
+        { error: "Cliente sem WhatsApp/telefone cadastrado." },
+        { status: 400 }
+      );
+    }
+
+    const payments = await ensureEfiBilletsForOrder(
+      order.id,
+      request.url,
+      installmentId
+    );
+
+    const message = buildMessage({
+      clientName: order.client?.tradeName || order.client?.name || "cliente",
+      orderNumber: order.number,
+      payments,
+    });
+
+    const textResult = await sendText({ phone, message });
+    const pdfResult =
+      payments.length === 1
+        ? await trySendSinglePdf({
+            phone,
+            pdfUrl: payments[0].payment.boletoPdfUrl,
+            orderNumber: order.number,
+          })
+        : { sent: false, skipped: "multiplos_boletos" };
+
+    return NextResponse.json({
+      ok: true,
+      message: "Boleto enviado ao cliente pelo WhatsApp.",
+      phone,
+      payments: payments.map((item) => ({
+        id: item.payment.id,
+        chargeId: item.payment.providerChargeId,
+        status: item.payment.status,
+        created: item.created,
+        synced: item.synced,
+      })),
+      zapi: {
+        text: textResult,
+        pdf: pdfResult,
+      },
+    });
+  } catch (error: any) {
+    if (error instanceof OrderAccessError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status }
+      );
+    }
+
+    if (error instanceof EfiChargesConfigError) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (error instanceof EfiChargesApiError) {
+      return NextResponse.json(
+        { error: error.message, detalhes: error.payload },
+        { status: 502 }
+      );
+    }
+
+    if (error instanceof ZApiConfigError) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (error instanceof ZApiRequestError) {
+      return NextResponse.json(
+        { error: error.message, detalhes: error.payload },
+        { status: 502 }
+      );
+    }
+
+    console.error("POST /api/whatsapp/send-boleto error:", error);
+    return NextResponse.json(
+      { error: error?.message || "Erro ao enviar boleto." },
+      { status: 500 }
+    );
+  }
+}

@@ -249,18 +249,6 @@ export default function MobileRepOrderDetailsPage() {
           : `Erro: ${data?.error || res.status}`,
       );
 
-      // Disparo automático ao financeiro quando for boleto
-      if (res.ok) {
-        try {
-          await fetch("/api/whatsapp/send-boleto-request", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: order.id }),
-          });
-        } catch (errBoleto) {
-          console.error("Erro ao enviar solicitação de boleto:", errBoleto);
-        }
-      }
     } catch (err) {
       console.error(err);
       alert("Erro ao enviar NF-e por WhatsApp.");
@@ -293,7 +281,7 @@ export default function MobileRepOrderDetailsPage() {
     if (!order?.id) return;
     setBusy("boleto");
     try {
-      const res = await fetch("/api/whatsapp/send-boleto-request", {
+      const res = await fetch("/api/whatsapp/send-boleto", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
@@ -301,12 +289,12 @@ export default function MobileRepOrderDetailsPage() {
       const data = await res.json().catch(() => ({}));
       alert(
         res.ok
-          ? data?.message || "Solicitação de boleto enviada ao financeiro."
+          ? data?.message || "Boleto enviado ao cliente."
           : `Erro: ${data?.error || res.status}`,
       );
     } catch (err) {
       console.error(err);
-      alert("Erro ao solicitar boleto.");
+      alert("Erro ao enviar boleto.");
     } finally {
       setBusy(null);
     }
@@ -452,11 +440,17 @@ export default function MobileRepOrderDetailsPage() {
               {order.paymentMethod === "BOLETO" && (
                 <button
                   type="button"
-                  disabled={busy !== null}
+                  disabled={busy !== null || !hasWhatsApp}
                   onClick={handleSendBoleto}
-                  style={{ ...buttonBase, background: "#2563eb" }}
+                  style={{
+                    ...buttonBase,
+                    background: "#2563eb",
+                    opacity: busy || !hasWhatsApp ? 0.6 : 1,
+                    cursor: busy || !hasWhatsApp ? "not-allowed" : "pointer",
+                  }}
+                  title={hasWhatsApp ? "" : "Cliente sem WhatsApp cadastrado"}
                 >
-                  {busy === "boleto" ? "Enviando..." : "🏦 Solicitar boleto"}
+                  {busy === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
                 </button>
               )}
             </div>

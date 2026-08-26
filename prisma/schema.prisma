@@ -9,84 +9,85 @@ datasource db {
 
 model User {
   name                      String
-  email                     String                     @unique
+  email                     String                          @unique
   role                      UserRole
-  createdAt                 DateTime                   @default(now())
-  updatedAt                 DateTime                   @default(now()) @updatedAt
-  id                        String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  regionId                  String?                    @db.Uuid
-  active                    Boolean                    @default(true)
+  createdAt                 DateTime                        @default(now())
+  updatedAt                 DateTime                        @default(now()) @updatedAt
+  id                        String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  regionId                  String?                         @db.Uuid
+  active                    Boolean                         @default(true)
   passwordHash              String
   phone                     String?
   pixKey                    String?
   pixName                   String?
   pixType                   String?
-  stockLocationId           String?                    @db.Uuid
+  stockLocationId           String?                         @db.Uuid
   accountsReceivables       AccountsReceivable[]
-  cashTransfersMade         CashTransfer[]             @relation("CashTransfer_transferredBy")
+  cashTransfersMade         CashTransfer[]                  @relation("CashTransfer_transferredBy")
   exhibitorMaintenances     ExhibitorMaintenance[]
   investorProfile           Investor?
   orders                    Order[]
-  prospects                 Prospect[]                 @relation("RepresentativeProspects")
-  receiptsReceived          Receipt[]                  @relation("Receipt_receivedBy")
+  prospects                 Prospect[]                      @relation("RepresentativeProspects")
+  receiptsReceived          Receipt[]                       @relation("Receipt_receivedBy")
+  repTasks                  RepTask[]
   representativeCommissions RepresentativeCommission[]
   representativeSettlements RepresentativeSettlement[]
   commissionConfirmations   CommissionPaymentConfirmation[]
-  region                    Region?                    @relation(fields: [regionId], references: [id])
-  stockLocation             StockLocation?             @relation(fields: [stockLocationId], references: [id])
+  region                    Region?                         @relation(fields: [regionId], references: [id])
+  stockLocation             StockLocation?                  @relation(fields: [stockLocationId], references: [id])
   visits                    Visit[]
 }
 
 model Region {
-  name                      String                     @unique
-  active                    Boolean                    @default(true)
-  targetClients             Int                        @default(400)
-  createdAt                 DateTime                   @default(now())
-  updatedAt                 DateTime                   @default(now()) @updatedAt
-  id                        String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  stockLocationId           String?                    @db.Uuid
-  monthlySalesTargetCents   Int                        @default(5300000)
-  investmentTargetCents     Int                        @default(20000000)
-  maxQuotaCount             Int                        @default(10)
-  quotaValueCents           Int                        @default(2000000)
-  notes                     String?
-  quotaDistribution         String?
-  accountsReceivables       AccountsReceivable[]
-  cashTransfers             CashTransfer[]
-  clients                   Client[]
-  exhibitors                Exhibitor[]
-  financeTransactions       FinanceTransaction[]
-  investorDistributions          InvestorDistribution[]
-  quarterlyFundDistributions     QuarterlyFundDistribution[]
-  orders                         Order[]
-  portalOrderRequests       PortalOrderRequest[]
-  prospects                 Prospect[]
-  receipts                  Receipt[]
-  stockLocation             StockLocation?             @relation(fields: [stockLocationId], references: [id])
-  monthlyResults            RegionMonthlyResult[]
-  representativeCommissions RepresentativeCommission[]
-  representativeSettlements RepresentativeSettlement[]
-  commissionConfirmations   CommissionPaymentConfirmation[]
-  shares                    Share[]
-  users                     User[]
-  fixedExpenses             FixedExpense[]
+  name                       String                          @unique
+  active                     Boolean                         @default(true)
+  targetClients              Int                             @default(400)
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @default(now()) @updatedAt
+  id                         String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stockLocationId            String?                         @db.Uuid
+  monthlySalesTargetCents    Int                             @default(5300000)
+  investmentTargetCents      Int                             @default(20000000)
+  maxQuotaCount              Int                             @default(10)
+  quotaValueCents            Int                             @default(2000000)
+  notes                      String?
+  quotaDistribution          String?
+  accountsReceivables        AccountsReceivable[]
+  cashTransfers              CashTransfer[]
+  clients                    Client[]
+  exhibitors                 Exhibitor[]
+  financeTransactions        FinanceTransaction[]
+  investorDistributions      InvestorDistribution[]
+  quarterlyFundDistributions QuarterlyFundDistribution[]
+  orders                     Order[]
+  portalOrderRequests        PortalOrderRequest[]
+  prospects                  Prospect[]
+  receipts                   Receipt[]
+  stockLocation              StockLocation?                  @relation(fields: [stockLocationId], references: [id])
+  monthlyResults             RegionMonthlyResult[]
+  representativeCommissions  RepresentativeCommission[]
+  representativeSettlements  RepresentativeSettlement[]
+  commissionConfirmations    CommissionPaymentConfirmation[]
+  shares                     Share[]
+  users                      User[]
+  fixedExpenses              FixedExpense[]
 }
 
 model Investor {
-  name          String
-  email         String?                @unique
-  phone         String?
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @default(now()) @updatedAt
-  id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  document      String?
-  notes         String?
-  userId        String?                @unique @db.Uuid
-  transactions              FinanceTransaction[]
-  user                      User?                       @relation(fields: [userId], references: [id])
-  distributions             InvestorDistribution[]
+  name                       String
+  email                      String?                     @unique
+  phone                      String?
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @default(now()) @updatedAt
+  id                         String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  document                   String?
+  notes                      String?
+  userId                     String?                     @unique @db.Uuid
+  transactions               FinanceTransaction[]
+  user                       User?                       @relation(fields: [userId], references: [id])
+  distributions              InvestorDistribution[]
   quarterlyFundDistributions QuarterlyFundDistribution[]
-  shares                    Share[]
+  shares                     Share[]
 }
 
 model Share {
@@ -161,6 +162,7 @@ model Client {
   exhibitors                 Exhibitor[]
   orders                     Order[]
   portalOrderRequests        PortalOrderRequest[]
+  repTasks                   RepTask[]
   visits                     Visit[]
 }
 
@@ -204,28 +206,28 @@ model Exhibitor {
 }
 
 model Product {
-  sku                  String
-  name                 String
-  category             String
-  active               Boolean                  @default(true)
-  commissionCents      Int                      @default(0)
-  createdAt            DateTime                 @default(now())
-  id                   String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  priceCents           Int
-  barcode              String?
-  cest                 String?
-  ncm                  String?
-  origem               String                   @default("2")
-  cfop                 String?                  @default("5104")
-  cst                  String?                  @default("200")
-  icmsRate             Float?                   @default(17)
-  commercialUnit       String?                  @default("QU")
-  extraCostCents       Int                      @default(0)
-  freightCostCents     Int                      @default(0)
-  imageUrl             String?
-  packagingCostCents   Int                      @default(0)
-  purchaseCostCents    Int                      @default(0)
-  taxCostCents         Int                      @default(0)
+  sku                String
+  name               String
+  category           String
+  active             Boolean  @default(true)
+  commissionCents    Int      @default(0)
+  createdAt          DateTime @default(now())
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  priceCents         Int
+  barcode            String?
+  cest               String?
+  ncm                String?
+  origem             String   @default("2")
+  cfop               String?  @default("5104")
+  cst                String?  @default("200")
+  icmsRate           Float?   @default(17)
+  commercialUnit     String?  @default("QU")
+  extraCostCents     Int      @default(0)
+  freightCostCents   Int      @default(0)
+  imageUrl           String?
+  packagingCostCents Int      @default(0)
+  purchaseCostCents  Int      @default(0)
+  taxCostCents       Int      @default(0)
 
   defectReturnItems    DefectReturnItem[]
   ExhibitorInitialItem ExhibitorInitialItem[]
@@ -271,6 +273,7 @@ model Order {
   items                OrderItem[]
   receipts             Receipt[]
   stockMovements       StockMovement[]
+  externalPayments     ExternalPayment[]
 }
 
 model OrderItem {
@@ -403,6 +406,28 @@ model Visit {
   user            User?      @relation(fields: [userId], references: [id])
 }
 
+model RepTask {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String
+  notes            String?
+  type             String    @default("TASK")
+  priority         String    @default("NORMAL")
+  status           String    @default("OPEN")
+  dueAt            DateTime?
+  completedAt      DateTime?
+  clientId         String?   @db.Uuid
+  representativeId String    @db.Uuid
+  regionId         String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+  client           Client?   @relation(fields: [clientId], references: [id])
+  representative   User      @relation(fields: [representativeId], references: [id])
+
+  @@index([representativeId, status, dueAt])
+  @@index([clientId])
+  @@index([regionId])
+}
+
 model ExhibitorMaintenance {
   id           String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   exhibitorId  String                   @db.Uuid
@@ -434,54 +459,54 @@ model StockBalance {
 }
 
 model FinanceTransaction {
-  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  scope             FinanceScope
-  type              FinanceEntryType
-  status            FinanceStatus       @default(PENDING)
-  category          FinanceCategoryType
-  paymentMethod     PaymentMethod?
-  paymentStatus     PaymentStatus?
-  paymentReceiver   PaymentReceiver?
-  description       String
-  amountCents       Int
-  regionId          String?             @db.Uuid
-  orderId           String?             @db.Uuid
-  investorId        String?             @db.Uuid
-  dueDate           DateTime?
-  paidAt            DateTime?
-  competenceMonth   Int?
-  competenceYear    Int?
-  isSystemGenerated Boolean             @default(false)
-  notes             String?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @default(now()) @updatedAt
-  investor                  Investor?                       @relation(fields: [investorId], references: [id])
-  order                     Order?                          @relation(fields: [orderId], references: [id])
-  region                    Region?                         @relation(fields: [regionId], references: [id])
-  commissionConfirmations   CommissionPaymentConfirmation[]
+  id                      String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scope                   FinanceScope
+  type                    FinanceEntryType
+  status                  FinanceStatus                   @default(PENDING)
+  category                FinanceCategoryType
+  paymentMethod           PaymentMethod?
+  paymentStatus           PaymentStatus?
+  paymentReceiver         PaymentReceiver?
+  description             String
+  amountCents             Int
+  regionId                String?                         @db.Uuid
+  orderId                 String?                         @db.Uuid
+  investorId              String?                         @db.Uuid
+  dueDate                 DateTime?
+  paidAt                  DateTime?
+  competenceMonth         Int?
+  competenceYear          Int?
+  isSystemGenerated       Boolean                         @default(false)
+  notes                   String?
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @default(now()) @updatedAt
+  investor                Investor?                       @relation(fields: [investorId], references: [id])
+  order                   Order?                          @relation(fields: [orderId], references: [id])
+  region                  Region?                         @relation(fields: [regionId], references: [id])
+  commissionConfirmations CommissionPaymentConfirmation[]
 }
 
 model RegionMonthlyResult {
-  id                             String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  regionId                       String                        @db.Uuid
+  id                             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  regionId                       String                      @db.Uuid
   month                          Int
   year                           Int
-  grossRevenueCents              Int                           @default(0)
-  cmvCents                       Int                           @default(0)
-  logisticsCents                 Int                           @default(0)
-  commissionCents                Int                           @default(0)
-  taxesCents                     Int                           @default(0)
-  administrativeCents            Int                           @default(0)
-  reserveCents                   Int                           @default(0)
-  ebitdaCents                    Int                           @default(0)
-  activePdvs                     Int                           @default(0)
-  activeClients                  Int                           @default(0)
-  quarterlyFundContributionCents Int                           @default(0)
-  createdAt                      DateTime                      @default(now())
-  updatedAt                      DateTime                      @default(now()) @updatedAt
+  grossRevenueCents              Int                         @default(0)
+  cmvCents                       Int                         @default(0)
+  logisticsCents                 Int                         @default(0)
+  commissionCents                Int                         @default(0)
+  taxesCents                     Int                         @default(0)
+  administrativeCents            Int                         @default(0)
+  reserveCents                   Int                         @default(0)
+  ebitdaCents                    Int                         @default(0)
+  activePdvs                     Int                         @default(0)
+  activeClients                  Int                         @default(0)
+  quarterlyFundContributionCents Int                         @default(0)
+  createdAt                      DateTime                    @default(now())
+  updatedAt                      DateTime                    @default(now()) @updatedAt
   distributions                  InvestorDistribution[]
   quarterlyFundDistributions     QuarterlyFundDistribution[]
-  region                         Region                        @relation(fields: [regionId], references: [id])
+  region                         Region                      @relation(fields: [regionId], references: [id])
 
   @@unique([regionId, month, year])
 }
@@ -509,24 +534,24 @@ model InvestorDistribution {
 }
 
 model QuarterlyFundDistribution {
-  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  regionMonthlyResultId  String              @db.Uuid
-  regionId               String              @db.Uuid
-  investorId             String              @db.Uuid
-  quarter                Int
-  year                   Int
-  quotaCount             Int                 @default(1)
-  valuePerQuotaCents     Int                 @default(0)
-  totalDistributionCents Int                 @default(0)
-  quarterlyFundTotalCents Int                @default(0)
-  payoutPhase            InvestorPayoutPhase
-  paidAt                 DateTime?
-  status                 FinanceStatus       @default(PENDING)
-  createdAt              DateTime            @default(now())
-  updatedAt              DateTime            @default(now()) @updatedAt
-  investor               Investor            @relation(fields: [investorId], references: [id])
-  region                 Region              @relation(fields: [regionId], references: [id])
-  regionMonthlyResult    RegionMonthlyResult @relation(fields: [regionMonthlyResultId], references: [id])
+  id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  regionMonthlyResultId   String              @db.Uuid
+  regionId                String              @db.Uuid
+  investorId              String              @db.Uuid
+  quarter                 Int
+  year                    Int
+  quotaCount              Int                 @default(1)
+  valuePerQuotaCents      Int                 @default(0)
+  totalDistributionCents  Int                 @default(0)
+  quarterlyFundTotalCents Int                 @default(0)
+  payoutPhase             InvestorPayoutPhase
+  paidAt                  DateTime?
+  status                  FinanceStatus       @default(PENDING)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @default(now()) @updatedAt
+  investor                Investor            @relation(fields: [investorId], references: [id])
+  region                  Region              @relation(fields: [regionId], references: [id])
+  regionMonthlyResult     RegionMonthlyResult @relation(fields: [regionMonthlyResultId], references: [id])
 
   @@unique([regionId, investorId, quarter, year])
 }
@@ -573,26 +598,26 @@ model RepresentativeSettlement {
 }
 
 model CommissionPaymentConfirmation {
-  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  representativeId     String               @db.Uuid
-  regionId             String?              @db.Uuid
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  representativeId     String              @db.Uuid
+  regionId             String?             @db.Uuid
   weekStart            DateTime
   weekEnd              DateTime
-  amountCents          Int                  @default(0)
-  pendingCents         Int                  @default(0)
-  ordersCount          Int                  @default(0)
+  amountCents          Int                 @default(0)
+  pendingCents         Int                 @default(0)
+  ordersCount          Int                 @default(0)
   tokenHash            String
   tokenExpiresAt       DateTime
-  status               String               @default("PENDING")
-  description          String               @default("")
+  status               String              @default("PENDING")
+  description          String              @default("")
   metadata             Json?
   confirmedAt          DateTime?
-  financeTransactionId String?              @db.Uuid
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @default(now()) @updatedAt
-  representative       User                 @relation(fields: [representativeId], references: [id])
-  region               Region?              @relation(fields: [regionId], references: [id])
-  financeTransaction   FinanceTransaction?  @relation(fields: [financeTransactionId], references: [id])
+  financeTransactionId String?             @db.Uuid
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @default(now()) @updatedAt
+  representative       User                @relation(fields: [representativeId], references: [id])
+  region               Region?             @relation(fields: [regionId], references: [id])
+  financeTransaction   FinanceTransaction? @relation(fields: [financeTransactionId], references: [id])
 
   @@unique([representativeId, weekStart, weekEnd])
 }
@@ -619,6 +644,7 @@ model AccountsReceivable {
   seller           User?                           @relation(fields: [sellerId], references: [id])
   installments     AccountsReceivableInstallment[]
   receipts         Receipt[]
+  externalPayments ExternalPayment[]
 }
 
 model Receipt {
@@ -671,8 +697,70 @@ model AccountsReceivableInstallment {
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @default(now()) @updatedAt
   accountsReceivable   AccountsReceivable @relation(fields: [accountsReceivableId], references: [id], onDelete: Cascade)
+  externalPayments     ExternalPayment[]
 
   @@unique([accountsReceivableId, installmentNumber])
+}
+
+model ExternalPayment {
+  id                   String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider             PaymentProvider                @default(EFI)
+  type                 ExternalPaymentType
+  status               ExternalPaymentStatus          @default(PENDING)
+  orderId              String                         @db.Uuid
+  accountsReceivableId String?                        @db.Uuid
+  installmentId        String?                        @db.Uuid
+  providerChargeId     String?
+  txid                 String?
+  customId             String?
+  amountCents          Int
+  paidCents            Int                            @default(0)
+  dueDate              DateTime?
+  paidAt               DateTime?
+  expiresAt            DateTime?
+  boletoLink           String?
+  boletoPdfUrl         String?
+  barcode              String?
+  pixCopyPaste         String?
+  pixQrCodeImage       String?
+  paymentUrl           String?
+  rawResponse          Json?
+  rawNotification      Json?
+  lastSyncedAt         DateTime?
+  canceledAt           DateTime?
+  errorMessage         String?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @default(now()) @updatedAt
+  accountsReceivable   AccountsReceivable?            @relation(fields: [accountsReceivableId], references: [id], onDelete: Cascade)
+  installment          AccountsReceivableInstallment? @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  order                Order                          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  webhookEvents        PaymentWebhookEvent[]
+
+  @@unique([provider, providerChargeId])
+  @@index([provider, customId])
+  @@index([orderId])
+  @@index([accountsReceivableId])
+  @@index([installmentId])
+  @@index([provider, status])
+}
+
+model PaymentWebhookEvent {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider          PaymentProvider
+  source            String           @default("charges")
+  eventKey          String           @unique
+  token             String?
+  type              String?
+  externalPaymentId String?          @db.Uuid
+  payload           Json?
+  processedAt       DateTime?
+  error             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @default(now()) @updatedAt
+  externalPayment   ExternalPayment? @relation(fields: [externalPaymentId], references: [id], onDelete: SetNull)
+
+  @@index([provider, token])
+  @@index([externalPaymentId])
 }
 
 model Prospect {
@@ -718,30 +806,30 @@ model FixedExpense {
 }
 
 model CompanyProfile {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tradeName    String
-  legalName    String?
-  cnpj         String?  @unique
-  phone        String?
-  email        String?
-  street       String?
-  number       String?
-  district     String?
-  city         String?
-  state        String?
-  zipCode      String?
-  country      String?  @default("Brasil")
-  logoUrl      String?
-  primaryColor String?
-  notes        String?
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tradeName         String
+  legalName         String?
+  cnpj              String?  @unique
+  phone             String?
+  email             String?
+  street            String?
+  number            String?
+  district          String?
+  city              String?
+  state             String?
+  zipCode           String?
+  country           String?  @default("Brasil")
+  logoUrl           String?
+  primaryColor      String?
+  notes             String?
   stateRegistration String?
   taxRegime         String?
   nfeSeries         String?
   nfeNextNumber     Int?     @default(1)
   nfeEnvironment    String?  @default("homologation")
   nfeToken          String?
-  createdAt    DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 }
 
 enum UserRole {
@@ -820,6 +908,28 @@ enum PaymentStatus {
 enum PaymentReceiver {
   REGION
   MATRIX
+}
+
+enum PaymentProvider {
+  EFI
+}
+
+enum ExternalPaymentType {
+  BOLETO
+  BOLIX
+  PAYMENT_LINK
+  PIX_COBV
+  PIX_AUTOMATIC
+}
+
+enum ExternalPaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+  OVERDUE
+  CANCELED
+  EXPIRED
+  FAILED
 }
 
 enum FinanceEntryType {

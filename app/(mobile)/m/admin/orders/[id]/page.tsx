@@ -181,15 +181,6 @@ export default function MobileAdminOrderDetailPage() {
       });
       const data = await res.json().catch(() => ({}));
       alert(res.ok ? data?.message || "NF-e enviada." : `Erro: ${data?.error || res.status}`);
-      if (res.ok) {
-        try {
-          await fetch("/api/whatsapp/send-boleto-request", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: order.id }),
-          });
-        } catch { /* silencioso */ }
-      }
     } catch (err) {
       console.error(err);
       alert("Erro ao enviar NF-e.");
@@ -202,16 +193,16 @@ export default function MobileAdminOrderDetailPage() {
     if (!order?.id) return;
     setBusy("boleto");
     try {
-      const res = await fetch("/api/whatsapp/send-boleto-request", {
+      const res = await fetch("/api/whatsapp/send-boleto", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
       });
       const data = await res.json().catch(() => ({}));
-      alert(res.ok ? data?.message || "Solicitação de boleto enviada." : `Erro: ${data?.error || res.status}`);
+      alert(res.ok ? data?.message || "Boleto enviado ao cliente." : `Erro: ${data?.error || res.status}`);
     } catch (err) {
       console.error(err);
-      alert("Erro ao solicitar boleto.");
+      alert("Erro ao enviar boleto.");
     } finally {
       setBusy(null);
     }
@@ -329,11 +320,12 @@ export default function MobileAdminOrderDetailPage() {
               {order.paymentMethod === "BOLETO" && (
                 <button
                   type="button"
-                  disabled={busy !== null}
+                  disabled={busy !== null || !hasWhatsApp}
                   onClick={handleSendBoleto}
-                  style={{ ...btnBase, background: "#2563eb" }}
+                  style={{ ...btnBase, background: "#2563eb", opacity: busy || !hasWhatsApp ? 0.6 : 1 }}
+                  title={hasWhatsApp ? "" : "Cliente sem WhatsApp"}
                 >
-                  {busy === "boleto" ? "Enviando..." : "🏦 Solicitar boleto"}
+                  {busy === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
                 </button>
               )}
             </div>

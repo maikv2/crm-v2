@@ -65,13 +65,16 @@ function buildMessage(
     orderNumber: number;
     remainingCents: number;
     dueDate: Date;
+    boletoLink?: string | null;
+    barcode?: string | null;
   }
 ): string {
-  const { clientName, orderNumber, remainingCents, dueDate } = params;
+  const { clientName, orderNumber, remainingCents, dueDate, boletoLink, barcode } = params;
   const num = `#${String(orderNumber).padStart(6, "0")}`;
   const valor = formatBRL(remainingCents);
   const data = formatDateBR(dueDate);
-  const link = buildSegundaViaUrl(orderNumber);
+  const link = boletoLink || buildSegundaViaUrl(orderNumber);
+  const linhaDigitavel = barcode ? `\nLinha digitável:\n${barcode}\n` : "";
 
   if (stage === 0) {
     return (
@@ -80,6 +83,9 @@ function buildMessage(
       `📄 Pedido: ${num}\n` +
       `💰 Valor: ${valor}\n` +
       `📅 Vencimento: hoje (${data})\n\n` +
+      `Boleto para pagamento:\n👉 ${link}\n` +
+      linhaDigitavel +
+      `\n` +
       `Muito obrigado pela parceria de sempre! 🙌\n` +
       `Qualquer dúvida, é só chamar.\n\n` +
       `Equipe V2 Distribuidora`
@@ -94,8 +100,9 @@ function buildMessage(
       `💰 Valor: ${valor}\n` +
       `📅 Vencimento: ${data}\n\n` +
       `Será que você consegue dar uma olhadinha pra gente?\n\n` +
-      `Se precisar da 2ª via do boleto, é só falar com a Patrícia do financeiro:\n` +
-      `👉 ${link}\n\n` +
+      `Boleto / 2ª via para pagamento:\n👉 ${link}\n` +
+      linhaDigitavel +
+      `\n` +
       `Obrigado!\n` +
       `Equipe V2 Distribuidora`
     );
@@ -109,8 +116,9 @@ function buildMessage(
       `💰 Valor: ${valor}\n` +
       `📅 Vencimento: ${data}\n\n` +
       `Pedimos a gentileza de regularizar o quanto antes para mantermos seu crédito ativo aqui na V2.\n\n` +
-      `Solicitar 2ª via com a Patrícia (financeiro):\n` +
-      `👉 ${link}\n\n` +
+      `Boleto / 2ª via para pagamento:\n👉 ${link}\n` +
+      linhaDigitavel +
+      `\n` +
       `Equipe V2 Distribuidora`
     );
   }
@@ -123,8 +131,9 @@ function buildMessage(
     `📅 Vencimento: ${data}\n\n` +
     `Pedimos a regularização imediata para evitarmos a suspensão de novas compras e o encaminhamento para protesto.\n\n` +
     `Caso já tenha pago, por favor nos envie o comprovante.\n` +
-    `Para 2ª via, fale direto com a Patrícia (financeiro):\n` +
-    `👉 ${link}\n\n` +
+    `Boleto / 2ª via para pagamento:\n👉 ${link}\n` +
+    linhaDigitavel +
+    `\n` +
     `Equipe V2 Distribuidora`
   );
 }
@@ -180,6 +189,19 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
           },
         },
       },
+      externalPayments: {
+        where: {
+          provider: "EFI",
+          type: { in: ["BOLETO", "BOLIX"] },
+          status: { in: ["PENDING", "OVERDUE"] },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          boletoLink: true,
+          barcode: true,
+        },
+      },
     },
   });
 
@@ -189,6 +211,7 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
     const ar = inst.accountsReceivable;
     const client = ar?.client;
     const order = ar?.order;
+    const boleto = inst.externalPayments?.[0];
     const clientName = client?.name ?? "cliente";
     const orderNumber = order?.number ?? 0;
 
@@ -235,6 +258,8 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
       orderNumber,
       remainingCents,
       dueDate: inst.dueDate,
+      boletoLink: boleto?.boletoLink ?? null,
+      barcode: boleto?.barcode ?? null,
     });
 
     try {

@@ -17,6 +17,16 @@ export async function GET() {
           },
         },
       },
+      externalPayments: {
+        where: {
+          provider: "EFI",
+          type: { in: ["BOLETO", "BOLIX"] },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 1,
+      },
     },
   });
 

@@ -446,16 +446,6 @@ function NFeBlock({
       }
       alert(data?.message || "NF-e enviada pelo WhatsApp.");
 
-      // Disparo automático ao financeiro quando for boleto
-      try {
-        await fetch("/api/whatsapp/send-boleto-request", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId: order.id }),
-        });
-      } catch (errBoleto) {
-        console.error("Erro ao enviar solicitação de boleto:", errBoleto);
-      }
     } catch (err) {
       console.error("Erro ao enviar NF-e por WhatsApp:", err);
       alert("Erro ao enviar NF-e por WhatsApp.");
@@ -872,27 +862,27 @@ export default function OrderDetailPage() {
   async function handleSendBoletoRequest() {
     if (!order?.id) return;
     try {
-      const res = await fetch("/api/whatsapp/send-boleto-request", {
+      const res = await fetch("/api/whatsapp/send-boleto", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(`Erro ao solicitar boleto: ${data?.error || res.status}`);
+        alert(`Erro ao enviar boleto: ${data?.error || res.status}`);
         return;
       }
-      alert(data?.message || "Solicitação de boleto enviada ao financeiro.");
+      alert(data?.message || "Boleto enviado ao cliente.");
     } catch (err) {
-      console.error("Erro ao solicitar boleto:", err);
-      alert("Erro ao solicitar boleto.");
+      console.error("Erro ao enviar boleto:", err);
+      alert("Erro ao enviar boleto.");
     }
   }
 
   async function receiveInstallment(installmentId: string) {
     try {
       setReceivingId(installmentId);
-      const res = await fetch("/api/installments/pay", {
+      const res = await fetch("/api/finance/receivables/receive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ installmentId }),
@@ -1074,7 +1064,7 @@ export default function OrderDetailPage() {
           />
           {order?.paymentMethod === "BOLETO" && (
             <ActionButton
-              label="🏦 Solicitar boleto"
+              label="🏦 Enviar boleto"
               theme={theme}
               color="#2563eb"
               primary

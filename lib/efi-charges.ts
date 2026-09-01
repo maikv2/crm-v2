@@ -244,6 +244,31 @@ async function getAccessToken(config: EfiConfig) {
   return payload.access_token;
 }
 
+function extractEfiErrorDetail(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+
+  const nested =
+    record.erro && typeof record.erro === "object"
+      ? (record.erro as Record<string, unknown>)
+      : null;
+
+  const candidate =
+    record.mensagem ||
+    record.message ||
+    record.error_description ||
+    record.detail ||
+    nested?.mensagem ||
+    nested?.message ||
+    record.error;
+
+  if (typeof candidate === "string" && candidate.trim()) {
+    return candidate.trim();
+  }
+
+  return null;
+}
+
 async function requestEfi<T>(
   method: "GET" | "POST" | "PUT",
   path: string,
@@ -264,8 +289,13 @@ async function requestEfi<T>(
   const payload = await parseResponse(res);
 
   if (!res.ok) {
+    const detail = extractEfiErrorDetail(payload);
+    console.error(`Efí ${method} ${path} falhou (${res.status}):`, {
+      request: body,
+      response: payload,
+    });
     throw new EfiChargesApiError(
-      `Efí ${method} ${path} falhou (${res.status}).`,
+      `Efí ${method} ${path} falhou (${res.status})${detail ? `: ${detail}` : "."}`,
       res.status,
       payload
     );

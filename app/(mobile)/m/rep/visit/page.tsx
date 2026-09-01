@@ -6,16 +6,13 @@ import { MessageCircle } from "lucide-react";
 import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import { MobileCard, MobileSectionTitle } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
-import {
-  buildPortalAccessMessage,
-  buildPortalAccessWhatsappUrl,
-} from "@/lib/portal-access-message";
 import { getThemeColors } from "@/lib/theme";
 
 type Client = {
   id: string;
   code?: string | null;
   name: string;
+  tradeName?: string | null;
   phone?: string | null;
   whatsapp?: string | null;
   city?: string | null;
@@ -46,6 +43,7 @@ function MobileRepVisitPageContent() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingPortalAccess, setSendingPortalAccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [clientId, setClientId] = useState(clientIdFromUrl);
@@ -171,7 +169,7 @@ function MobileRepVisitPageContent() {
     }
   }
 
-  function handleSendPortalAccess() {
+  async function handleSendPortalAccess() {
     if (!selectedClient) return;
 
     const accessCode = selectedClient.code?.trim();
@@ -186,20 +184,32 @@ function MobileRepVisitPageContent() {
       return;
     }
 
-    const portalUrl = `${window.location.origin}/portal/login`;
-    const message = buildPortalAccessMessage({
-      clientName: selectedClient.name,
-      accessCode,
-      portalUrl,
-    });
-    const whatsappUrl = buildPortalAccessWhatsappUrl({ phone, message });
+    try {
+      setSendingPortalAccess(true);
 
-    if (!whatsappUrl) {
-      alert("O WhatsApp/telefone do cliente está inválido.");
-      return;
+      const res = await fetch("/api/whatsapp/send-portal-access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          clientId: selectedClient.id,
+          portalUrl: `${window.location.origin}/portal/login`,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Não foi possível enviar o acesso.");
+      }
+
+      alert("Acesso ao portal enviado pelo WhatsApp.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Não foi possível enviar o acesso.");
+    } finally {
+      setSendingPortalAccess(false);
     }
-
-    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
   const inputStyle: React.CSSProperties = {
@@ -297,6 +307,7 @@ function MobileRepVisitPageContent() {
                 <button
                   type="button"
                   onClick={handleSendPortalAccess}
+                  disabled={sendingPortalAccess}
                   style={{
                     minHeight: 42,
                     marginTop: 4,
@@ -310,11 +321,12 @@ function MobileRepVisitPageContent() {
                     gap: 8,
                     fontSize: 13,
                     fontWeight: 900,
-                    cursor: "pointer",
+                    cursor: sendingPortalAccess ? "not-allowed" : "pointer",
+                    opacity: sendingPortalAccess ? 0.7 : 1,
                   }}
                 >
                   <MessageCircle size={15} />
-                  Enviar acesso ao portal
+                  {sendingPortalAccess ? "Enviando acesso..." : "Enviar acesso ao portal"}
                 </button>
               </div>
             ) : null}

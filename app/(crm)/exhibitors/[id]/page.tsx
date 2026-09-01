@@ -137,6 +137,10 @@ export default async function ExhibitorDetailPage({
           </div>
 
           <div style={headerActions}>
+            <Link href={`/exhibitors/${exhibitor.id}/edit`} style={primaryButton}>
+              Editar itens
+            </Link>
+
             <Link
               href={`/exhibitors/${exhibitor.id}/maintenance`}
               style={successButton}
@@ -546,6 +550,15 @@ const ghostButton: CSSProperties = {
   color: "var(--text-local)",
   textDecoration: "none",
   border: "1px solid var(--border-local)",
+  fontWeight: 700,
+};
+
+const primaryButton: CSSProperties = {
+  background: "var(--blue-local)",
+  padding: "10px 16px",
+  borderRadius: 10,
+  color: "white",
+  textDecoration: "none",
   fontWeight: 700,
 };
 

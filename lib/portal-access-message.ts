@@ -1,6 +1,7 @@
 export type PortalAccessMessageParams = {
   clientName: string;
-  accessCode: string;
+  username: string;
+  password: string;
   portalUrl: string;
 };
 
@@ -12,7 +13,8 @@ export function normalizeBrazilWhatsapp(value?: string | null) {
 
 export function buildPortalAccessMessage({
   clientName,
-  accessCode,
+  username,
+  password,
   portalUrl,
 }: PortalAccessMessageParams) {
   return [
@@ -23,8 +25,8 @@ export function buildPortalAccessMessage({
     "Link de acesso:",
     portalUrl,
     "",
-    `Usuário: ${accessCode}`,
-    `Senha: ${accessCode}`,
+    `Usuário: ${username}`,
+    `Senha: ${password}`,
     "",
     "No portal você pode:",
     "- Ver seus pedidos",

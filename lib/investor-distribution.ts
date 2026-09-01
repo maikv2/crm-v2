@@ -266,16 +266,26 @@ export function getQuarterForMonth(month: number): number {
 export async function calculateQuarterlyFundPreview(
   regionId: string,
   quarter: number,
-  year: number
+  year: number,
+  options: { throughMonth?: number } = {}
 ) {
-  const months = getQuarterMonths(quarter);
+  const quarterMonths = getQuarterMonths(quarter);
+  const months = options.throughMonth
+    ? quarterMonths.filter((month) => month <= options.throughMonth!)
+    : quarterMonths;
 
   // Sum net results (receita − despesas) from the 3 months of the quarter.
   // quarterlyFundContributionCents stores max(0, operatingProfit) per month.
   // The investor rate (60% pre-payback / 40% post-payback) is applied once per quota below.
   const savedResults = await prisma.regionMonthlyResult.findMany({
     where: { regionId, month: { in: months }, year },
-    select: { id: true, month: true, quarterlyFundContributionCents: true },
+    select: {
+      id: true,
+      month: true,
+      reserveCents: true,
+      ebitdaCents: true,
+      quarterlyFundContributionCents: true,
+    },
     orderBy: { month: "desc" },
   });
 
@@ -294,8 +304,10 @@ export async function calculateQuarterlyFundPreview(
 
   // Total net result for the quarter (base for distribution)
   const quarterlyNetCents =
-    savedResults.reduce((sum, r) => sum + r.quarterlyFundContributionCents, 0) +
-    liveNetResults.reduce((sum, v) => sum + v, 0);
+    savedResults.reduce(
+      (sum, r) => sum + Math.max(0, r.reserveCents),
+      0
+    ) + liveNetResults.reduce((sum, v) => sum + v, 0);
 
   // Use the last month of the quarter as the anchor result for the distribution record
   const monthlyResults = savedResults;
@@ -387,10 +399,7 @@ export async function calculateQuarterlyFundPreview(
         )
       : 0;
 
-  const quarterlyFundTotalCents = Array.from(grouped.values()).reduce(
-    (s, i) => s + i.totalDistributionCents,
-    0
-  );
+  const quarterlyFundTotalCents = quarterlyNetCents;
 
   return {
     regionId,

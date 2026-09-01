@@ -195,12 +195,12 @@ export async function calculateRegionFinancialSnapshot(
     taxesCents -
     administrativeCents;
 
-  // EBITDA: separate reporting metric (not used for quarterly fund distribution).
+  // EBITDA: monthly investor payment, deducted before the quarterly fund.
   const ebitdaCents = Math.max(0, Math.floor(grossRevenueCents * 0.15));
   const reserveCents = Math.max(0, operatingProfitCents - ebitdaCents);
-  // Quarterly fund base = net result (revenue minus all expenses).
+  // Quarterly fund base = what remains after expenses and monthly EBITDA.
   // The investor rate (60% pre-payback / 40% post-payback) is applied per quota in the distribution engine.
-  const quarterlyFundContributionCents = Math.max(0, operatingProfitCents);
+  const quarterlyFundContributionCents = reserveCents;
 
   return {
     regionId,

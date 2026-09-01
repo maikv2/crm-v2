@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, HandCoins, RefreshCw } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
@@ -18,29 +18,50 @@ function formatMonthYear(month?: number, year?: number) {
   return `${String(month).padStart(2, "0")}/${year}`;
 }
 
+function fifthBusinessDay(year: number, month: number): Date {
+  let count = 0;
+  const date = new Date(year, month - 1, 1);
+  while (date.getMonth() === month - 1) {
+    const day = date.getDay();
+    if (day !== 0 && day !== 6) {
+      count += 1;
+      if (count === 5) return new Date(date);
+    }
+    date.setDate(date.getDate() + 1);
+  }
+  return new Date(year, month - 1, 7);
+}
+
+function getMonthlyAvailableAt(month: number, year: number): Date {
+  const payoutMonth = month === 12 ? 1 : month + 1;
+  const payoutYear = month === 12 ? year + 1 : year;
+  return fifthBusinessDay(payoutYear, payoutMonth);
+}
+
+function getQuarterlyAvailableAt(quarter: number, year: number): Date {
+  const quarterEndMonth = quarter * 3;
+  const payoutMonth = quarterEndMonth === 12 ? 1 : quarterEndMonth + 1;
+  const payoutYear = quarterEndMonth === 12 ? year + 1 : year;
+  return fifthBusinessDay(payoutYear, payoutMonth);
+}
+
 function getNextEbitdaDate(): Date {
   const now = new Date();
-  const day = now.getDate();
-  if (day < 5) return new Date(now.getFullYear(), now.getMonth(), 5);
-  return new Date(now.getFullYear(), now.getMonth() + 1, 5);
+  const previousMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+  const previousYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const currentAvailability = getMonthlyAvailableAt(previousMonth, previousYear);
+  if (now < currentAvailability) return currentAvailability;
+  return getMonthlyAvailableAt(now.getMonth() + 1, now.getFullYear());
 }
 
 function getNextQuarterlyFundDate(): Date {
   const now = new Date();
-  const m = now.getMonth() + 1;
-  const quarterEndMonth = m <= 3 ? 3 : m <= 6 ? 6 : m <= 9 ? 9 : 12;
-  const payoutMonth = quarterEndMonth + 1;
-  const payoutYear = payoutMonth > 12 ? now.getFullYear() + 1 : now.getFullYear();
-  const adjPayoutMonth = payoutMonth > 12 ? 1 : payoutMonth;
-  const payoutDate = new Date(payoutYear, adjPayoutMonth - 1, 5);
-  if (now > payoutDate) {
-    const nextQEnd = quarterEndMonth + 3;
-    const nextPM = nextQEnd + 1;
-    const nextPY = nextPM > 12 ? payoutYear + 1 : payoutYear;
-    const adjNextPM = nextPM > 12 ? nextPM - 12 : nextPM;
-    return new Date(nextPY, adjNextPM - 1, 5);
-  }
-  return payoutDate;
+  const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
+  const previousQuarter = currentQuarter === 1 ? 4 : currentQuarter - 1;
+  const previousQuarterYear = currentQuarter === 1 ? now.getFullYear() - 1 : now.getFullYear();
+  const currentAvailability = getQuarterlyAvailableAt(previousQuarter, previousQuarterYear);
+  if (now < currentAvailability) return currentAvailability;
+  return getQuarterlyAvailableAt(currentQuarter, now.getFullYear());
 }
 
 type DistributionItem = {
@@ -54,6 +75,8 @@ type DistributionItem = {
   paidAt?: string | null;
   status: string;
   payoutPhase?: string | null;
+  paymentRequestId?: string | null;
+  paymentRequestedAt?: string | null;
   region?: { id: string; name: string } | null;
 };
 
@@ -67,6 +90,8 @@ type QuarterlyDistributionItem = {
   totalDistributionCents: number;
   status: string;
   payoutPhase?: string | null;
+  paymentRequestId?: string | null;
+  paymentRequestedAt?: string | null;
   region?: { name?: string | null } | null;
 };
 
@@ -165,20 +190,29 @@ export default function InvestorDistributionsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"monthly" | "quarterly">("monthly");
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>("");
+  const [selectedQuarterKey, setSelectedQuarterKey] = useState<string>("");
+  const [requestingId, setRequestingId] = useState<string | null>(null);
 
-  async function load(showRefreshing = false) {
+  const load = useCallback(async (showRefreshing = false) => {
     try {
       if (showRefreshing) setRefreshing(true);
       else setLoading(true);
       setError(null);
+      setSuccess(null);
 
       const res = await fetch("/api/investor-auth/me", { cache: "no-store" });
       if (res.status === 401) { router.push("/investor/login"); return; }
 
       const json = (await res.json().catch(() => null)) as InvestorMeResponse | null;
-      if (!res.ok) throw new Error((json as any)?.error || "Erro ao carregar distribuições.");
+      if (!res.ok) throw new Error((json as { error?: string } | null)?.error || "Erro ao carregar distribuições.");
       setData(json);
+      const monthly = json?.distributions || [];
+      const quarterly = json?.quarterlyFundDistributions || [];
+      if (!selectedMonthKey && monthly[0]) setSelectedMonthKey(`${monthly[0].year}-${monthly[0].month}`);
+      if (!selectedQuarterKey && quarterly[0]) setSelectedQuarterKey(`${quarterly[0].year}-Q${quarterly[0].quarter}`);
     } catch (error) {
       console.error(error);
       setError(error instanceof Error ? error.message : "Erro ao carregar distribuições.");
@@ -186,9 +220,9 @@ export default function InvestorDistributionsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, [router, selectedMonthKey, selectedQuarterKey]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const distributions = useMemo(() => data?.distributions || [], [data]);
   const quarterlyDistributions = useMemo(() => data?.quarterlyFundDistributions || [], [data]);
@@ -205,6 +239,97 @@ export default function InvestorDistributionsPage() {
 
   const nextEbitdaDate = getNextEbitdaDate();
   const nextFundoDate = getNextQuarterlyFundDate();
+  const monthOptions = useMemo(() => {
+    const map = new Map<string, { key: string; label: string }>();
+    for (const item of distributions) {
+      const key = `${item.year}-${item.month}`;
+      if (!map.has(key)) map.set(key, { key, label: formatMonthYear(item.month, item.year) });
+    }
+    return [...map.values()];
+  }, [distributions]);
+  const quarterOptions = useMemo(() => {
+    const map = new Map<string, { key: string; label: string }>();
+    for (const item of quarterlyDistributions) {
+      const key = `${item.year}-Q${item.quarter}`;
+      if (!map.has(key)) map.set(key, { key, label: `${item.quarter}º Trimestre/${item.year}` });
+    }
+    return [...map.values()];
+  }, [quarterlyDistributions]);
+  const visibleDistributions = useMemo(
+    () => distributions.filter((item) => !selectedMonthKey || `${item.year}-${item.month}` === selectedMonthKey),
+    [distributions, selectedMonthKey]
+  );
+  const visibleQuarterlyDistributions = useMemo(
+    () => quarterlyDistributions.filter((item) => !selectedQuarterKey || `${item.year}-Q${item.quarter}` === selectedQuarterKey),
+    [quarterlyDistributions, selectedQuarterKey]
+  );
+
+  async function requestPayment(type: "monthly" | "quarterly", id: string) {
+    try {
+      setRequestingId(id);
+      setError(null);
+      setSuccess(null);
+      const res = await fetch("/api/investor-auth/payment-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, id }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || "Erro ao solicitar pagamento.");
+      setSuccess(json?.message || "Solicitacao enviada ao financeiro.");
+      await load(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao solicitar pagamento.");
+    } finally {
+      setRequestingId(null);
+    }
+  }
+
+  function renderRequestButton(item: DistributionItem | QuarterlyDistributionItem, type: "monthly" | "quarterly") {
+    const availableAt =
+      type === "monthly"
+        ? getMonthlyAvailableAt((item as DistributionItem).month, item.year)
+        : getQuarterlyAvailableAt((item as QuarterlyDistributionItem).quarter, item.year);
+    const alreadyPaid = item.status === "PAID";
+    const alreadyRequested = Boolean(item.paymentRequestId || item.paymentRequestedAt);
+    const notAvailable = new Date() < availableAt;
+    const disabled = alreadyPaid || alreadyRequested || notAvailable || requestingId === item.id;
+    const label = alreadyPaid
+      ? "Pago"
+      : alreadyRequested
+        ? "Solicitado"
+        : notAvailable
+          ? `Disponivel em ${availableAt.toLocaleDateString("pt-BR")}`
+          : requestingId === item.id
+            ? "Solicitando..."
+            : "Solicitar pagamento";
+
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => requestPayment(type, item.id)}
+        style={{
+          minHeight: 38,
+          padding: "0 12px",
+          borderRadius: 10,
+          border: `1px solid ${disabled ? theme.border : "#16a34a"}`,
+          background: disabled ? (theme.isDark ? "#111827" : "#f8fafc") : "#16a34a",
+          color: disabled ? muted : "#ffffff",
+          fontWeight: 900,
+          fontSize: 12,
+          cursor: disabled ? "not-allowed" : "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 7,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <HandCoins size={14} />
+        {label}
+      </button>
+    );
+  }
 
   if (loading) {
     return (
@@ -235,6 +360,11 @@ export default function InvestorDistributionsPage() {
         {error && (
           <div style={{ marginBottom: 18, padding: 12, borderRadius: 12, border: "1px solid #ef4444", color: "#ef4444", background: theme.isDark ? "#0f172a" : "#ffffff", fontWeight: 700 }}>
             {error}
+          </div>
+        )}
+        {success && (
+          <div style={{ marginBottom: 18, padding: 12, borderRadius: 12, border: "1px solid #22c55e", color: "#166534", background: theme.isDark ? "#052e16" : "#f0fdf4", fontWeight: 800 }}>
+            {success}
           </div>
         )}
 
@@ -292,16 +422,39 @@ export default function InvestorDistributionsPage() {
             </button>
           ))}
         </div>
+        <div style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: muted }}>
+            {activeTab === "monthly" ? "Mes de referencia" : "Trimestre de referencia"}
+          </div>
+          <select
+            value={activeTab === "monthly" ? selectedMonthKey : selectedQuarterKey}
+            onChange={(event) => activeTab === "monthly" ? setSelectedMonthKey(event.target.value) : setSelectedQuarterKey(event.target.value)}
+            style={{
+              height: 40,
+              borderRadius: 10,
+              border: `1px solid ${theme.border}`,
+              background: theme.isDark ? "#0f172a" : "#ffffff",
+              color: theme.text,
+              padding: "0 12px",
+              fontWeight: 800,
+              minWidth: 190,
+            }}
+          >
+            {(activeTab === "monthly" ? monthOptions : quarterOptions).map((option) => (
+              <option key={option.key} value={option.key}>{option.label}</option>
+            ))}
+          </select>
+        </div>
 
         {/* Distribution list */}
         <div style={{ display: "grid", gap: 12, marginBottom: 24 }}>
           {activeTab === "monthly" ? (
-            distributions.length === 0 ? (
+            visibleDistributions.length === 0 ? (
               <div style={{ border: `1px solid ${theme.border}`, borderRadius: 16, padding: 18, background: theme.isDark ? "#0f172a" : "#ffffff", color: muted, fontWeight: 700 }}>
                 Nenhuma distribuição mensal encontrada.
               </div>
             ) : (
-              distributions.map((dist) => (
+              visibleDistributions.map((dist) => (
                 <div key={dist.id} style={{ border: `1px solid ${theme.border}`, borderRadius: 16, padding: 18, background: theme.isDark ? "#0f172a" : "#ffffff" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 14 }}>
                     <div>
@@ -329,16 +482,19 @@ export default function InvestorDistributionsPage() {
                       </div>
                     ))}
                   </div>
+                  <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                    {renderRequestButton(dist, "monthly")}
+                  </div>
                 </div>
               ))
             )
           ) : (
-            quarterlyDistributions.length === 0 ? (
+            visibleQuarterlyDistributions.length === 0 ? (
               <div style={{ border: `1px solid ${theme.border}`, borderRadius: 16, padding: 18, background: theme.isDark ? "#0f172a" : "#ffffff", color: muted, fontWeight: 700 }}>
                 Nenhum fundo trimestral distribuído ainda.
               </div>
             ) : (
-              quarterlyDistributions.map((dist) => (
+              visibleQuarterlyDistributions.map((dist) => (
                 <div key={dist.id} style={{ border: `1px solid ${theme.border}`, borderRadius: 16, padding: 18, background: theme.isDark ? "#0f172a" : "#ffffff" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 14 }}>
                     <div>
@@ -365,6 +521,9 @@ export default function InvestorDistributionsPage() {
                         <div style={{ fontSize: 14, fontWeight: 800 }}>{value}</div>
                       </div>
                     ))}
+                  </div>
+                  <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                    {renderRequestButton(dist, "quarterly")}
                   </div>
                 </div>
               ))

@@ -1,7 +1,38 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+
 function basicAuth(token: string) {
   return `Basic ${Buffer.from(`${token.trim()}:`).toString("base64")}`;
+}
+
+function buildDanfeCandidates(xmlUrl: string) {
+  const urls = new Set<string>();
+
+  urls.add(
+    xmlUrl
+      .replace("/XMLs/", "/DANFEs/")
+      .replace("-nfe.xml", ".pdf")
+  );
+
+  urls.add(
+    xmlUrl
+      .replace("/XMLs/", "/DANFEs/")
+      .replace("-nfe.xml", "-danfe.pdf")
+  );
+
+  urls.add(
+    xmlUrl
+      .replace("/XMLs/", "/DANFEs/")
+      .replace(".xml", ".pdf")
+  );
+
+  urls.add(
+    xmlUrl
+      .replace("/XMLs/", "/DANFEs/")
+      .replace(".xml", "-danfe.pdf")
+  );
+
+  return Array.from(urls);
 }
 
 export async function GET(
@@ -15,7 +46,13 @@ export async function GET(
       prisma.companyProfile.findFirst({ orderBy: { createdAt: "asc" } }),
       prisma.order.findUnique({
         where: { id },
-        select: { id: true, number: true, nfeKey: true, nfeStatus: true, nfeXmlUrl: true },
+        select: {
+          id: true,
+          number: true,
+          nfeKey: true,
+          nfeStatus: true,
+          nfeXmlUrl: true,
+        },
       }),
     ]);
 
@@ -36,30 +73,45 @@ export async function GET(
         ? "https://api.focusnfe.com.br"
         : "https://homologacao.focusnfe.com.br";
 
-    // Monta URL do DANFE a partir da URL do XML
-    // XML:   /arquivos_development/.../XMLs/{chave}-nfe.xml
-    // DANFE: /arquivos_development/.../DANFEs/{chave}.pdf  (sem sufixo -danfe)
-    const danfeUrl = order.nfeXmlUrl
-      .replace("/XMLs/", "/DANFEs/")
-      .replace("-nfe.xml", ".pdf");
+    const danfeCandidates = buildDanfeCandidates(order.nfeXmlUrl);
 
-    const focusRes = await fetch(`${focusBaseUrl}${danfeUrl}`, {
-      method: "GET",
-      headers: {
-        Authorization: basicAuth(company.nfeToken),
-      },
-    });
+    let pdfBuffer: ArrayBuffer | null = null;
+    let lastStatus = 0;
+    let lastText = "";
+    let usedUrl = "";
 
-    if (!focusRes.ok) {
-      const text = await focusRes.text().catch(() => "");
-      console.error("[NF-e PDF] Focus error:", focusRes.status, text, "URL:", danfeUrl);
+    for (const danfeUrl of danfeCandidates) {
+      const fullUrl = danfeUrl.startsWith("http")
+        ? danfeUrl
+        : `${focusBaseUrl}${danfeUrl}`;
+
+      const focusRes = await fetch(fullUrl, {
+        method: "GET",
+        headers: {
+          Authorization: basicAuth(company.nfeToken),
+        },
+      });
+
+      if (focusRes.ok) {
+        pdfBuffer = await focusRes.arrayBuffer();
+        usedUrl = danfeUrl;
+        break;
+      }
+
+      lastStatus = focusRes.status;
+      lastText = await focusRes.text().catch(() => "");
+      console.error("[NF-e PDF] Focus error:", focusRes.status, lastText, "URL:", danfeUrl);
+    }
+
+    if (!pdfBuffer) {
       return NextResponse.json(
-        { error: `Erro ao buscar DANFE no Focus NFe (${focusRes.status}).` },
+        {
+          error: `Erro ao buscar DANFE no Focus NFe (${lastStatus || 502}).`,
+          detalhes: lastText.slice(0, 400),
+        },
         { status: 502 }
       );
     }
-
-    const pdfBuffer = await focusRes.arrayBuffer();
 
     return new Response(pdfBuffer, {
       status: 200,
@@ -67,6 +119,7 @@ export async function GET(
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="nfe-pedido-${order.number ?? order.id}.pdf"`,
         "Cache-Control": "no-store",
+        "X-DANFE-URL": usedUrl,
       },
     });
   } catch (error: any) {

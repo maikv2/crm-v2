@@ -4,7 +4,14 @@
       "Bash(xargs grep *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(npx prisma *)",
+      "Bash(vercel --version)",
+      "Bash(vercel --prod)",
+      "mcp__plugin_vercel_vercel__get_runtime_logs",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\eumai\\\\v2-crm\\\\app\\\\print\\\\accounting\")",
+      "Bash(Out-Null)",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\eumai\\\\v2-crm\\\\app\\\\print\\\\accounting\")"
     ]
   }
 }

@@ -229,6 +229,79 @@ function ProductQtyControl({
   );
 }
 
+function ClientSearchResults({
+  clients,
+  selectedClientId,
+  onSelect,
+  colors,
+}: {
+  clients: Client[];
+  selectedClientId: string;
+  onSelect: (client: Client) => void;
+  colors: ReturnType<typeof getThemeColors>;
+}) {
+  const visibleClients = clients.slice(0, 8);
+
+  if (visibleClients.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${colors.border}`,
+        borderRadius: 14,
+        background: colors.isDark ? "#0f172a" : "#f8fafc",
+        overflow: "hidden",
+      }}
+    >
+      {visibleClients.map((client, index) => {
+        const selected = client.id === selectedClientId;
+        const title = client.tradeName || client.name;
+        const subtitle = [
+          client.code ? `Cod. ${client.code}` : null,
+          client.legalName && client.legalName !== title ? client.legalName : null,
+          client.region?.name,
+          [client.city, client.state].filter(Boolean).join("/"),
+          client.whatsapp || client.phone,
+        ]
+          .filter(Boolean)
+          .join(" • ");
+
+        return (
+          <button
+            key={client.id}
+            type="button"
+            onClick={() => onSelect(client)}
+            style={{
+              width: "100%",
+              border: "none",
+              borderTop:
+                index === 0 ? "none" : `1px solid ${colors.border}`,
+              background: selected
+                ? colors.isDark
+                  ? "#102344"
+                  : "#eff6ff"
+                : "transparent",
+              color: colors.text,
+              padding: "12px 14px",
+              textAlign: "left",
+              cursor: "pointer",
+              display: "grid",
+              gap: 4,
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 900 }}>
+              {title || "Cliente"}
+            </span>
+            <span style={{ fontSize: 12, color: colors.subtext }}>
+              {subtitle || "Sem dados complementares"}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MobileRepOrderForm() {
   const router = useRouter();
   const pathname = usePathname();
@@ -633,6 +706,11 @@ export default function MobileRepOrderForm() {
     setCart((prev) => prev.map((item) => ({ ...item, qty: 0 })));
   }
 
+  function selectClientFromSearch(client: Client) {
+    setSelectedClientId(client.id);
+    setClientSearch(client.tradeName || client.name || client.code || "");
+  }
+
   async function handleSave() {
     try {
       setError(null);
@@ -918,6 +996,15 @@ router.push(targetPath);
             <div style={{ fontSize: 12, color: colors.subtext }}>
               Nenhum cliente encontrado para essa busca.
             </div>
+          ) : null}
+
+          {clientSearch.trim() && filteredClients.length > 0 ? (
+            <ClientSearchResults
+              clients={filteredClients}
+              selectedClientId={selectedClientId}
+              onSelect={selectClientFromSearch}
+              colors={colors}
+            />
           ) : null}
 
           {selectedClient ? (

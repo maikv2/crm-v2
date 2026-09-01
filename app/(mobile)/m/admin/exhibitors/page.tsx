@@ -131,8 +131,12 @@ export default function AdminMobileExhibitorsPage() {
               <div style={{ fontSize: 13 }}>Nenhum expositor encontrado.</div>
             ) : (
               items.map((item) => (
-                <div
+                <Link
                   key={item.id}
+                  href={`/m/admin/exhibitors/${item.id}/edit`}
+                  style={{ textDecoration: "none", color: "inherit" }}
+                >
+                <div
                   style={{
                     padding: "12px 0",
                     borderBottom: "1px solid rgba(148,163,184,0.18)",
@@ -211,10 +215,11 @@ export default function AdminMobileExhibitorsPage() {
                       subtitle={`Último atendimento ${formatDateBR(
                         item.lastVisitAt
                       )}`}
-                      right="Operação"
+                      right="Editar"
                     />
                   </div>
                 </div>
+                </Link>
               ))
             )}
           </MobileCard>

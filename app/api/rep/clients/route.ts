@@ -24,6 +24,7 @@ export async function GET() {
       select: {
         id: true,
         name: true,
+        tradeName: true,
         legalName: true,
         city: true,
         state: true,
@@ -64,6 +65,7 @@ export async function GET() {
       items: items.map((client) => ({
         id: client.id,
         name: client.name,
+        tradeName: client.tradeName,
         legalName: client.legalName,
         city: client.city,
         state: client.state,

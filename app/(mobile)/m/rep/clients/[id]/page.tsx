@@ -24,10 +24,6 @@ import {
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
-import {
-  buildPortalAccessMessage,
-  buildPortalAccessWhatsappUrl,
-} from "@/lib/portal-access-message";
 import { getThemeColors } from "@/lib/theme";
 
 type ClientDetails = {
@@ -107,6 +103,7 @@ export default function MobileRepClientDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [client, setClient] = useState<ClientDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sendingPortalAccess, setSendingPortalAccess] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -166,7 +163,7 @@ export default function MobileRepClientDetailsPage() {
     0
   );
 
-  function handleSendPortalAccess() {
+  async function handleSendPortalAccess() {
     if (!client) return;
 
     const accessCode = client.code?.trim();
@@ -181,20 +178,32 @@ export default function MobileRepClientDetailsPage() {
       return;
     }
 
-    const portalUrl = `${window.location.origin}/portal/login`;
-    const message = buildPortalAccessMessage({
-      clientName: client.tradeName || client.name,
-      accessCode,
-      portalUrl,
-    });
-    const whatsappUrl = buildPortalAccessWhatsappUrl({ phone, message });
+    try {
+      setSendingPortalAccess(true);
 
-    if (!whatsappUrl) {
-      alert("O WhatsApp/telefone do cliente está inválido.");
-      return;
+      const res = await fetch("/api/whatsapp/send-portal-access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          portalUrl: `${window.location.origin}/portal/login`,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Não foi possível enviar o acesso.");
+      }
+
+      alert("Acesso ao portal enviado pelo WhatsApp.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Não foi possível enviar o acesso.");
+    } finally {
+      setSendingPortalAccess(false);
     }
-
-    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -375,6 +384,7 @@ export default function MobileRepClientDetailsPage() {
               <button
                 type="button"
                 onClick={handleSendPortalAccess}
+                disabled={sendingPortalAccess}
                 style={{
                   minHeight: 42,
                   borderRadius: 12,
@@ -387,11 +397,12 @@ export default function MobileRepClientDetailsPage() {
                   fontSize: 12,
                   fontWeight: 800,
                   color: colors.text,
-                  cursor: "pointer",
+                  cursor: sendingPortalAccess ? "not-allowed" : "pointer",
+                  opacity: sendingPortalAccess ? 0.7 : 1,
                 }}
               >
                 <MessageCircle size={14} />
-                Acesso
+                {sendingPortalAccess ? "Enviando" : "Acesso"}
               </button>
 
               <div
@@ -482,7 +493,7 @@ export default function MobileRepClientDetailsPage() {
                 {exhibitors.map((item) => (
                   <Link
                     key={item.id}
-                    href={`/m/rep/exhibitors`}
+                    href={`/m/rep/exhibitors/${item.id}/edit`}
                     style={{ textDecoration: "none" }}
                   >
                     <div
@@ -525,7 +536,7 @@ export default function MobileRepClientDetailsPage() {
                           }}
                         >
                           {item.code || "Sem código"} •{" "}
-                          {item.status || "Sem status"}
+                          {item.status || "Sem status"} • Toque para editar
                         </div>
                       </div>
 

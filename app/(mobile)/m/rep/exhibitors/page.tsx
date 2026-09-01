@@ -118,13 +118,18 @@ export default function MobileRepExhibitorsPage() {
               <div style={{ fontSize: 13 }}>Nenhum expositor encontrado.</div>
             ) : (
               items.map((item) => (
-                <MobileInfoRow
+                <Link
                   key={item.id}
-                  title={`${item.code ?? "-"} • ${item.name ?? "Expositor"}`}
-                  subtitle={`${item.client?.name ?? "Sem cliente"} • Próxima visita ${formatDateBR(
-                    item.nextVisitAt
-                  )} • ${item.status ?? "Sem status"}`}
-                />
+                  href={`/m/rep/exhibitors/${item.id}/edit`}
+                  style={{ textDecoration: "none" }}
+                >
+                  <MobileInfoRow
+                    title={`${item.code ?? "-"} • ${item.name ?? "Expositor"}`}
+                    subtitle={`${item.client?.name ?? "Sem cliente"} • Próxima visita ${formatDateBR(
+                      item.nextVisitAt
+                    )} • ${item.status ?? "Sem status"} • Toque para editar`}
+                  />
+                </Link>
               ))
             )}
           </MobileCard>

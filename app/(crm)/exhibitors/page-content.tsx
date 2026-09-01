@@ -442,6 +442,13 @@ export default function ExhibitorsPage() {
 
                   <button
                     style={buttonStyle}
+                    onClick={() => router.push(`/exhibitors/${item.id}/edit`)}
+                  >
+                    Editar expositor
+                  </button>
+
+                  <button
+                    style={buttonStyle}
                     onClick={() => router.push(`/visits/new?exhibitorId=${item.id}`)}
                   >
                     Registrar visita

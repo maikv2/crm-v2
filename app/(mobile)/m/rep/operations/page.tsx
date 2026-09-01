@@ -141,9 +141,9 @@ export default function MobileRepOperationsPage() {
           />
 
           <ActionCard
-            href="/m/rep/visit"
+            href="/m/rep/agenda"
             title="Agenda"
-            subtitle="Ver visitas do dia, atrasadas e próximas"
+            subtitle="Tarefas, retornos, lembretes, notas e visitas do dia"
             icon={<CalendarDays size={18} />}
           />
 

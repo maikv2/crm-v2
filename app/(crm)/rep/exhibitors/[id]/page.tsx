@@ -266,6 +266,13 @@ export default function RepExhibitorDetailsPage() {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               style={btnSecondary}
+              onClick={() => router.push(`/rep/exhibitors/${item.id}/edit`)}
+            >
+              Editar informações
+            </button>
+
+            <button
+              style={btnSecondary}
               onClick={() =>
                 item.client?.id
                   ? router.push(`/rep/exhibitors?clientId=${item.client.id}`)

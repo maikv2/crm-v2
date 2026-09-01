@@ -48,9 +48,43 @@ function normalizeDatabaseUrlForPgTools(databaseUrl) {
   return url.toString();
 }
 
+function buildPgConnection(databaseUrl) {
+  const url = new URL(databaseUrl);
+  const password = decodeURIComponent(url.password || "");
+  url.password = "";
+  url.searchParams.delete("schema");
+
+  return {
+    connectionString: url.toString(),
+    password,
+  };
+}
+
+function sanitizeErrorMessage(message) {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return message;
+
+  try {
+    const url = new URL(databaseUrl);
+    const password = decodeURIComponent(url.password || "");
+    let sanitized = message;
+
+    if (password) {
+      sanitized = sanitized.split(password).join("********");
+      sanitized = sanitized
+        .split(encodeURIComponent(password))
+        .join("********");
+    }
+
+    return sanitized.replace(/postgresql:\/\/([^:@\s]+):([^@\s]+)@/g, "postgresql://$1:********@");
+  } catch {
+    return message.replace(/postgresql:\/\/([^:@\s]+):([^@\s]+)@/g, "postgresql://$1:********@");
+  }
+}
+
 async function run() {
   const databaseUrl = ensureEnv("DATABASE_URL");
-  const pgDatabaseUrl = normalizeDatabaseUrlForPgTools(databaseUrl);
+  const { connectionString, password } = buildPgConnection(databaseUrl);
 
   const rootDir = process.cwd();
   const backupDir = path.join(rootDir, "backups");
@@ -66,7 +100,7 @@ async function run() {
 
   const args = [
     "--dbname",
-    pgDatabaseUrl,
+    connectionString,
     "--format=custom",
     "--file",
     outputFile,
@@ -76,7 +110,11 @@ async function run() {
   ];
 
   const { stdout, stderr } = await execFileAsync(pgDumpPath, args, {
-    env: { ...process.env, DATABASE_URL: pgDatabaseUrl },
+    env: {
+      ...process.env,
+      DATABASE_URL: connectionString,
+      ...(password ? { PGPASSWORD: password } : {}),
+    },
     windowsHide: true,
     maxBuffer: 1024 * 1024 * 20,
   });
@@ -95,7 +133,7 @@ async function run() {
 run().catch((error) => {
   console.error(
     "Falha no backup:",
-    error instanceof Error ? error.message : error
+    error instanceof Error ? sanitizeErrorMessage(error.message) : error
   );
   process.exit(1);
 });

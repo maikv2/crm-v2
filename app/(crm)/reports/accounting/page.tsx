@@ -20,6 +20,7 @@ import {
   CalendarDays,
   FileArchive,
   FileText,
+  Send,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -432,6 +433,8 @@ export default function ReportsAccountingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zipLoading, setZipLoading] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
+  const [sendResult, setSendResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const loadReport = useCallback(async (f: string, t: string) => {
     let active = true;
@@ -454,6 +457,30 @@ export default function ReportsAccountingPage() {
   useEffect(() => {
     if (from && to) loadReport(from, to);
   }, [from, to, loadReport]);
+
+  async function handleSendWhatsApp() {
+    if (!from || !to) return;
+    if (!confirm(`Enviar relatório contábil de ${getPeriodLabel()} para o contador via WhatsApp?`)) return;
+    try {
+      setSendLoading(true);
+      setSendResult(null);
+      const res = await fetch("/api/reports/accounting/send-whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSendResult({ ok: false, msg: json.error ?? "Erro ao enviar." });
+      } else {
+        setSendResult({ ok: true, msg: `✓ Enviado! PDF + CSV${json.nfeCount > 0 ? " + ZIP XMLs" : ""} para o contador.` });
+      }
+    } catch {
+      setSendResult({ ok: false, msg: "Erro ao conectar." });
+    } finally {
+      setSendLoading(false);
+    }
+  }
 
   async function handleDownloadZip() {
     if (!from || !to) return;
@@ -532,6 +559,14 @@ export default function ReportsAccountingPage() {
                     Exportar CSV
                   </button>
                   <button
+                    onClick={handleSendWhatsApp}
+                    disabled={sendLoading}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, border: "none", background: sendLoading ? "#64748b" : "#16a34a", color: "#ffffff", cursor: sendLoading ? "wait" : "pointer", fontWeight: 700, fontSize: 13, opacity: sendLoading ? 0.8 : 1 }}
+                  >
+                    <Send size={15} />
+                    {sendLoading ? "Enviando..." : "Enviar ao Contador"}
+                  </button>
+                  <button
                     onClick={handleDownloadZip}
                     disabled={zipLoading}
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, border: `1px solid ${border}`, background: cardBg, color: theme.text, cursor: zipLoading ? "wait" : "pointer", fontWeight: 700, fontSize: 13, opacity: zipLoading ? 0.7 : 1 }}
@@ -551,6 +586,14 @@ export default function ReportsAccountingPage() {
             </div>
           </div>
         </div>
+
+        {/* Send result feedback */}
+        {sendResult && (
+          <div style={{ marginBottom: 16, padding: "12px 18px", borderRadius: 10, background: sendResult.ok ? (isDark ? "rgba(34,197,94,0.12)" : "#f0fdf4") : (isDark ? "rgba(239,68,68,0.12)" : "#fef2f2"), border: `1px solid ${sendResult.ok ? "#16a34a" : "#dc2626"}`, fontSize: 13, fontWeight: 700, color: sendResult.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>{sendResult.msg}</span>
+            <button onClick={() => setSendResult(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: 16, lineHeight: 1 }}>×</button>
+          </div>
+        )}
 
         {/* Period selector */}
         <div

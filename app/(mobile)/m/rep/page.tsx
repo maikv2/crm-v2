@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ChevronRight,
   PlusCircle,
+  Route,
   UserPlus,
   Wrench,
 } from "lucide-react";
@@ -15,10 +16,10 @@ import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 
 type RepAgendaResponse = {
-  atrasados?: any[];
-  hoje?: any[];
-  proximos?: any[];
-  visitadosHoje?: any[];
+  atrasados?: unknown[];
+  hoje?: unknown[];
+  proximos?: unknown[];
+  visitadosHoje?: unknown[];
   regionName?: string | null;
 };
 
@@ -330,10 +331,24 @@ export default function RepMobileDashboardPage() {
       />
 
       <Shortcut
-        href="/m/rep/visit"
-        title="Registrar visitas"
-        subtitle="Registrar visita sem venda"
+        href="/m/rep/agenda"
+        title="Agenda do dia"
+        subtitle="Tarefas, retornos, lembretes e notas"
         icon={<CalendarDays size={20} />}
+      />
+
+      <Shortcut
+        href="/m/rep/routes"
+        title="Rotas"
+        subtitle="Abrir navegação até clientes e prospectos"
+        icon={<Route size={20} />}
+      />
+
+      <Shortcut
+        href="/m/rep/operations"
+        title="Mais operações"
+        subtitle="Expositores, visitas, financeiro e alertas"
+        icon={<Wrench size={20} />}
       />
     </MobileRepPageFrame>
   );

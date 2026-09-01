@@ -20,10 +20,6 @@ import {
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
-import {
-  buildPortalAccessMessage,
-  buildPortalAccessWhatsappUrl,
-} from "@/lib/portal-access-message";
 import { getThemeColors } from "@/lib/theme";
 
 type ClientDetails = {
@@ -102,6 +98,7 @@ export default function MobileAdminClientDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [client, setClient] = useState<ClientDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sendingPortalAccess, setSendingPortalAccess] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -161,7 +158,7 @@ export default function MobileAdminClientDetailsPage() {
     0
   );
 
-  function handleSendPortalAccess() {
+  async function handleSendPortalAccess() {
     if (!client) return;
 
     const accessCode = client.code?.trim();
@@ -176,19 +173,32 @@ export default function MobileAdminClientDetailsPage() {
       return;
     }
 
-    const message = buildPortalAccessMessage({
-      clientName: client.tradeName || client.name,
-      accessCode,
-      portalUrl: `${window.location.origin}/portal/login`,
-    });
-    const whatsappUrl = buildPortalAccessWhatsappUrl({ phone, message });
+    try {
+      setSendingPortalAccess(true);
 
-    if (!whatsappUrl) {
-      alert("O WhatsApp/telefone do cliente está inválido.");
-      return;
+      const res = await fetch("/api/whatsapp/send-portal-access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          portalUrl: `${window.location.origin}/portal/login`,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Não foi possível enviar o acesso.");
+      }
+
+      alert("Acesso ao portal enviado pelo WhatsApp.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Não foi possível enviar o acesso.");
+    } finally {
+      setSendingPortalAccess(false);
     }
-
-    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -346,6 +356,7 @@ export default function MobileAdminClientDetailsPage() {
             <button
               type="button"
               onClick={handleSendPortalAccess}
+              disabled={sendingPortalAccess}
               style={{
                 width: "100%",
                 minHeight: 46,
@@ -360,11 +371,12 @@ export default function MobileAdminClientDetailsPage() {
                 gap: 8,
                 fontSize: 13,
                 fontWeight: 900,
-                cursor: "pointer",
+                cursor: sendingPortalAccess ? "not-allowed" : "pointer",
+                opacity: sendingPortalAccess ? 0.7 : 1,
               }}
             >
               <KeyRound size={15} />
-              Enviar acesso ao portal
+              {sendingPortalAccess ? "Enviando acesso..." : "Enviar acesso ao portal"}
             </button>
           </MobileCard>
 
@@ -447,12 +459,17 @@ export default function MobileAdminClientDetailsPage() {
             ) : (
               <div style={{ display: "grid", gap: 8 }}>
                 {exhibitors.slice(0, 5).map((item) => (
-                  <MobileInfoRow
+                  <Link
                     key={item.id}
-                    title={item.name || item.code || "Expositor"}
-                    subtitle={item.status || "-"}
-                    right={formatDateBR(item.installedAt)}
-                  />
+                    href={`/m/admin/exhibitors/${item.id}/edit`}
+                    style={{ textDecoration: "none" }}
+                  >
+                    <MobileInfoRow
+                      title={item.name || item.code || "Expositor"}
+                      subtitle={`${item.status || "-"} • Toque para editar`}
+                      right={formatDateBR(item.installedAt)}
+                    />
+                  </Link>
                 ))}
               </div>
             )}

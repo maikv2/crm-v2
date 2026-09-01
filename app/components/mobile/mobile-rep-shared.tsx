@@ -1,9 +1,9 @@
 import {
+  CalendarDays,
   Home,
   Package,
+  Route,
   Users,
-  Wallet,
-  Wrench,
   type LucideIcon,
 } from "lucide-react";
 
@@ -15,10 +15,10 @@ export type RepMobileNavItem = {
 
 export const repMobileNavItems: RepMobileNavItem[] = [
   { label: "Início", href: "/m/rep", icon: Home },
+  { label: "Agenda", href: "/m/rep/agenda", icon: CalendarDays },
+  { label: "Rotas", href: "/m/rep/routes", icon: Route },
   { label: "Pedidos", href: "/m/rep/orders", icon: Package },
-  { label: "Financeiro", href: "/m/rep/finance", icon: Wallet },
   { label: "Clientes", href: "/m/rep/clients", icon: Users },
-  { label: "OP", href: "/m/rep/operations", icon: Wrench },
 ];
 
 export const repOperationLinks = {

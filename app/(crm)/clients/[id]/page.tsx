@@ -729,6 +729,13 @@ export default function ClientPage({
                       onClick={() => router.push(`/exhibitors/${exhibitor.id}`)}
                     />
                     <ActionButton
+                      label="Editar"
+                      theme={theme}
+                      onClick={() =>
+                        router.push(`/exhibitors/${exhibitor.id}/edit`)
+                      }
+                    />
+                    <ActionButton
                       label="Manutenção"
                       theme={theme}
                       onClick={() =>

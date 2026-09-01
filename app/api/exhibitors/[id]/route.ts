@@ -251,7 +251,8 @@ export async function PUT(request: Request) {
     const type = parseType(body.type);
     const installedAt = parseOptionalDate(body.installedAt);
     const nextVisitAt = parseOptionalDate(body.nextVisitAt);
-    const removedAt = parseOptionalDate(body.removedAt);
+    const hasRemovedAt = Object.prototype.hasOwnProperty.call(body, "removedAt");
+    const removedAt = hasRemovedAt ? parseOptionalDate(body.removedAt) : undefined;
     const productQuantities = parseProductQuantities(body.products);
 
     if (body.status && !status) {
@@ -268,7 +269,11 @@ export async function PUT(request: Request) {
       );
     }
 
-    if (installedAt === undefined || nextVisitAt === undefined || removedAt === undefined) {
+    if (
+      installedAt === undefined ||
+      nextVisitAt === undefined ||
+      (hasRemovedAt && removedAt === undefined)
+    ) {
       return NextResponse.json(
         { error: "Uma das datas informadas está inválida." },
         { status: 400 }
@@ -294,7 +299,7 @@ export async function PUT(request: Request) {
           type,
           installedAt: installedAt ?? undefined,
           nextVisitAt,
-          removedAt,
+          ...(hasRemovedAt ? { removedAt } : {}),
         },
         include: {
           client: true,

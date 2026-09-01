@@ -182,7 +182,14 @@ export default function MobileExhibitorEditForm({
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(json?.error || "Erro ao salvar expositor.");
+        const baseMessage = json?.error || "Erro ao salvar expositor.";
+        const details =
+          typeof json?.details === "string" ? json.details : null;
+        throw new Error(
+          details && details !== baseMessage
+            ? `${baseMessage}: ${details}`
+            : baseMessage
+        );
       }
 
       router.push(backHref);

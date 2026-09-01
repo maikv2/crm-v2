@@ -930,6 +930,26 @@ export default function OrderDetailPage() {
     }
   }
 
+  async function handleSendPaymentLinkRequest() {
+    if (!order?.id) return;
+    try {
+      const res = await fetch("/api/whatsapp/send-payment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Erro ao enviar link de pagamento: ${data?.error || res.status}`);
+        return;
+      }
+      alert(data?.message || "Link de pagamento enviado ao cliente.");
+    } catch (err) {
+      console.error("Erro ao enviar link de pagamento:", err);
+      alert("Erro ao enviar link de pagamento.");
+    }
+  }
+
   async function receiveInstallment(installmentId: string) {
     try {
       setReceivingId(installmentId);
@@ -1129,6 +1149,15 @@ export default function OrderDetailPage() {
               color="#2563eb"
               primary
               onClick={handleSendBoletoRequest}
+            />
+          )}
+          {order?.paymentMethod === "CARD_CREDIT" && (
+            <ActionButton
+              label="💳 Enviar link de cartão"
+              theme={theme}
+              color="#2563eb"
+              primary
+              onClick={handleSendPaymentLinkRequest}
             />
           )}
         </div>

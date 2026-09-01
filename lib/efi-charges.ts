@@ -106,6 +106,26 @@ export type EfiChargeData = {
   };
 };
 
+export type EfiChargeLinkPayload = {
+  items: Array<{
+    name: string;
+    value: number;
+    amount: number;
+  }>;
+  metadata?: {
+    custom_id?: string;
+    notification_url?: string;
+  };
+  customer?: {
+    email?: string;
+  };
+  settings: {
+    payment_method: "all" | "banking_billet" | "credit_card";
+    expire_at?: string;
+    message?: string;
+  };
+};
+
 export type EfiNotificationItem = {
   id?: number | string;
   type?: string;
@@ -331,6 +351,20 @@ export async function getEfiCharge(chargeId: string | number) {
   return response.data;
 }
 
+export async function createEfiChargeLink(payload: EfiChargeLinkPayload) {
+  const response = await requestEfi<EfiApiEnvelope<EfiChargeData>>(
+    "POST",
+    "/v1/charge/one-step/link",
+    payload
+  );
+
+  if (!response.data) {
+    throw new EfiChargesApiError("Resposta Efí sem dados do link de pagamento.", 502, response);
+  }
+
+  return response.data;
+}
+
 export async function updateEfiBilletDueDate(
   chargeId: string | number,
   expireAt: string
@@ -357,9 +391,14 @@ export function mapEfiChargeStatus(status?: string | null): ExternalPaymentStatu
   switch (String(status ?? "").toLowerCase()) {
     case "paid":
     case "settled":
+    case "approved":
       return ExternalPaymentStatus.PAID;
     case "unpaid":
       return ExternalPaymentStatus.OVERDUE;
+    case "refused":
+    case "contested":
+      return ExternalPaymentStatus.FAILED;
+    case "refunded":
     case "canceled":
     case "cancelled":
       return ExternalPaymentStatus.CANCELED;
@@ -376,7 +415,11 @@ export function mapEfiChargeStatus(status?: string | null): ExternalPaymentStatu
 
 export function isEfiPaidStatus(status?: string | null) {
   const normalized = String(status ?? "").toLowerCase();
-  return normalized === "paid" || normalized === "settled";
+  return (
+    normalized === "paid" ||
+    normalized === "settled" ||
+    normalized === "approved"
+  );
 }
 
 export function extractEfiPaymentArtifacts(data: EfiChargeData) {

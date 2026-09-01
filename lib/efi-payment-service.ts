@@ -9,9 +9,11 @@ import {
 import { prisma } from "@/lib/prisma";
 import {
   EfiChargeData,
+  EfiChargeLinkPayload,
   EfiChargesApiError,
   EfiChargesConfigError,
   createEfiBilletOneStep,
+  createEfiChargeLink,
   extractEfiPaymentArtifacts,
   getEfiCharge,
   getEfiNotification,
@@ -307,6 +309,203 @@ async function findOrderForBillet(orderId: string) {
   return order;
 }
 
+type ClientForLink = {
+  name: string;
+  email?: string | null;
+  billingEmail?: string | null;
+};
+
+type OrderForLink = {
+  id: string;
+  number: number;
+  totalCents: number;
+  paymentMethod: PaymentMethod;
+  client: ClientForLink;
+};
+
+function buildLinkCustomId(orderId: string) {
+  return `v2-link-${orderId}`;
+}
+
+function buildLinkItemName(order: { number: number }) {
+  return `Pedido ${String(order.number).padStart(6, "0")}`;
+}
+
+async function findOrderForCardLink(orderId: string): Promise<OrderForLink> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      number: true,
+      totalCents: true,
+      paymentMethod: true,
+      client: {
+        select: {
+          name: true,
+          email: true,
+          billingEmail: true,
+        },
+      },
+    },
+  });
+
+  if (!order) throw new Error("Pedido não encontrado.");
+  if (order.paymentMethod !== PaymentMethod.CARD_CREDIT) {
+    throw new Error("Este pedido não está marcado como cartão de crédito.");
+  }
+
+  return order;
+}
+
+async function markOrderInstallmentsPaidFromLink(
+  tx: Prisma.TransactionClient,
+  params: {
+    orderId: string;
+    providerChargeId: string | null;
+  }
+) {
+  const openInstallments = await tx.accountsReceivableInstallment.findMany({
+    where: {
+      status: { not: "PAID" },
+      accountsReceivable: { orderId: params.orderId },
+    },
+    orderBy: { installmentNumber: "asc" },
+  });
+
+  for (const installment of openInstallments) {
+    await markReceivableInstallmentPaid(tx, {
+      installmentId: installment.id,
+      paymentMethod: PaymentMethod.CARD_CREDIT,
+      amountCents: installment.amountCents,
+      externalReference: params.providerChargeId
+        ? `EFI:${params.providerChargeId}:${installment.id}`
+        : null,
+      notes: params.providerChargeId
+        ? `Baixa automática Efí (link de pagamento) da cobrança ${params.providerChargeId}.`
+        : "Baixa automática Efí (link de pagamento).",
+    });
+  }
+}
+
+async function updateExternalPaymentFromLinkCharge(
+  payment: ExternalPayment,
+  charge: EfiChargeData
+) {
+  const artifacts = extractEfiPaymentArtifacts(charge);
+  const providerChargeId =
+    artifacts.providerChargeId || payment.providerChargeId || null;
+  const paid = isEfiPaidStatus(charge.status);
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.externalPayment.update({
+      where: { id: payment.id },
+      data: {
+        status: artifacts.status,
+        providerChargeId,
+        amountCents: artifacts.amountCents || payment.amountCents,
+        paidCents: paid ? artifacts.amountCents || payment.amountCents : payment.paidCents,
+        paidAt: paid ? new Date() : payment.paidAt,
+        paymentUrl: artifacts.paymentUrl ?? payment.paymentUrl,
+        rawResponse: toJson(charge),
+        lastSyncedAt: new Date(),
+      },
+    });
+
+    if (paid) {
+      await markOrderInstallmentsPaidFromLink(tx, {
+        orderId: payment.orderId,
+        providerChargeId,
+      });
+    }
+
+    return updated;
+  });
+}
+
+export async function ensureEfiPaymentLinkForOrder(
+  orderId: string,
+  requestUrl: string
+): Promise<{ payment: ExternalPayment; created: boolean; synced: boolean }> {
+  const order = await findOrderForCardLink(orderId);
+
+  const existing = await prisma.externalPayment.findFirst({
+    where: {
+      provider: PaymentProvider.EFI,
+      orderId: order.id,
+      type: ExternalPaymentType.PAYMENT_LINK,
+      status: { in: [...OPEN_EXTERNAL_STATUSES] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existing?.providerChargeId) {
+    const charge = await getEfiCharge(existing.providerChargeId);
+    const payment = await updateExternalPaymentFromLinkCharge(existing, charge);
+    return { payment, created: false, synced: true };
+  }
+
+  const customId = buildLinkCustomId(order.id);
+  const email = trimText(order.client.billingEmail) || trimText(order.client.email);
+  const expireAt = formatDateForEfi(
+    new Date(
+      Date.now() +
+        parsePercentEnv("EFI_PAYMENT_LINK_EXPIRE_DAYS", 7) * 24 * 60 * 60 * 1000
+    )
+  );
+
+  const payload: EfiChargeLinkPayload = {
+    items: [
+      {
+        name: buildLinkItemName(order),
+        value: order.totalCents,
+        amount: 1,
+      },
+    ],
+    metadata: {
+      custom_id: customId,
+      notification_url: buildNotificationUrl(requestUrl),
+    },
+    ...(email ? { customer: { email } } : {}),
+    settings: {
+      payment_method: "credit_card",
+      expire_at: expireAt,
+      message: `V2 Distribuidora - Pedido ${String(order.number).padStart(6, "0")}`.slice(
+        0,
+        80
+      ),
+    },
+  };
+
+  const charge = await createEfiChargeLink(payload);
+  const artifacts = extractEfiPaymentArtifacts(charge);
+
+  if (!artifacts.providerChargeId || !artifacts.paymentUrl) {
+    throw new EfiChargesApiError(
+      "Efí não retornou o link de pagamento.",
+      502,
+      charge
+    );
+  }
+
+  const payment = await prisma.externalPayment.create({
+    data: {
+      provider: PaymentProvider.EFI,
+      type: ExternalPaymentType.PAYMENT_LINK,
+      status: artifacts.status,
+      orderId: order.id,
+      providerChargeId: artifacts.providerChargeId,
+      customId,
+      amountCents: artifacts.amountCents || order.totalCents,
+      dueDate: dateFromEfi(artifacts.expireAt),
+      paymentUrl: artifacts.paymentUrl,
+      rawResponse: toJson(charge),
+      lastSyncedAt: new Date(),
+    },
+  });
+
+  return { payment, created: true, synced: false };
+}
+
 async function updateExternalPaymentFromCharge(
   payment: ExternalPayment,
   charge: EfiChargeData
@@ -560,18 +759,28 @@ export async function processEfiChargesNotification(token: string) {
         },
       });
 
-      if (isEfiPaidStatus(currentStatus) && externalPayment.installmentId) {
-        await markReceivableInstallmentPaid(tx, {
-          installmentId: externalPayment.installmentId,
-          paymentMethod: PaymentMethod.BOLETO,
-          amountCents: externalPayment.amountCents,
-          externalReference: externalPayment.providerChargeId
-            ? `EFI:${externalPayment.providerChargeId}`
-            : null,
-          notes: externalPayment.providerChargeId
-            ? `Baixa automática Efí da cobrança ${externalPayment.providerChargeId}.`
-            : "Baixa automática Efí.",
-        });
+      if (isEfiPaidStatus(currentStatus)) {
+        if (externalPayment.installmentId) {
+          await markReceivableInstallmentPaid(tx, {
+            installmentId: externalPayment.installmentId,
+            paymentMethod:
+              externalPayment.type === ExternalPaymentType.BOLIX
+                ? PaymentMethod.PIX
+                : PaymentMethod.BOLETO,
+            amountCents: externalPayment.amountCents,
+            externalReference: externalPayment.providerChargeId
+              ? `EFI:${externalPayment.providerChargeId}`
+              : null,
+            notes: externalPayment.providerChargeId
+              ? `Baixa automática Efí da cobrança ${externalPayment.providerChargeId}.`
+              : "Baixa automática Efí.",
+          });
+        } else if (externalPayment.type === ExternalPaymentType.PAYMENT_LINK) {
+          await markOrderInstallmentsPaidFromLink(tx, {
+            orderId: externalPayment.orderId,
+            providerChargeId: externalPayment.providerChargeId,
+          });
+        }
       }
 
       await tx.paymentWebhookEvent.update({

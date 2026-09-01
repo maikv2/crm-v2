@@ -300,6 +300,29 @@ export default function MobileRepOrderDetailsPage() {
     }
   }
 
+  async function handleSendPaymentLink() {
+    if (!order?.id) return;
+    setBusy("boleto");
+    try {
+      const res = await fetch("/api/whatsapp/send-payment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      alert(
+        res.ok
+          ? data?.message || "Link de pagamento enviado ao cliente."
+          : `Erro: ${data?.error || res.status}`,
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao enviar link de pagamento.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function handleDownloadNfePdf() {
     if (!order?.id) return;
     window.open(
@@ -467,6 +490,22 @@ export default function MobileRepOrderDetailsPage() {
                   title={hasWhatsApp ? "" : "Cliente sem WhatsApp cadastrado"}
                 >
                   {busy === "boleto" ? "Enviando..." : "📱 Enviar Pix"}
+                </button>
+              )}
+              {order.paymentMethod === "CARD_CREDIT" && (
+                <button
+                  type="button"
+                  disabled={busy !== null || !hasWhatsApp}
+                  onClick={handleSendPaymentLink}
+                  style={{
+                    ...buttonBase,
+                    background: "#2563eb",
+                    opacity: busy || !hasWhatsApp ? 0.6 : 1,
+                    cursor: busy || !hasWhatsApp ? "not-allowed" : "pointer",
+                  }}
+                  title={hasWhatsApp ? "" : "Cliente sem WhatsApp cadastrado"}
+                >
+                  {busy === "boleto" ? "Enviando..." : "💳 Enviar link de cartão"}
                 </button>
               )}
             </div>

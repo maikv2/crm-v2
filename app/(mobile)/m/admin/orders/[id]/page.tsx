@@ -208,6 +208,25 @@ export default function MobileAdminOrderDetailPage() {
     }
   }
 
+  async function handleSendPaymentLink() {
+    if (!order?.id) return;
+    setBusy("boleto");
+    try {
+      const res = await fetch("/api/whatsapp/send-payment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      alert(res.ok ? data?.message || "Link de pagamento enviado ao cliente." : `Erro: ${data?.error || res.status}`);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao enviar link de pagamento.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const btnBase: React.CSSProperties = {
     minHeight: 42,
     borderRadius: 12,
@@ -337,6 +356,17 @@ export default function MobileAdminOrderDetailPage() {
                   title={hasWhatsApp ? "" : "Cliente sem WhatsApp"}
                 >
                   {busy === "boleto" ? "Enviando..." : "📱 Enviar Pix"}
+                </button>
+              )}
+              {order.paymentMethod === "CARD_CREDIT" && (
+                <button
+                  type="button"
+                  disabled={busy !== null || !hasWhatsApp}
+                  onClick={handleSendPaymentLink}
+                  style={{ ...btnBase, background: "#2563eb", opacity: busy || !hasWhatsApp ? 0.6 : 1 }}
+                  title={hasWhatsApp ? "" : "Cliente sem WhatsApp"}
+                >
+                  {busy === "boleto" ? "Enviando..." : "💳 Enviar link de cartão"}
                 </button>
               )}
             </div>

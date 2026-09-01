@@ -328,6 +328,17 @@ export default function MobileAdminOrderDetailPage() {
                   {busy === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
                 </button>
               )}
+              {order.paymentMethod === "PIX" && (
+                <button
+                  type="button"
+                  disabled={busy !== null || !hasWhatsApp}
+                  onClick={handleSendBoleto}
+                  style={{ ...btnBase, background: "#2563eb", opacity: busy || !hasWhatsApp ? 0.6 : 1 }}
+                  title={hasWhatsApp ? "" : "Cliente sem WhatsApp"}
+                >
+                  {busy === "boleto" ? "Enviando..." : "📱 Enviar Pix"}
+                </button>
+              )}
             </div>
           </MobileCard>
 

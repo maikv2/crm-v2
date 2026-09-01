@@ -453,6 +453,22 @@ export default function MobileRepOrderDetailsPage() {
                   {busy === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
                 </button>
               )}
+              {order.paymentMethod === "PIX" && (
+                <button
+                  type="button"
+                  disabled={busy !== null || !hasWhatsApp}
+                  onClick={handleSendBoleto}
+                  style={{
+                    ...buttonBase,
+                    background: "#2563eb",
+                    opacity: busy || !hasWhatsApp ? 0.6 : 1,
+                    cursor: busy || !hasWhatsApp ? "not-allowed" : "pointer",
+                  }}
+                  title={hasWhatsApp ? "" : "Cliente sem WhatsApp cadastrado"}
+                >
+                  {busy === "boleto" ? "Enviando..." : "📱 Enviar Pix"}
+                </button>
+              )}
             </div>
           </MobileCard>
 

@@ -297,8 +297,11 @@ async function findOrderForBillet(orderId: string) {
   });
 
   if (!order) throw new Error("Pedido não encontrado.");
-  if (order.paymentMethod !== PaymentMethod.BOLETO) {
-    throw new Error("Este pedido não está marcado como boleto.");
+  if (
+    order.paymentMethod !== PaymentMethod.BOLETO &&
+    order.paymentMethod !== PaymentMethod.PIX
+  ) {
+    throw new Error("Este pedido não está marcado como boleto ou Pix.");
   }
 
   return order;

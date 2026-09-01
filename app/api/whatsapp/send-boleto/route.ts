@@ -8,6 +8,7 @@ import {
 } from "@/lib/efi-payment-service";
 import {
   sendDocument,
+  sendImage,
   sendText,
   ZApiConfigError,
   ZApiRequestError,
@@ -40,25 +41,38 @@ function orderNumber(value: number) {
 function buildMessage(params: {
   clientName: string;
   orderNumber: number;
+  isPix: boolean;
   payments: Awaited<ReturnType<typeof ensureEfiBilletsForOrder>>;
 }) {
+  const { isPix } = params;
   const lines = [
     `Olá, ${params.clientName}!`,
     "",
-    `Segue o boleto do pedido #${orderNumber(params.orderNumber)} da V2 Distribuidora.`,
+    isPix
+      ? `Segue o Pix para pagamento do pedido #${orderNumber(params.orderNumber)} da V2 Distribuidora.`
+      : `Segue o boleto do pedido #${orderNumber(params.orderNumber)} da V2 Distribuidora.`,
     "",
   ];
 
   for (const item of params.payments) {
     const payment = item.payment;
-    lines.push(
-      `Parcela: ${centsToBRL(payment.amountCents)}`,
-      `Vencimento: ${dateToBR(payment.dueDate)}`,
-      payment.boletoLink ? `Link: ${payment.boletoLink}` : "",
-      payment.barcode ? `Linha digitável: ${payment.barcode}` : "",
-      payment.pixCopyPaste ? `Pix copia e cola: ${payment.pixCopyPaste}` : "",
-      ""
-    );
+    const rows = isPix
+      ? [
+          `Parcela: ${centsToBRL(payment.amountCents)}`,
+          `Vencimento: ${dateToBR(payment.dueDate)}`,
+          payment.pixCopyPaste ? `Pix copia e cola: ${payment.pixCopyPaste}` : "",
+          payment.boletoLink
+            ? `Se preferir, link do boleto: ${payment.boletoLink}`
+            : "",
+        ]
+      : [
+          `Parcela: ${centsToBRL(payment.amountCents)}`,
+          `Vencimento: ${dateToBR(payment.dueDate)}`,
+          payment.boletoLink ? `Link: ${payment.boletoLink}` : "",
+          payment.barcode ? `Linha digitável: ${payment.barcode}` : "",
+          payment.pixCopyPaste ? `Pix copia e cola: ${payment.pixCopyPaste}` : "",
+        ];
+    lines.push(...rows, "");
   }
 
   lines.push(
@@ -99,6 +113,31 @@ async function trySendSinglePdf(params: {
     return {
       sent: false,
       skipped: error instanceof Error ? error.message : "erro_pdf",
+    };
+  }
+}
+
+async function trySendPixQrCode(params: {
+  phone: string;
+  qrCodeImage: string | null;
+  caption: string;
+}) {
+  if (!params.qrCodeImage) {
+    return { sent: false, skipped: "sem_qrcode" };
+  }
+
+  try {
+    const zapi = await sendImage({
+      phone: params.phone,
+      image: params.qrCodeImage,
+      caption: params.caption,
+    });
+
+    return { sent: true, zapi };
+  } catch (error) {
+    return {
+      sent: false,
+      skipped: error instanceof Error ? error.message : "erro_qrcode",
     };
   }
 }
@@ -151,12 +190,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (order.paymentMethod !== "BOLETO") {
+    if (order.paymentMethod !== "BOLETO" && order.paymentMethod !== "PIX") {
       return NextResponse.json(
-        { error: "Este pedido não está marcado como boleto." },
+        { error: "Este pedido não está marcado como boleto ou Pix." },
         { status: 400 }
       );
     }
+
+    const isPix = order.paymentMethod === "PIX";
 
     const phoneOverride =
       typeof body.phone === "string" ? body.phone.trim() : "";
@@ -178,22 +219,44 @@ export async function POST(request: Request) {
     const message = buildMessage({
       clientName: order.client?.tradeName || order.client?.name || "cliente",
       orderNumber: order.number,
+      isPix,
       payments,
     });
 
     const textResult = await sendText({ phone, message });
     const pdfResult =
-      payments.length === 1
+      !isPix && payments.length === 1
         ? await trySendSinglePdf({
             phone,
             pdfUrl: payments[0].payment.boletoPdfUrl,
             orderNumber: order.number,
           })
-        : { sent: false, skipped: "multiplos_boletos" };
+        : { sent: false, skipped: isPix ? "pedido_pix" : "multiplos_boletos" };
+
+    const pixResults = [];
+    for (const [index, item] of payments.entries()) {
+      const caption =
+        payments.length > 1
+          ? `QR Code Pix - Pedido #${orderNumber(order.number)} - Parcela ${
+              index + 1
+            }/${payments.length}`
+          : `QR Code Pix - Pedido #${orderNumber(order.number)}`;
+
+      pixResults.push({
+        id: item.payment.id,
+        ...(await trySendPixQrCode({
+          phone,
+          qrCodeImage: item.payment.pixQrCodeImage,
+          caption,
+        })),
+      });
+    }
 
     return NextResponse.json({
       ok: true,
-      message: "Boleto enviado ao cliente pelo WhatsApp.",
+      message: isPix
+        ? "Pix enviado ao cliente pelo WhatsApp."
+        : "Boleto enviado ao cliente pelo WhatsApp.",
       phone,
       payments: payments.map((item) => ({
         id: item.payment.id,
@@ -205,6 +268,7 @@ export async function POST(request: Request) {
       zapi: {
         text: textResult,
         pdf: pdfResult,
+        pix: pixResults,
       },
     });
   } catch (error: any) {

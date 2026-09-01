@@ -1122,6 +1122,15 @@ export default function OrderDetailPage() {
               onClick={handleSendBoletoRequest}
             />
           )}
+          {order?.paymentMethod === "PIX" && (
+            <ActionButton
+              label="📱 Enviar Pix"
+              theme={theme}
+              color="#2563eb"
+              primary
+              onClick={handleSendBoletoRequest}
+            />
+          )}
         </div>
       </div>
 

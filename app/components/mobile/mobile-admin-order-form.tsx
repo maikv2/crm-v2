@@ -709,7 +709,7 @@ export default function MobileAdminOrderForm() {
       }
 
       if (
-        (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT") &&
+        (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX") &&
         !dueDate
       ) {
         setError("Informe a data do primeiro vencimento.");
@@ -717,7 +717,7 @@ export default function MobileAdminOrderForm() {
       }
 
       if (
-        (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT") &&
+        (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX") &&
         installmentDates.slice(0, installmentCount).some((date) => !date)
       ) {
         setError("Informe a data de todas as parcelas.");
@@ -746,15 +746,15 @@ export default function MobileAdminOrderForm() {
           totalCents,
           paymentMethod,
           dueDate:
-            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
+            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX"
               ? dueDate || null
               : null,
           installmentCount:
-            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
+            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX"
               ? installmentCount
               : 1,
           installmentDates:
-            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
+            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX"
               ? installmentDates
               : [],
           defectReturnItems: selectedDefectReturnItems.map((item) => ({
@@ -1516,7 +1516,7 @@ router.push(targetPath);
             }}
           />
 
-          {paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" ? (
+          {paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX" ? (
             <>
               <input
                 type="date"

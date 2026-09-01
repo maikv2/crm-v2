@@ -1605,7 +1605,9 @@ function EditOrderModal({
           unitCents: centsFromCurrencyInput(item.unitValue),
         })),
         installmentCount:
-          paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
+          paymentMethod === "BOLETO" ||
+          paymentMethod === "CARD_CREDIT" ||
+          paymentMethod === "PIX"
             ? installmentCount
             : 1,
         installments: installments
@@ -1899,7 +1901,9 @@ function EditOrderModal({
             >
               Parcelas
             </div>
-            {(paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT") && (
+            {(paymentMethod === "BOLETO" ||
+              paymentMethod === "CARD_CREDIT" ||
+              paymentMethod === "PIX") && (
               <div style={{ marginBottom: 8 }}>
                 <label style={labelStyle}>Quantidade de parcelas</label>
                 <select

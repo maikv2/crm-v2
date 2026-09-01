@@ -71,8 +71,9 @@ export async function GET() {
       ordersToday,
       receivables,
       financeExpensesMonth,
-      receiptsAll,
-      transfersAll,
+      regionReceipts,
+      transferredAgg,
+      pendingTransferAgg,
     ] = await Promise.all([
       prisma.client.count({
         where: { active: true },
@@ -224,10 +225,10 @@ export async function GET() {
       }),
 
       prisma.receipt.findMany({
+        where: { location: "REGION" },
         select: {
           id: true,
           amountCents: true,
-          location: true,
           regionId: true,
           region: {
             select: {
@@ -245,19 +246,14 @@ export async function GET() {
         },
       }),
 
-      prisma.cashTransfer.findMany({
-        select: {
-          id: true,
-          amountCents: true,
-          status: true,
-          regionId: true,
-          region: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
+      prisma.cashTransfer.aggregate({
+        where: { status: TransferStatus.TRANSFERRED },
+        _sum: { amountCents: true },
+      }),
+
+      prisma.cashTransfer.aggregate({
+        where: { status: TransferStatus.PENDING },
+        _sum: { amountCents: true },
       }),
     ]);
 
@@ -484,22 +480,17 @@ export async function GET() {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 4);
 
-    const totalReceiptsRegionCents = receiptsAll
-      .filter((r) => r.location === "REGION")
-      .reduce((sum, r) => sum + Number(r.amountCents ?? 0), 0);
+    const totalReceiptsRegionCents = regionReceipts.reduce(
+      (sum, r) => sum + Number(r.amountCents ?? 0),
+      0
+    );
 
-    const totalTransferredCents = transfersAll
-      .filter((t) => t.status === TransferStatus.TRANSFERRED)
-      .reduce((sum, t) => sum + Number(t.amountCents ?? 0), 0);
-
-    const totalPendingTransferCents = transfersAll
-      .filter((t) => t.status === TransferStatus.PENDING)
-      .reduce((sum, t) => sum + Number(t.amountCents ?? 0), 0);
+    const totalTransferredCents = transferredAgg._sum.amountCents ?? 0;
+    const totalPendingTransferCents = pendingTransferAgg._sum.amountCents ?? 0;
 
     const regionalCashMap = new Map<string, number>();
 
-    for (const receipt of receiptsAll) {
-      if (receipt.location !== "REGION") continue;
+    for (const receipt of regionReceipts) {
       if (!receipt.region?.name) continue;
 
       const transferred = receipt.transfers.reduce((sum, t) => {

@@ -830,6 +830,7 @@ export default function OrderDetailPage() {
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -912,6 +913,7 @@ export default function OrderDetailPage() {
 
   async function handleSendBoletoRequest() {
     if (!order?.id) return;
+    setBusyAction("boleto");
     try {
       const res = await fetch("/api/whatsapp/send-boleto", {
         method: "POST",
@@ -927,11 +929,14 @@ export default function OrderDetailPage() {
     } catch (err) {
       console.error("Erro ao enviar boleto:", err);
       alert("Erro ao enviar boleto.");
+    } finally {
+      setBusyAction(null);
     }
   }
 
   async function handleSendPaymentLinkRequest() {
     if (!order?.id) return;
+    setBusyAction("payment-link");
     try {
       const res = await fetch("/api/whatsapp/send-payment-link", {
         method: "POST",
@@ -947,6 +952,58 @@ export default function OrderDetailPage() {
     } catch (err) {
       console.error("Erro ao enviar link de pagamento:", err);
       alert("Erro ao enviar link de pagamento.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleSendOrderPdf() {
+    if (!order?.id) return;
+    setBusyAction("order-pdf");
+    try {
+      const res = await fetch("/api/whatsapp/send-order-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(`Erro ao enviar: ${data?.error || res.status}`);
+        return;
+      }
+      alert(data?.message || "Pedido enviado pelo WhatsApp.");
+    } catch (err) {
+      console.error("Erro ao enviar pedido por WhatsApp:", err);
+      alert("Erro ao enviar pedido por WhatsApp.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleEmitNfe() {
+    if (!order?.id) return;
+    setBusyAction("nfe");
+    try {
+      const res = await fetch(`/api/orders/${order.id}/nfe`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("Erro NF-e:", data);
+        alert(
+          data?.error
+            ? `Erro: ${data.error}${data.detalhes ? "\n\n" + JSON.stringify(data.detalhes, null, 2) : ""}`
+            : JSON.stringify(data, null, 2)
+        );
+        return;
+      }
+      // Aguarda 3 segundos e consulta o status atualizado no Focus
+      await new Promise((r) => setTimeout(r, 3000));
+      await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
+      await reloadOrder();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao emitir NF-e");
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -1080,83 +1137,54 @@ export default function OrderDetailPage() {
             onClick={() => window.open(pdfUrl, "_blank", "noopener,noreferrer")}
           />
           <ActionButton
-            label="📲 Enviar pedido"
+            label={busyAction === "order-pdf" ? "Enviando..." : "📲 Enviar pedido"}
             theme={theme}
             color="#16a34a"
             primary
-            disabled={!order?.client?.whatsapp && !order?.client?.phone}
-            onClick={async () => {
-              if (!order?.id) return;
-              try {
-                const res = await fetch("/api/whatsapp/send-order-pdf", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ orderId: order.id }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                  alert(`Erro ao enviar: ${data?.error || res.status}`);
-                  return;
-                }
-                alert(data?.message || "Pedido enviado pelo WhatsApp.");
-              } catch (err) {
-                console.error("Erro ao enviar pedido por WhatsApp:", err);
-                alert("Erro ao enviar pedido por WhatsApp.");
-              }
-            }}
+            disabled={
+              busyAction !== null ||
+              (!order?.client?.whatsapp && !order?.client?.phone)
+            }
+            onClick={handleSendOrderPdf}
           />
           <ActionButton
-            label="Emitir NF-e"
+            label={busyAction === "nfe" ? "Emitindo..." : "Emitir NF-e"}
             theme={theme}
             primary
-            onClick={async () => {
-              if (!order?.id) return;
-              try {
-                const res = await fetch(`/api/orders/${order.id}/nfe`, { method: "POST" });
-                const data = await res.json();
-                if (!res.ok) {
-                  console.error("Erro NF-e:", data);
-                  alert(
-                    data?.error
-                      ? `Erro: ${data.error}${data.detalhes ? "\n\n" + JSON.stringify(data.detalhes, null, 2) : ""}`
-                      : JSON.stringify(data, null, 2)
-                  );
-                  return;
-                }
-                // Aguarda 3 segundos e consulta o status atualizado no Focus
-                await new Promise((r) => setTimeout(r, 3000));
-                await fetch(`/api/orders/${order.id}/nfe`, { method: "GET" });
-                await reloadOrder();
-              } catch (err) {
-                console.error(err);
-                alert("Erro ao emitir NF-e");
-              }
-            }}
+            disabled={busyAction !== null}
+            onClick={handleEmitNfe}
           />
           {order?.paymentMethod === "BOLETO" && (
             <ActionButton
-              label="🏦 Enviar boleto"
+              label={busyAction === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
               theme={theme}
               color="#2563eb"
               primary
+              disabled={busyAction !== null}
               onClick={handleSendBoletoRequest}
             />
           )}
           {order?.paymentMethod === "PIX" && (
             <ActionButton
-              label="📱 Enviar Pix"
+              label={busyAction === "boleto" ? "Enviando..." : "📱 Enviar Pix"}
               theme={theme}
               color="#2563eb"
               primary
+              disabled={busyAction !== null}
               onClick={handleSendBoletoRequest}
             />
           )}
           {order?.paymentMethod === "CARD_CREDIT" && (
             <ActionButton
-              label="💳 Enviar link de cartão"
+              label={
+                busyAction === "payment-link"
+                  ? "Enviando..."
+                  : "💳 Enviar link de cartão"
+              }
               theme={theme}
               color="#2563eb"
               primary
+              disabled={busyAction !== null}
               onClick={handleSendPaymentLinkRequest}
             />
           )}

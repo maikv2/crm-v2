@@ -164,6 +164,9 @@ model Client {
   portalOrderRequests        PortalOrderRequest[]
   repTasks                   RepTask[]
   visits                     Visit[]
+
+  @@index([regionId])
+  @@index([active])
 }
 
 model ClientOtherContact {
@@ -274,6 +277,12 @@ model Order {
   receipts             Receipt[]
   stockMovements       StockMovement[]
   externalPayments     ExternalPayment[]
+
+  @@index([createdAt])
+  @@index([regionId])
+  @@index([clientId])
+  @@index([sellerId])
+  @@index([exhibitorId])
 }
 
 model OrderItem {
@@ -387,6 +396,12 @@ model StockMovement {
   order           Order?            @relation(fields: [orderId], references: [id])
   product         Product           @relation(fields: [productId], references: [id])
   stockLocation   StockLocation     @relation(fields: [stockLocationId], references: [id])
+
+  @@index([productId])
+  @@index([stockLocationId])
+  @@index([orderId])
+  @@index([exhibitorId])
+  @@index([createdAt])
 }
 
 model Visit {
@@ -645,6 +660,12 @@ model AccountsReceivable {
   installments     AccountsReceivableInstallment[]
   receipts         Receipt[]
   externalPayments ExternalPayment[]
+
+  @@index([orderId])
+  @@index([clientId])
+  @@index([regionId])
+  @@index([status])
+  @@index([dueDate])
 }
 
 model Receipt {
@@ -665,6 +686,11 @@ model Receipt {
   order                Order?             @relation(fields: [orderId], references: [id])
   receivedBy           User?              @relation("Receipt_receivedBy", fields: [receivedById], references: [id])
   region               Region?            @relation(fields: [regionId], references: [id])
+
+  @@index([accountsReceivableId])
+  @@index([orderId])
+  @@index([regionId])
+  @@index([location])
 }
 
 model CashTransfer {
@@ -681,6 +707,10 @@ model CashTransfer {
   receipt         Receipt        @relation(fields: [receiptId], references: [id])
   region          Region?        @relation(fields: [regionId], references: [id])
   transferredBy   User?          @relation("CashTransfer_transferredBy", fields: [transferredById], references: [id])
+
+  @@index([receiptId])
+  @@index([regionId])
+  @@index([status])
 }
 
 model AccountsReceivableInstallment {
@@ -700,6 +730,7 @@ model AccountsReceivableInstallment {
   externalPayments     ExternalPayment[]
 
   @@unique([accountsReceivableId, installmentNumber])
+  @@index([status, dueDate])
 }
 
 model ExternalPayment {

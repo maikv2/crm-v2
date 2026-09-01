@@ -153,12 +153,39 @@ function toDateInputValue(value?: string | null) {
 }
 
 function centsFromCurrencyInput(value: string) {
-  const normalized = String(value || "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .trim();
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+
+  const sanitized = raw.replace(/[^\d.,-]/g, "");
+  const lastComma = sanitized.lastIndexOf(",");
+  const lastDot = sanitized.lastIndexOf(".");
+  let decimalSeparator = "";
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    decimalSeparator = lastComma > lastDot ? "," : ".";
+  } else {
+    const separator = lastComma >= 0 ? "," : lastDot >= 0 ? "." : "";
+    if (separator) {
+      const decimals = sanitized.length - sanitized.lastIndexOf(separator) - 1;
+      decimalSeparator = decimals === 1 || decimals === 2 ? separator : "";
+    }
+  }
+
+  const normalized = decimalSeparator
+    ? sanitized
+        .replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "")
+        .replace(decimalSeparator, ".")
+    : sanitized.replace(/[.,]/g, "");
+
   const number = Number(normalized);
   return Number.isFinite(number) ? Math.max(0, Math.round(number * 100)) : 0;
+}
+
+function currencyInputFromCents(value?: number | null) {
+  return ((value ?? 0) / 100).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatOrderNumber(value?: string | number | null, fallbackId?: string) {
@@ -1367,14 +1394,14 @@ function EditOrderModal({
       installmentNumber: i.installmentNumber,
       status: i.status,
       dueDate: toDateInputValue(i.dueDate),
-      amount: ((i.amountCents ?? 0) / 100).toFixed(2),
+      amount: currencyInputFromCents(i.amountCents),
     })) ?? [];
   const initialItems =
     order.items?.map((item) => ({
       key: item.id,
       productId: item.product?.id || "",
       qty: item.qty,
-      unitValue: ((item.unitCents ?? 0) / 100).toFixed(2),
+      unitValue: currencyInputFromCents(item.unitCents),
     })) ?? [];
 
   const [paymentMethod, setPaymentMethod] = useState(
@@ -1386,7 +1413,7 @@ function EditOrderModal({
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [items, setItems] = useState(initialItems);
   const [discountValue, setDiscountValue] = useState(
-    ((order.discountCents ?? 0) / 100).toFixed(2)
+    currencyInputFromCents(order.discountCents)
   );
   const [installmentCount, setInstallmentCount] = useState(
     Math.max(1, initialInstallments.length || 1)
@@ -1454,7 +1481,7 @@ function EditOrderModal({
         installmentNumber: index + 1,
         status: existing?.status || "PENDING",
         dueDate,
-        amount: (amountCents / 100).toFixed(2),
+        amount: currencyInputFromCents(amountCents),
       };
     });
   }
@@ -1483,7 +1510,9 @@ function EditOrderModal({
           return {
             ...item,
             productId: String(value),
-            unitValue: ((product?.priceCents ?? centsFromCurrencyInput(item.unitValue)) / 100).toFixed(2),
+            unitValue: currencyInputFromCents(
+              product?.priceCents ?? centsFromCurrencyInput(item.unitValue)
+            ),
           };
         }
         if (field === "qty") {
@@ -1504,7 +1533,7 @@ function EditOrderModal({
         key: `new-${Date.now()}`,
         productId: firstAvailable?.id || "",
         qty: 1,
-        unitValue: ((firstAvailable?.priceCents ?? 0) / 100).toFixed(2),
+        unitValue: currencyInputFromCents(firstAvailable?.priceCents),
       },
     ]);
   }
@@ -1543,16 +1572,11 @@ function EditOrderModal({
             : 1,
         installments: installments
           .filter((i) => i.status !== "PAID")
-          .map((i) => {
-            const valor = Number(String(i.amount).replace(",", "."));
-            return {
-              id: i.id?.startsWith("new-") ? undefined : i.id,
-              dueDate: i.dueDate || undefined,
-              amountCents: Number.isFinite(valor)
-                ? Math.round(valor * 100)
-                : undefined,
-            };
-          }),
+          .map((i) => ({
+            id: i.id?.startsWith("new-") ? undefined : i.id,
+            dueDate: i.dueDate || undefined,
+            amountCents: centsFromCurrencyInput(i.amount),
+          })),
       };
 
       const res = await fetch(`/api/orders/${order.id}`, {

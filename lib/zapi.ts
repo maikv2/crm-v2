@@ -192,6 +192,35 @@ export async function sendDocument(params: {
   });
 }
 
+export type SendImageResponse = {
+  zaapId?: string;
+  messageId?: string;
+  id?: string;
+};
+
+/**
+ * Envia uma imagem (ex: QR Code Pix) via WhatsApp.
+ * Aceita Buffer/base64 puro ou uma data URL já pronta (ex: retornada pela Efí).
+ */
+export async function sendImage(params: {
+  phone: string;
+  image: Buffer | Uint8Array | string;
+  caption?: string;
+}): Promise<SendImageResponse> {
+  const phone = normalizeBrazilPhone(params.phone);
+  if (!phone) {
+    throw new ZApiRequestError("Telefone inválido.", 400, { phone: params.phone });
+  }
+
+  const imageDataUrl = toDataUrl(params.image, "image/png");
+
+  return postJson<SendImageResponse>("send-image", {
+    phone,
+    image: imageDataUrl,
+    ...(params.caption ? { caption: params.caption } : {}),
+  });
+}
+
 function mimeForExtension(extension: string): string {
   switch (extension.toLowerCase()) {
     case "pdf":

@@ -61,11 +61,11 @@ function patriciaPhoneDigits(): string {
   return digits;
 }
 
-function buildSegundaViaUrl(orderNumber: number): string {
+function buildSegundaViaUrl(orderNumber: number, isPix = false): string {
   const phone = patriciaPhoneDigits();
   const num = String(orderNumber).padStart(6, "0");
   const text = encodeURIComponent(
-    `Olá Patrícia, preciso da 2ª via do boleto do pedido #${num}`
+    `Olá Patrícia, preciso da 2ª via d${isPix ? "o Pix" : "o boleto"} do pedido #${num}`
   );
   return `https://wa.me/${phone}?text=${text}`;
 }
@@ -77,25 +77,45 @@ function buildMessage(
     orderNumber: number;
     remainingCents: number;
     dueDate: Date;
+    isPix: boolean;
     boletoLink?: string | null;
     barcode?: string | null;
+    pixCopyPaste?: string | null;
   }
 ): string {
-  const { clientName, orderNumber, remainingCents, dueDate, boletoLink, barcode } = params;
+  const {
+    clientName,
+    orderNumber,
+    remainingCents,
+    dueDate,
+    isPix,
+    boletoLink,
+    barcode,
+    pixCopyPaste,
+  } = params;
   const num = `#${String(orderNumber).padStart(6, "0")}`;
   const valor = formatBRL(remainingCents);
   const data = formatDateBR(dueDate);
-  const link = boletoLink || buildSegundaViaUrl(orderNumber);
+  const link = boletoLink || buildSegundaViaUrl(orderNumber, isPix);
+  const cobrancaLabel = isPix ? "Pix" : "boleto";
+  const pixLinha = isPix && pixCopyPaste ? `\nPix copia e cola:\n${pixCopyPaste}\n` : "";
   const linhaDigitavel = barcode ? `\nLinha digitável:\n${barcode}\n` : "";
+  const linkLabel = isPix
+    ? "Pague pelo Pix (código acima) ou pelo link:"
+    : "Boleto para pagamento:";
+  const linkLabelAtraso = isPix
+    ? "Pague pelo Pix (código acima) ou pelo link / 2ª via:"
+    : "Boleto / 2ª via para pagamento:";
 
   if (stage === 0) {
     return (
       `Olá, ${clientName}! 👋\n\n` +
-      `Passando rapidinho pra te lembrar com carinho que hoje vence o seu boleto aqui na V2 Distribuidora:\n\n` +
+      `Passando rapidinho pra te lembrar com carinho que hoje vence o seu ${cobrancaLabel} aqui na V2 Distribuidora:\n\n` +
       `📄 Pedido: ${num}\n` +
       `💰 Valor: ${valor}\n` +
       `📅 Vencimento: hoje (${data})\n\n` +
-      `Boleto para pagamento:\n👉 ${link}\n` +
+      pixLinha +
+      `${linkLabel}\n👉 ${link}\n` +
       linhaDigitavel +
       `\n` +
       `Muito obrigado pela parceria de sempre! 🙌\n` +
@@ -107,12 +127,13 @@ function buildMessage(
   if (stage === 3) {
     return (
       `Oi, ${clientName}, tudo bem?\n\n` +
-      `Notamos por aqui que seu boleto venceu há 3 dias e ainda não consta como pago:\n\n` +
+      `Notamos por aqui que seu ${cobrancaLabel} venceu há 3 dias e ainda não consta como pago:\n\n` +
       `📄 Pedido: ${num}\n` +
       `💰 Valor: ${valor}\n` +
       `📅 Vencimento: ${data}\n\n` +
       `Será que você consegue dar uma olhadinha pra gente?\n\n` +
-      `Boleto / 2ª via para pagamento:\n👉 ${link}\n` +
+      pixLinha +
+      `${linkLabelAtraso}\n👉 ${link}\n` +
       linhaDigitavel +
       `\n` +
       `Obrigado!\n` +
@@ -123,12 +144,13 @@ function buildMessage(
   if (stage === 5) {
     return (
       `Olá, ${clientName}.\n\n` +
-      `Seu boleto está com 5 dias de atraso e ainda não identificamos o pagamento:\n\n` +
+      `Seu ${cobrancaLabel} está com 5 dias de atraso e ainda não identificamos o pagamento:\n\n` +
       `📄 Pedido: ${num}\n` +
       `💰 Valor: ${valor}\n` +
       `📅 Vencimento: ${data}\n\n` +
       `Pedimos a gentileza de regularizar o quanto antes para mantermos seu crédito ativo aqui na V2.\n\n` +
-      `Boleto / 2ª via para pagamento:\n👉 ${link}\n` +
+      pixLinha +
+      `${linkLabelAtraso}\n👉 ${link}\n` +
       linhaDigitavel +
       `\n` +
       `Equipe V2 Distribuidora`
@@ -137,13 +159,14 @@ function buildMessage(
 
   return (
     `Olá, ${clientName}.\n\n` +
-    `Seu boleto já está com 8 dias de atraso:\n\n` +
+    `Seu ${cobrancaLabel} já está com 8 dias de atraso:\n\n` +
     `📄 Pedido: ${num}\n` +
     `💰 Valor: ${valor}\n` +
     `📅 Vencimento: ${data}\n\n` +
     `Pedimos a regularização imediata para evitarmos a suspensão de novas compras e o encaminhamento para protesto.\n\n` +
     `Caso já tenha pago, por favor nos envie o comprovante.\n` +
-    `Boleto / 2ª via para pagamento:\n👉 ${link}\n` +
+    pixLinha +
+    `${linkLabelAtraso}\n👉 ${link}\n` +
     linhaDigitavel +
     `\n` +
     `Equipe V2 Distribuidora`
@@ -230,29 +253,37 @@ function buildFinanceMessage(
     orderNumber: number;
     remainingCents: number;
     dueDate: Date;
+    isPix: boolean;
     clientPhone?: string | null;
     boletoLink?: string | null;
     barcode?: string | null;
+    pixCopyPaste?: string | null;
   }
 ): string {
   const num = `#${String(params.orderNumber).padStart(6, "0")}`;
-  const link = params.boletoLink || buildSegundaViaUrl(params.orderNumber);
+  const link = params.boletoLink || buildSegundaViaUrl(params.orderNumber, params.isPix);
   const clientPhone = params.clientPhone || "-";
+  const cobrancaLabel = params.isPix ? "Pix" : "boleto";
+  const pixLinha =
+    params.isPix && params.pixCopyPaste
+      ? `\nPix copia e cola:\n${params.pixCopyPaste}\n`
+      : "";
   const linhaDigitavel = params.barcode
     ? `\nLinha digitável:\n${params.barcode}\n`
     : "";
 
   return (
-    `Boleto em atraso - V2 Distribuidora\n\n` +
+    `${params.isPix ? "Pix" : "Boleto"} em atraso - V2 Distribuidora\n\n` +
     `Cliente: ${params.clientName}\n` +
     `Pedido: ${num}\n` +
     `Valor em aberto: ${formatBRL(params.remainingCents)}\n` +
     `Vencimento: ${formatDateBR(params.dueDate)}\n` +
     `Atraso: ${stage} dia${stage > 1 ? "s" : ""}\n` +
     `Telefone do cliente: ${clientPhone}\n\n` +
-    `Boleto / 2ª via:\n${link}\n` +
+    pixLinha +
+    `${params.isPix ? "Link / 2ª via" : "Boleto / 2ª via"}:\n${link}\n` +
     linhaDigitavel +
-    `\nEsse aviso foi enviado automaticamente porque o boleto ainda não consta como pago.`
+    `\nEsse aviso foi enviado automaticamente porque o ${cobrancaLabel} ainda não consta como pago.`
   );
 }
 
@@ -264,9 +295,11 @@ async function sendFinanceOverdueNotice(params: {
   orderNumber: number;
   remainingCents: number;
   dueDate: Date;
+  isPix: boolean;
   clientPhone?: string | null;
   boletoLink?: string | null;
   barcode?: string | null;
+  pixCopyPaste?: string | null;
 }) {
   const financeRecipient = await findFinanceRecipient();
   if (!financeRecipient?.phone) {
@@ -278,9 +311,11 @@ async function sendFinanceOverdueNotice(params: {
     orderNumber: params.orderNumber,
     remainingCents: params.remainingCents,
     dueDate: params.dueDate,
+    isPix: params.isPix,
     clientPhone: params.clientPhone,
     boletoLink: params.boletoLink,
     barcode: params.barcode,
+    pixCopyPaste: params.pixCopyPaste,
   });
 
   await sendText({ phone: financeRecipient.phone, message });
@@ -336,7 +371,7 @@ async function processInitialOverdueFinanceAlerts(
       status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
       dueDate: { lt: today },
       accountsReceivable: {
-        paymentMethod: "BOLETO",
+        paymentMethod: { in: ["BOLETO", "PIX"] },
       },
     },
     include: {
@@ -368,6 +403,7 @@ async function processInitialOverdueFinanceAlerts(
         select: {
           boletoLink: true,
           barcode: true,
+          pixCopyPaste: true,
         },
       },
     },
@@ -422,9 +458,11 @@ async function processInitialOverdueFinanceAlerts(
         orderNumber,
         remainingCents,
         dueDate: inst.dueDate,
+        isPix: ar?.paymentMethod === "PIX",
         clientPhone: phone,
         boletoLink: boleto?.boletoLink ?? null,
         barcode: boleto?.barcode ?? null,
+        pixCopyPaste: boleto?.pixCopyPaste ?? null,
       });
 
       results.push({
@@ -459,7 +497,7 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
       status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
       dueDate: { gte: start, lt: end },
       accountsReceivable: {
-        paymentMethod: "BOLETO",
+        paymentMethod: { in: ["BOLETO", "PIX"] },
       },
     },
     include: {
@@ -492,6 +530,7 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
         select: {
           boletoLink: true,
           barcode: true,
+          pixCopyPaste: true,
         },
       },
     },
@@ -553,9 +592,11 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
             orderNumber,
             remainingCents,
             dueDate: inst.dueDate,
+            isPix: ar?.paymentMethod === "PIX",
             clientPhone: phone,
             boletoLink: boleto?.boletoLink ?? null,
             barcode: boleto?.barcode ?? null,
+            pixCopyPaste: boleto?.pixCopyPaste ?? null,
           });
 
           result.financeSent = financeResult.sent;
@@ -593,8 +634,10 @@ async function processStage(stage: Stage, today: Date): Promise<StageResult[]> {
       orderNumber,
       remainingCents,
       dueDate: inst.dueDate,
+      isPix: ar?.paymentMethod === "PIX",
       boletoLink: boleto?.boletoLink ?? null,
       barcode: boleto?.barcode ?? null,
+      pixCopyPaste: boleto?.pixCopyPaste ?? null,
     });
 
     try {

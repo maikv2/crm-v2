@@ -78,12 +78,12 @@ function getFinancialRules(paymentMethod: PaymentMethod) {
   switch (paymentMethod) {
     case PaymentMethod.PIX:
       return {
-        paymentStatus: PaymentStatus.PAID,
+        paymentStatus: PaymentStatus.PENDING,
         paymentReceiver: PaymentReceiver.MATRIX,
-        receivableStatus: ReceivableStatus.PAID,
-        receiptLocation: ReceiptLocation.MATRIX,
-        autoCreateReceipt: true,
-        autoPaidAt: true,
+        receivableStatus: ReceivableStatus.PENDING,
+        receiptLocation: null,
+        autoCreateReceipt: false,
+        autoPaidAt: false,
       };
 
     case PaymentMethod.CASH:
@@ -729,7 +729,7 @@ export async function POST(request: Request) {
             installmentCount,
             notes:
               paymentMethod === PaymentMethod.PIX
-                ? "Recebimento automático por PIX."
+                ? "Conta a receber gerada por Pix."
                 : paymentMethod === PaymentMethod.CASH
                 ? "Recebimento registrado em dinheiro na região."
                 : paymentMethod === PaymentMethod.CARD_DEBIT

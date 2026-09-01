@@ -106,10 +106,10 @@ function getFinancialRules(paymentMethod: PaymentMethod) {
   switch (paymentMethod) {
     case PaymentMethod.PIX:
       return {
-        paymentStatus: PaymentStatus.PAID,
+        paymentStatus: PaymentStatus.PENDING,
         paymentReceiver: PaymentReceiver.MATRIX,
-        receivableStatus: ReceivableStatus.PAID,
-        autoPaidAt: true,
+        receivableStatus: ReceivableStatus.PENDING,
+        autoPaidAt: false,
       };
     case PaymentMethod.CASH:
       return {

@@ -235,7 +235,7 @@ function normalizeInstallments(order: OrderForBillet): InstallmentForBillet[] {
 }
 
 function buildCustomId(installmentId: string) {
-  return `v2:${installmentId}`;
+  return `v2-${installmentId}`;
 }
 
 function buildItemName(order: OrderForBillet, installment: InstallmentForBillet) {

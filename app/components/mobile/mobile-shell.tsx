@@ -70,6 +70,7 @@ export function MobileCard({
         boxShadow: colors.isDark
           ? "0 10px 24px rgba(2,6,23,0.28)"
           : "0 10px 24px rgba(15,23,42,0.06)",
+        color: colors.text,
         minWidth: 0,
         width: "100%",
         boxSizing: "border-box",

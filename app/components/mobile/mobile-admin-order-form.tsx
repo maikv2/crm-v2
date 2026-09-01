@@ -333,6 +333,7 @@ export default function MobileAdminOrderForm() {
   const [discountValue, setDiscountValue] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [installmentCount, setInstallmentCount] = useState(1);
+  const [installmentDates, setInstallmentDates] = useState<string[]>([""]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [defectReturnItems, setDefectReturnItems] = useState<DefectReturnItem[]>([]);
 
@@ -542,6 +543,18 @@ export default function MobileAdminOrderForm() {
 
   const totalCents = Math.max(0, subtotalCents - discountCents);
 
+  useEffect(() => {
+    setInstallmentDates((current) =>
+      Array.from({ length: installmentCount }, (_, index) => {
+        if (current[index]) return current[index];
+        if (!dueDate) return "";
+        const date = new Date(`${dueDate}T12:00:00`);
+        date.setMonth(date.getMonth() + index);
+        return date.toISOString().slice(0, 10);
+      })
+    );
+  }, [dueDate, installmentCount]);
+
   const savedPdfUrl = useMemo(() => {
     if (!savedOrderId) return "";
     return `/api/orders/${savedOrderId}/pdf`;
@@ -660,6 +673,7 @@ export default function MobileAdminOrderForm() {
     setDiscountValue("");
     setDueDate("");
     setInstallmentCount(1);
+    setInstallmentDates([""]);
     setPaymentMethod("CASH");
     setDefectReturnItems([]);
     setCart((prev) => prev.map((item) => ({ ...item, qty: 0 })));
@@ -702,6 +716,14 @@ export default function MobileAdminOrderForm() {
         return;
       }
 
+      if (
+        (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT") &&
+        installmentDates.slice(0, installmentCount).some((date) => !date)
+      ) {
+        setError("Informe a data de todas as parcelas.");
+        return;
+      }
+
       setSaving(true);
 
       const res = await fetch("/api/orders", {
@@ -731,7 +753,10 @@ export default function MobileAdminOrderForm() {
             paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
               ? installmentCount
               : 1,
-          installmentDates: [],
+          installmentDates:
+            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
+              ? installmentDates
+              : [],
           defectReturnItems: selectedDefectReturnItems.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
@@ -1531,6 +1556,56 @@ router.push(targetPath);
                   </option>
                 ))}
               </select>
+
+              {installmentCount > 1 ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {Array.from({ length: installmentCount }, (_, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "88px 1fr",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: colors.subtext,
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {index + 1}ª parcela
+                      </div>
+                      <input
+                        type="date"
+                        value={installmentDates[index] ?? ""}
+                        onChange={(e) =>
+                          setInstallmentDates((current) =>
+                            Array.from({ length: installmentCount }, (_, dateIndex) =>
+                              dateIndex === index
+                                ? e.target.value
+                                : current[dateIndex] ?? ""
+                            )
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          height: 42,
+                          borderRadius: 12,
+                          border: `1px solid ${colors.border}`,
+                          background: colors.inputBg,
+                          color: colors.text,
+                          padding: "0 12px",
+                          outline: "none",
+                          fontSize: 13,
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </>
           ) : null}
         </div>

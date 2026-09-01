@@ -17,6 +17,14 @@ type OrderItem = {
   } | null;
 };
 
+type ProductOption = {
+  id: string;
+  sku?: string | null;
+  name?: string | null;
+  priceCents?: number | null;
+  active?: boolean | null;
+};
+
 type Installment = {
   id: string;
   installmentNumber: number;
@@ -135,6 +143,22 @@ function formatDateTimeBR(value?: string | null) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleString("pt-BR");
+}
+
+function toDateInputValue(value?: string | null) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function centsFromCurrencyInput(value: string) {
+  const normalized = String(value || "")
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .trim();
+  const number = Number(normalized);
+  return Number.isFinite(number) ? Math.max(0, Math.round(number * 100)) : 0;
 }
 
 function formatOrderNumber(value?: string | number | null, fallbackId?: string) {
@@ -1339,10 +1363,18 @@ function EditOrderModal({
   const initialInstallments =
     order.accountsReceivables?.[0]?.installments?.map((i) => ({
       id: i.id,
+      key: i.id,
       installmentNumber: i.installmentNumber,
       status: i.status,
-      dueDate: i.dueDate ? new Date(i.dueDate).toISOString().slice(0, 10) : "",
+      dueDate: toDateInputValue(i.dueDate),
       amount: ((i.amountCents ?? 0) / 100).toFixed(2),
+    })) ?? [];
+  const initialItems =
+    order.items?.map((item) => ({
+      key: item.id,
+      productId: item.product?.id || "",
+      qty: item.qty,
+      unitValue: ((item.unitCents ?? 0) / 100).toFixed(2),
     })) ?? [];
 
   const [paymentMethod, setPaymentMethod] = useState(
@@ -1351,10 +1383,135 @@ function EditOrderModal({
   const [paymentReceiver, setPaymentReceiver] = useState(
     order.paymentReceiver ?? "REGION"
   );
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [items, setItems] = useState(initialItems);
+  const [discountValue, setDiscountValue] = useState(
+    ((order.discountCents ?? 0) / 100).toFixed(2)
+  );
+  const [installmentCount, setInstallmentCount] = useState(
+    Math.max(1, initialInstallments.length || 1)
+  );
   const [notes, setNotes] = useState(order.notes ?? "");
   const [installments, setInstallments] = useState(initialInstallments);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/products", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (!active) return;
+        setProducts(Array.isArray(json) ? json : []);
+      })
+      .catch(() => {
+        if (active) setProducts([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const productById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products]
+  );
+
+  const editableSubtotalCents = useMemo(
+    () =>
+      items.reduce(
+        (sum, item) => sum + Math.max(0, Math.trunc(item.qty || 0)) * centsFromCurrencyInput(item.unitValue),
+        0
+      ),
+    [items]
+  );
+  const editableDiscountCents = useMemo(
+    () => centsFromCurrencyInput(discountValue),
+    [discountValue]
+  );
+  const editableTotalCents = Math.max(0, editableSubtotalCents - editableDiscountCents);
+
+  function buildInstallmentsForCount(count: number) {
+    const safeCount = Math.max(1, count);
+    const base = Math.floor(editableTotalCents / safeCount);
+    const remainder = editableTotalCents % safeCount;
+    const firstDate =
+      installments.find((item) => item.dueDate)?.dueDate ||
+      new Date().toISOString().slice(0, 10);
+
+    return Array.from({ length: safeCount }, (_, index) => {
+      const existing = installments[index];
+      let dueDate = existing?.dueDate || "";
+      if (!dueDate && firstDate) {
+        const date = new Date(`${firstDate}T12:00:00`);
+        date.setMonth(date.getMonth() + index);
+        dueDate = date.toISOString().slice(0, 10);
+      }
+      const amountCents = base + (index < remainder ? 1 : 0);
+      return {
+        id: existing?.id,
+        key: existing?.key || `new-${Date.now()}-${index}`,
+        installmentNumber: index + 1,
+        status: existing?.status || "PENDING",
+        dueDate,
+        amount: (amountCents / 100).toFixed(2),
+      };
+    });
+  }
+
+  useEffect(() => {
+    if (paymentMethod !== "BOLETO" && paymentMethod !== "CARD_CREDIT") {
+      setInstallmentCount(1);
+    }
+  }, [paymentMethod]);
+
+  useEffect(() => {
+    setInstallments(buildInstallmentsForCount(installmentCount));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editableTotalCents, installmentCount]);
+
+  function updateItem(
+    key: string,
+    field: "productId" | "qty" | "unitValue",
+    value: string | number
+  ) {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.key !== key) return item;
+        if (field === "productId") {
+          const product = productById.get(String(value));
+          return {
+            ...item,
+            productId: String(value),
+            unitValue: ((product?.priceCents ?? centsFromCurrencyInput(item.unitValue)) / 100).toFixed(2),
+          };
+        }
+        if (field === "qty") {
+          return { ...item, qty: Math.max(1, Math.trunc(Number(value) || 1)) };
+        }
+        return { ...item, unitValue: String(value) };
+      })
+    );
+  }
+
+  function addItem() {
+    const firstAvailable = products.find(
+      (product) => product.active !== false && !items.some((item) => item.productId === product.id)
+    );
+    setItems((prev) => [
+      ...prev,
+      {
+        key: `new-${Date.now()}`,
+        productId: firstAvailable?.id || "",
+        qty: 1,
+        unitValue: ((firstAvailable?.priceCents ?? 0) / 100).toFixed(2),
+      },
+    ]);
+  }
+
+  function removeItem(key: string) {
+    setItems((prev) => prev.filter((item) => item.key !== key));
+  }
 
   function updateInstallment(
     id: string,
@@ -1373,13 +1530,23 @@ function EditOrderModal({
       const payload = {
         paymentMethod,
         paymentReceiver,
+        discountCents: editableDiscountCents,
         notes,
+        items: items.map((item) => ({
+          productId: item.productId,
+          qty: item.qty,
+          unitCents: centsFromCurrencyInput(item.unitValue),
+        })),
+        installmentCount:
+          paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT"
+            ? installmentCount
+            : 1,
         installments: installments
           .filter((i) => i.status !== "PAID")
           .map((i) => {
             const valor = Number(String(i.amount).replace(",", "."));
             return {
-              id: i.id,
+              id: i.id?.startsWith("new-") ? undefined : i.id,
               dueDate: i.dueDate || undefined,
               amountCents: Number.isFinite(valor)
                 ? Math.round(valor * 100)
@@ -1502,6 +1669,99 @@ function EditOrderModal({
         )}
 
         <div style={{ display: "grid", gap: 14 }}>
+          <div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 800, color: theme.text }}>
+                Itens do pedido
+              </div>
+              <ActionButton label="Adicionar item" theme={theme} onClick={addItem} />
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {items.length === 0 ? (
+                <div
+                  style={{
+                    border: `1px solid ${theme.border}`,
+                    background: subtleCard,
+                    padding: 14,
+                    borderRadius: 10,
+                    color: muted,
+                    fontSize: 13,
+                    textAlign: "center",
+                  }}
+                >
+                  Nenhum item no pedido.
+                </div>
+              ) : (
+                items.map((item) => {
+                  return (
+                    <div
+                      key={item.key}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(180px, 1fr) 82px 112px 86px",
+                        gap: 10,
+                        alignItems: "center",
+                        background: subtleCard,
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <select
+                        value={item.productId}
+                        onChange={(e) => updateItem(item.key, "productId", e.target.value)}
+                        style={inputStyle}
+                      >
+                        <option value="">Selecione o produto</option>
+                        {products.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.sku ? `${option.sku} - ` : ""}{option.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min={1}
+                        value={item.qty}
+                        onChange={(e) => updateItem(item.key, "qty", Number(e.target.value))}
+                        style={{ ...inputStyle, textAlign: "center" }}
+                      />
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={item.unitValue}
+                        onChange={(e) => updateItem(item.key, "unitValue", e.target.value)}
+                        style={{ ...inputStyle, textAlign: "right" }}
+                        placeholder="0,00"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.key)}
+                        style={{
+                          ...inputStyle,
+                          color: "#ef4444",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={labelStyle}>Forma de pagamento</label>
@@ -1530,6 +1790,32 @@ function EditOrderModal({
             </div>
           </div>
 
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <div>
+              <label style={labelStyle}>Subtotal</label>
+              <input value={money(editableSubtotalCents)} readOnly style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Desconto</label>
+              <input
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                inputMode="decimal"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Total</label>
+              <input value={money(editableTotalCents)} readOnly style={inputStyle} />
+            </div>
+          </div>
+
           <div>
             <label style={labelStyle}>Observações</label>
             <textarea
@@ -1551,6 +1837,22 @@ function EditOrderModal({
             >
               Parcelas
             </div>
+            {(paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT") && (
+              <div style={{ marginBottom: 8 }}>
+                <label style={labelStyle}>Quantidade de parcelas</label>
+                <select
+                  value={installmentCount}
+                  onChange={(e) => setInstallmentCount(Math.max(1, Number(e.target.value)))}
+                  style={{ ...inputStyle, maxWidth: 180 }}
+                >
+                  {Array.from({ length: 12 }, (_, index) => index + 1).map((count) => (
+                    <option key={count} value={count}>
+                      {count}x
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div style={{ display: "grid", gap: 8 }}>
               {installments.length === 0 ? (
                 <div

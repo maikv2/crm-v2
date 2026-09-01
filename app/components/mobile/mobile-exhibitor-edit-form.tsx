@@ -357,7 +357,13 @@ export default function MobileExhibitorEditForm({
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 900 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 900,
+                        color: colors.text,
+                      }}
+                    >
                       {product.product?.name || "Produto"}
                     </div>
                     <div

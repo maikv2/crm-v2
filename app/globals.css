@@ -13,11 +13,13 @@ body {
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, Helvetica, Arial, sans-serif;
   background: #f3f6fb;
+  color: #111827;
   overflow-x: auto;
 }
 
 html[data-theme="dark"] body {
   background: #0b1220;
+  color: #ffffff;
 }
 
 a {

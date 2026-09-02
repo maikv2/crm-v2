@@ -383,6 +383,8 @@ export async function PUT(request: Request) {
       }
 
       return exhibitor;
+    }, {
+      timeout: 20000,
     });
 
     return NextResponse.json(updated);

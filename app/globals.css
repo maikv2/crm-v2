@@ -26,3 +26,32 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+/* Remove o spinner nativo de +/- dos campos numéricos: em telas escuras
+   o Chrome desenha essas setinhas fora da caixa estilizada do input,
+   deixando o controle praticamente invisível/inutilizável. */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Faz o ícone nativo do seletor de data/hora usar a paleta correta
+   (claro ou escuro) em vez do ícone escuro padrão, que fica quase
+   invisível sobre o fundo escuro dos inputs do tema dark. */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] input[type="date"],
+html[data-theme="dark"] input[type="time"],
+html[data-theme="dark"] input[type="datetime-local"] {
+  color-scheme: dark;
+}

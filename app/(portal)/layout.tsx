@@ -263,18 +263,13 @@ export default function PortalLayout({
           }}
         >
           <HeaderButton
-            label="Painel"
+            label="Resumo"
             onClick={() => router.push("/investor/dashboard")}
           />
 
           <HeaderButton
             label="Minhas Cotas"
             onClick={() => router.push("/investor/quotas")}
-          />
-
-          <HeaderButton
-            label="Distribuições"
-            onClick={() => router.push("/investor/distributions")}
           />
 
           <IconHeaderButton />

@@ -16,8 +16,7 @@ type DailyRegionSnapshot = {
   regionName: string;
   grossRevenueCents: number;
   operatingProfitCents: number;
-  ebitdaEstimatedCents: number;
-  reserveEstimatedCents: number;
+  stockReplenishmentEstimatedCents: number;
   estimatedInvestorPoolCents: number;
   estimatedCompanyPoolCents: number;
   estimatedValuePerInvestorQuotaCents: number;
@@ -307,12 +306,8 @@ export async function GET() {
       0
     );
 
-    const currentEbitdaCents = dailySuccessItems.reduce((sum, snapshot) => {
-      return sum + (snapshot.ebitdaEstimatedCents ?? 0);
-    }, 0);
-
-    const currentReserveCents = dailySuccessItems.reduce((sum, snapshot) => {
-      return sum + (snapshot.reserveEstimatedCents ?? 0);
+    const currentStockReplenishmentCents = dailySuccessItems.reduce((sum, snapshot) => {
+      return sum + (snapshot.stockReplenishmentEstimatedCents ?? 0);
     }, 0);
 
     const currentInvestorPoolCents = dailySuccessItems.reduce((sum, snapshot) => {
@@ -371,8 +366,7 @@ export async function GET() {
         investedCents,
         currentGrossRevenueCents: current?.grossRevenueCents ?? 0,
         currentOperatingProfitCents: current?.operatingProfitCents ?? 0,
-        currentEbitdaCents: current?.ebitdaEstimatedCents ?? 0,
-        currentReserveCents: current?.reserveEstimatedCents ?? 0,
+        currentStockReplenishmentCents: current?.stockReplenishmentEstimatedCents ?? 0,
         currentInvestorPoolCents: current?.estimatedInvestorPoolCents ?? 0,
         currentCompanyPoolCents: current?.estimatedCompanyPoolCents ?? 0,
         currentValuePerQuotaCents:
@@ -397,8 +391,7 @@ export async function GET() {
         currentYear,
         currentGrossRevenueCents,
         currentOperatingProfitCents,
-        currentEbitdaCents,
-        currentReserveCents,
+        currentStockReplenishmentCents,
         currentInvestorPoolCents,
         currentCompanyPoolCents,
         currentInvestorCount,

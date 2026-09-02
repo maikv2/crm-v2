@@ -50,7 +50,7 @@ function money(cents: number) {
 }
 
 function patriciaPhoneDigits() {
-  const raw = process.env.FINANCEIRO_WHATSAPP || "(47) 99981-1392";
+  const raw = process.env.FINANCIAL_WHATSAPP || "(47) 99981-1392";
   const digits = raw.replace(/\D/g, "");
   if (digits.startsWith("55") && digits.length >= 12) return digits;
   if (digits.length >= 10) return `55${digits}`;

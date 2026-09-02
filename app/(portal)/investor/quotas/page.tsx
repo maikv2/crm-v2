@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
@@ -13,26 +13,13 @@ function money(cents: number) {
   });
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "-";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("pt-BR");
-}
-
-type ShareItem = {
-  id: string;
-  quotaNumber: number;
-  amountCents: number;
-  investedAt: string;
-  paidBackAt?: string | null;
+type RegionQuotaItem = {
   regionId: string;
-  region?: {
-    id: string;
-    name: string;
-    quotaValueCents: number;
-    maxQuotaCount: number;
-  } | null;
+  regionName: string;
+  quotaCount: number;
+  regionTotalQuotaCount: number;
+  investedCents: number;
+  quotaNumbers: number[];
 };
 
 type InvestorMeResponse = {
@@ -42,16 +29,12 @@ type InvestorMeResponse = {
     email: string | null;
     phone: string | null;
     document: string | null;
-    notes: string | null;
   };
-  summary: {
-    activeQuotaCount: number;
-    totalRegions: number;
+  quotas: {
     totalInvestedCents: number;
-    totalDistributedCents: number;
-    pendingDistributionCents: number;
+    totalQuotaCount: number;
+    regions: RegionQuotaItem[];
   };
-  shares: ShareItem[];
 };
 
 type ThemeShape = ReturnType<typeof getThemeColors>;
@@ -200,7 +183,7 @@ export default function InvestorQuotasPage() {
       const json = (await res.json().catch(() => null)) as InvestorMeResponse | null;
 
       if (!res.ok) {
-        throw new Error((json as any)?.error || "Erro ao carregar cotas.");
+        throw new Error((json as { error?: string } | null)?.error || "Erro ao carregar cotas.");
       }
 
       setData(json);
@@ -217,15 +200,7 @@ export default function InvestorQuotasPage() {
     load();
   }, []);
 
-  const shares = useMemo(() => data?.shares || [], [data]);
-
-  const totalInvestedCents = useMemo(() => {
-    return shares.reduce((sum, share) => sum + (share.amountCents ?? 0), 0);
-  }, [shares]);
-
-  const regionCount = useMemo(() => {
-    return new Set(shares.map((share) => share.regionId)).size;
-  }, [shares]);
+  const regions = data?.quotas.regions ?? [];
 
   if (loading) {
     return (
@@ -253,7 +228,7 @@ export default function InvestorQuotasPage() {
         color: theme.text,
       }}
     >
-      <div style={{ maxWidth: 1240, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto" }}>
         <div
           style={{
             display: "flex",
@@ -293,7 +268,7 @@ export default function InvestorQuotasPage() {
                 color: muted,
               }}
             >
-              Consulte suas cotas, regiões vinculadas e valores investidos.
+              Quanto você investiu e o que isso representa em cada região.
             </div>
           </div>
 
@@ -306,10 +281,10 @@ export default function InvestorQuotasPage() {
               disabled={refreshing}
             />
             <PageButton
-              label="Voltar ao painel"
+              label="Voltar ao resumo"
               icon={<ArrowLeft size={16} />}
               theme={theme}
-              onClick={() => router.push("/investor")}
+              onClick={() => router.push("/investor/dashboard")}
             />
           </div>
         </div>
@@ -339,33 +314,26 @@ export default function InvestorQuotasPage() {
           }}
         >
           <SummaryCard
-            title="Cotas ativas"
-            value={String(shares.length)}
-            helper="Em carteira"
+            title="Total investido"
+            value={money(data?.quotas.totalInvestedCents ?? 0)}
+            theme={theme}
+            accent="#22c55e"
+          />
+          <SummaryCard
+            title="Cotas em carteira"
+            value={String(data?.quotas.totalQuotaCount ?? 0)}
             theme={theme}
           />
           <SummaryCard
             title="Regiões"
-            value={String(regionCount)}
+            value={String(regions.length)}
             helper="Com participação"
             theme={theme}
           />
-          <SummaryCard
-            title="Investido"
-            value={money(totalInvestedCents)}
-            helper="Total aplicado"
-            theme={theme}
-            accent="#22c55e"
-          />
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gap: 14,
-          }}
-        >
-          {shares.length === 0 ? (
+        <div style={{ display: "grid", gap: 14 }}>
+          {regions.length === 0 ? (
             <div
               style={{
                 border: `1px solid ${theme.border}`,
@@ -379,95 +347,97 @@ export default function InvestorQuotasPage() {
               Nenhuma cota encontrada.
             </div>
           ) : (
-            shares.map((share) => (
-              <div
-                key={share.id}
-                style={{
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 16,
-                  padding: 18,
-                  background: theme.isDark ? "#0f172a" : "#ffffff",
-                }}
-              >
+            regions.map((region) => {
+              const percent =
+                region.regionTotalQuotaCount > 0
+                  ? Math.round((region.quotaCount / region.regionTotalQuotaCount) * 100)
+                  : 0;
+
+              return (
                 <div
+                  key={region.regionId}
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    alignItems: "flex-start",
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 16,
+                    padding: 18,
+                    background: theme.isDark ? "#0f172a" : "#ffffff",
                   }}
                 >
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 900,
-                        fontSize: 16,
-                        marginBottom: 6,
-                      }}
-                    >
-                      {share.region?.name || "Região"}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      alignItems: "flex-start",
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>
+                        {region.regionName}
+                      </div>
+                      <div style={{ fontSize: 13, color: muted }}>
+                        Cotas #{region.quotaNumbers.join(", #")}
+                      </div>
                     </div>
 
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: muted,
-                      }}
-                    >
-                      Cota #{share.quotaNumber}
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: theme.primary }}>
+                        {money(region.investedCents)}
+                      </div>
+                      <div style={{ fontSize: 12, color: muted, marginTop: 2 }}>
+                        investido nesta região
+                      </div>
                     </div>
                   </div>
 
                   <div
                     style={{
-                      fontSize: 13,
-                      fontWeight: 900,
-                      color: theme.primary,
-                      whiteSpace: "nowrap",
+                      background: theme.isDark ? "#111827" : "#f8fafc",
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 12,
+                      padding: "14px 16px",
                     }}
                   >
-                    {money(share.amountCents)}
-                  </div>
-                </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: muted,
+                      }}
+                    >
+                      <span>
+                        {region.quotaCount} de {region.regionTotalQuotaCount || "?"} cotas da região
+                      </span>
+                      <span style={{ color: theme.text, fontWeight: 900 }}>{percent}%</span>
+                    </div>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    gap: 12,
-                    marginTop: 14,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
-                      Investido em
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 800 }}>
-                      {formatDate(share.investedAt)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
-                      Valor da cota
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 800 }}>
-                      {money(share.amountCents)}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: 12, color: muted, marginBottom: 4 }}>
-                      Situação
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 800 }}>
-                      {share.paidBackAt ? "Encerrada" : "Ativa"}
+                    <div
+                      style={{
+                        width: "100%",
+                        height: 10,
+                        borderRadius: 999,
+                        background: theme.isDark ? "#1f2937" : "#e5e7eb",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${Math.min(100, percent)}%`,
+                          height: "100%",
+                          background: theme.primary,
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

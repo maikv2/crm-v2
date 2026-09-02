@@ -43,8 +43,6 @@ function getPageTitle(pathname: string) {
   if (pathname === "/m/rep") return "Representante";
 
   if (pathname.startsWith("/m/investor/quotas")) return "Cotas";
-  if (pathname.startsWith("/m/investor/distributions")) return "Distribuições";
-  if (pathname.startsWith("/m/investor/portal")) return "Portal do Investidor";
   if (pathname === "/m/investor") return "Investidor";
 
   if (pathname.startsWith("/clients")) return "Clientes";
@@ -86,7 +84,7 @@ function getPageTitle(pathname: string) {
   if (pathname === "/rep") return "Representante";
 
   if (pathname.startsWith("/investor/quotas")) return "Cotas";
-  if (pathname.startsWith("/investor/distributions")) return "Distribuições";
+  if (pathname.startsWith("/investor/dashboard")) return "Resumo";
   if (pathname === "/investor") return "Investidor";
 
   return "V2 CRM";

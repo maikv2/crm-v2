@@ -46,44 +46,22 @@ export async function GET(request: NextRequest) {
               },
               select: {
                 grossRevenueCents: true,
-                ebitdaCents: true,
-                reserveCents: true,
-                quarterlyFundContributionCents: true,
               },
             }),
             calculateInvestorDistributionPreview(region.id, month, year),
           ]);
-
-          const grossRevenueCents = monthlyResult?.grossRevenueCents ?? 0;
-          const ebitdaCents = monthlyResult?.ebitdaCents ?? preview.ebitdaCents ?? 0;
-          const reserveCents = monthlyResult?.reserveCents ?? 0;
-          const quarterlyFundContributionCents =
-            monthlyResult?.reserveCents ?? preview.quarterlyFundContributionCents ?? 0;
-          const operatingProfitCents = ebitdaCents + reserveCents;
-
-          const investorPoolCents = (preview.investors ?? []).reduce(
-            (sum, investor) => sum + (investor.totalDistributionCents ?? 0),
-            0
-          );
-
-          const companyPoolCents = Math.max(
-            0,
-            ebitdaCents + reserveCents - investorPoolCents
-          );
 
           return {
             regionId: region.id,
             regionName: region.name,
             month,
             year,
-            grossRevenueCents,
-            operatingProfitCents,
-            ebitdaCents,
-            reserveCents,
-            totalBaseCents: ebitdaCents + reserveCents,
-            investorPoolCents,
-            companyPoolCents,
-            quarterlyFundContributionCents,
+            grossRevenueCents: monthlyResult?.grossRevenueCents ?? preview.grossRevenueCents ?? 0,
+            operatingProfitCents: preview.operatingProfitCents,
+            stockReplenishmentCents: preview.stockReplenishmentCents,
+            distributableCents: preview.distributableCents,
+            investorPoolCents: preview.investorPoolCents,
+            companyPoolCents: preview.companyPoolCents,
             activeQuotaCount: preview.activeQuotaCount,
             companyQuotaCount: preview.companyQuotaCount,
             investorQuotaCount: preview.investorQuotaCount,
@@ -108,12 +86,10 @@ export async function GET(request: NextRequest) {
             year,
             grossRevenueCents: 0,
             operatingProfitCents: 0,
-            ebitdaCents: 0,
-            reserveCents: 0,
-            totalBaseCents: 0,
+            stockReplenishmentCents: 0,
+            distributableCents: 0,
             investorPoolCents: 0,
             companyPoolCents: 0,
-            quarterlyFundContributionCents: 0,
             activeQuotaCount: 0,
             companyQuotaCount: 0,
             investorQuotaCount: 0,

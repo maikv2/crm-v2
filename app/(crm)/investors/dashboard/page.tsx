@@ -36,8 +36,7 @@ type InvestorDashboardResponse = {
     currentYear: number;
     currentGrossRevenueCents: number;
     currentOperatingProfitCents: number;
-    currentEbitdaCents: number;
-    currentReserveCents: number;
+    currentStockReplenishmentCents: number;
     currentInvestorPoolCents: number;
     currentCompanyPoolCents: number;
     currentInvestorCount: number;
@@ -68,8 +67,7 @@ type InvestorDashboardResponse = {
     investedCents: number;
     currentGrossRevenueCents: number;
     currentOperatingProfitCents: number;
-    currentEbitdaCents: number;
-    currentReserveCents: number;
+    currentStockReplenishmentCents: number;
     currentInvestorPoolCents: number;
     currentCompanyPoolCents: number;
     currentValuePerQuotaCents: number;
@@ -356,7 +354,7 @@ export default function InvestorDashboardPage() {
               color: muted,
             }}
           >
-            EBITDA atual, fundo trimestral, empresa, investidores e valor atual por cota.
+            Lucro operacional atual, reposição de estoque, empresa, investidores e valor atual por cota.
           </div>
         </div>
 
@@ -404,14 +402,14 @@ export default function InvestorDashboardPage() {
         }}
       >
         <StatCard
-          title="EBITDA atual"
-          value={moneyFromCents(summary?.currentEbitdaCents ?? 0)}
+          title="Lucro operacional atual"
+          value={moneyFromCents(summary?.currentOperatingProfitCents ?? 0)}
           theme={theme}
           color="#22c55e"
         />
         <StatCard
-          title="Fundo trimestral atual"
-          value={moneyFromCents(summary?.currentReserveCents ?? 0)}
+          title="Reposição de estoque atual (30%)"
+          value={moneyFromCents(summary?.currentStockReplenishmentCents ?? 0)}
           theme={theme}
           color="#f59e0b"
         />
@@ -607,14 +605,8 @@ export default function InvestorDashboardPage() {
             text={theme.text}
           />
           <QuickRow
-            label="EBITDA atual"
-            value={moneyFromCents(summary?.currentEbitdaCents ?? 0)}
-            muted={muted}
-            text={theme.text}
-          />
-          <QuickRow
-            label="Fundo trimestral"
-            value={moneyFromCents(summary?.currentReserveCents ?? 0)}
+            label="Reposição de estoque (30%)"
+            value={moneyFromCents(summary?.currentStockReplenishmentCents ?? 0)}
             muted={muted}
             text={theme.text}
           />
@@ -723,14 +715,14 @@ export default function InvestorDashboardPage() {
                   }}
                 >
                   <StatCard
-                    title="EBITDA"
-                    value={moneyFromCents(region.currentEbitdaCents)}
+                    title="Resultado operacional"
+                    value={moneyFromCents(region.currentOperatingProfitCents)}
                     theme={theme}
                     color="#22c55e"
                   />
                   <StatCard
-                    title="Fundo trimestral"
-                    value={moneyFromCents(region.currentReserveCents)}
+                    title="Reposição de estoque"
+                    value={moneyFromCents(region.currentStockReplenishmentCents)}
                     theme={theme}
                     color="#f59e0b"
                   />

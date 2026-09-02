@@ -1,4 +1,12 @@
 import { prisma } from "@/lib/prisma";
+import { calculateCashBasisOrderTotals } from "@/lib/region-financial-engine";
+
+// Mesma regra do motor mensal oficial (region-financial-engine.ts), aplicada
+// "ao vivo" para projeção do mês em andamento: 30% de reposição de estoque
+// sobre o lucro operacional, e o restante dividido fixo 60% investidor / 40%
+// empresa, sem período de payback.
+const STOCK_REPLENISHMENT_RATE_BPS = 3000; // 30%
+const INVESTOR_SPLIT_RATE_BPS = 6000; // 60%
 
 type DailyRegionInvestorItem = {
   investorId: string;
@@ -21,8 +29,7 @@ export type DailyRegionSnapshot = {
   taxesCents: number;
   administrativeCents: number;
   operatingProfitCents: number;
-  ebitdaEstimatedCents: number;
-  reserveEstimatedCents: number;
+  stockReplenishmentEstimatedCents: number;
   activePdvs: number;
   activeClients: number;
   activeQuotaCount: number;
@@ -53,22 +60,6 @@ function endOfPeriod(month: number, year: number) {
 
 function toCents(value: number | null | undefined) {
   return Number.isFinite(value) ? Math.trunc(value as number) : 0;
-}
-
-function getProductUnitCostCents(product: {
-  purchaseCostCents: number;
-  taxCostCents: number;
-  packagingCostCents: number;
-  freightCostCents: number;
-  extraCostCents: number;
-}) {
-  return (
-    toCents(product.purchaseCostCents) +
-    toCents(product.taxCostCents) +
-    toCents(product.packagingCostCents) +
-    toCents(product.freightCostCents) +
-    toCents(product.extraCostCents)
-  );
 }
 
 function mapExpenseToBucket(category: string | null | undefined) {
@@ -105,7 +96,7 @@ export async function calculateDailyRegionSnapshot(
   const periodStart = startOfMonth(month, year);
   const periodEnd = endOfPeriod(month, year);
 
-  const [region, orders, manualExpenses, activePdvs, activeClients, shares] =
+  const [region, cashBasisTotals, manualExpenses, activePdvs, activeClients, shares] =
     await Promise.all([
       prisma.region.findUnique({
         where: { id: regionId },
@@ -116,39 +107,7 @@ export async function calculateDailyRegionSnapshot(
         },
       }),
 
-      prisma.order.findMany({
-        where: {
-          regionId,
-          financialMovement: true,
-          type: "SALE",
-          issuedAt: {
-            gte: periodStart,
-            lte: periodEnd,
-          },
-          status: {
-            not: "CANCELLED",
-          },
-        },
-        select: {
-          id: true,
-          totalCents: true,
-          commissionTotalCents: true,
-          items: {
-            select: {
-              qty: true,
-              product: {
-                select: {
-                  purchaseCostCents: true,
-                  taxCostCents: true,
-                  packagingCostCents: true,
-                  freightCostCents: true,
-                  extraCostCents: true,
-                },
-              },
-            },
-          },
-        },
-      }),
+      calculateCashBasisOrderTotals(regionId, periodStart, periodEnd),
 
       prisma.financeTransaction.findMany({
         where: {
@@ -209,22 +168,12 @@ export async function calculateDailyRegionSnapshot(
     throw new Error("Região não encontrada.");
   }
 
-  let grossRevenueCents = 0;
-  let cmvCents = 0;
-  let commissionCents = 0;
+  let grossRevenueCents = cashBasisTotals.grossRevenueCents;
+  let cmvCents = cashBasisTotals.cmvCents;
+  let commissionCents = cashBasisTotals.commissionCents;
   let logisticsCents = 0;
   let taxesCents = 0;
   let administrativeCents = 0;
-
-  for (const order of orders) {
-    grossRevenueCents += toCents(order.totalCents);
-    commissionCents += toCents(order.commissionTotalCents);
-
-    for (const item of order.items) {
-      const unitCostCents = getProductUnitCostCents(item.product);
-      cmvCents += unitCostCents * toCents(item.qty);
-    }
-  }
 
   for (const expense of manualExpenses) {
     const bucket = mapExpenseToBucket(expense.category);
@@ -244,15 +193,13 @@ export async function calculateDailyRegionSnapshot(
     taxesCents -
     administrativeCents;
 
-  const ebitdaEstimatedCents = Math.max(
+  const stockReplenishmentEstimatedCents = Math.max(
     0,
-    Math.floor(grossRevenueCents * 0.15)
+    Math.floor((Math.max(0, operatingProfitCents) * STOCK_REPLENISHMENT_RATE_BPS) / 10000)
   );
 
-  const reserveEstimatedCents = Math.max(
-    0,
-    operatingProfitCents - ebitdaEstimatedCents
-  );
+  const distributableEstimatedCents =
+    Math.max(0, operatingProfitCents) - stockReplenishmentEstimatedCents;
 
   const activeQuotaCount = shares.length;
   const companyShares = shares.filter((share) => share.ownerType === "COMPANY");
@@ -262,33 +209,20 @@ export async function calculateDailyRegionSnapshot(
   );
 
   let estimatedInvestorPoolCents = 0;
-  let estimatedCompanyPoolCents = 0;
+
+  // A região sempre representa 100% do lucro em `maxQuotaCount` cotas — cotas
+  // ainda não emitidas ficam implicitamente com a empresa. Ver mesma regra em
+  // investor-distribution.ts.
+  const totalQuotaCount = region.maxQuotaCount || activeQuotaCount || 1;
+  const perQuotaEstimatedCents = safeDivideInt(distributableEstimatedCents, totalQuotaCount);
+  const investorQuotaValueCents = Math.floor(
+    (perQuotaEstimatedCents * INVESTOR_SPLIT_RATE_BPS) / 10000
+  );
 
   const investorGrouped = new Map<string, DailyRegionInvestorItem>();
 
   for (const share of investorShares) {
-    const paidBack = share.paidBackAt !== null;
-
-    const investorRateBps = paidBack
-      ? share.postPayInvestorBps
-      : share.prePayInvestorBps;
-
-    const companyRateBps = paidBack
-      ? share.postPayCompanyBps
-      : share.prePayCompanyBps;
-
-    const investorQuotaValueCents = safeDivideInt(
-      Math.floor((ebitdaEstimatedCents * investorRateBps) / 10000),
-      activeQuotaCount
-    );
-
-    const companyQuotaValueCents = safeDivideInt(
-      Math.floor((ebitdaEstimatedCents * companyRateBps) / 10000),
-      activeQuotaCount
-    );
-
     estimatedInvestorPoolCents += investorQuotaValueCents;
-    estimatedCompanyPoolCents += companyQuotaValueCents;
 
     const investorId = share.investorId!;
     const investorName = share.investor!.name;
@@ -318,6 +252,8 @@ export async function calculateDailyRegionSnapshot(
     investorShares.length
   );
 
+  const estimatedCompanyPoolCents = distributableEstimatedCents - estimatedInvestorPoolCents;
+
   return {
     regionId: region.id,
     regionName: region.name,
@@ -330,8 +266,7 @@ export async function calculateDailyRegionSnapshot(
     taxesCents,
     administrativeCents,
     operatingProfitCents,
-    ebitdaEstimatedCents,
-    reserveEstimatedCents,
+    stockReplenishmentEstimatedCents,
     activePdvs,
     activeClients,
     activeQuotaCount,

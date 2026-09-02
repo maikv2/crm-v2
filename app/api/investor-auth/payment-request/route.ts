@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { calculateQuarterlyFundPreview } from "@/lib/investor-distribution";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeBrazilPhone,
@@ -16,8 +15,7 @@ type DistributionSource = {
   id: string;
   regionId: string;
   region: { name: string } | null;
-  month?: number;
-  quarter?: number;
+  month: number;
   year: number;
   totalDistributionCents: number;
   status: string;
@@ -55,13 +53,6 @@ function fifthBusinessDay(year: number, month: number) {
 function monthlyAvailableAt(month: number, year: number) {
   const payoutMonth = month === 12 ? 1 : month + 1;
   const payoutYear = month === 12 ? year + 1 : year;
-  return fifthBusinessDay(payoutYear, payoutMonth);
-}
-
-function quarterlyAvailableAt(quarter: number, year: number) {
-  const quarterEndMonth = quarter * 3;
-  const payoutMonth = quarterEndMonth === 12 ? 1 : quarterEndMonth + 1;
-  const payoutYear = quarterEndMonth === 12 ? year + 1 : year;
   return fifthBusinessDay(payoutYear, payoutMonth);
 }
 
@@ -114,7 +105,7 @@ async function getFinanceContact() {
 
   const phone =
     normalizeBrazilPhone(financeUser?.phone) ||
-    normalizeBrazilPhone(process.env.FINANCEIRO_WHATSAPP);
+    normalizeBrazilPhone(process.env.FINANCIAL_WHATSAPP);
 
   if (!phone) return null;
 
@@ -135,7 +126,7 @@ export async function POST(request: Request) {
       type?: string;
       id?: string;
     };
-    const type = body.type === "quarterly" ? "quarterly" : body.type === "monthly" ? "monthly" : null;
+    const type = body.type === "monthly" ? "monthly" : null;
     const id = typeof body.id === "string" ? body.id.trim() : "";
 
     if (!type || !isUuid(id)) {
@@ -144,88 +135,33 @@ export async function POST(request: Request) {
 
     const investor = user.investorProfile;
 
-    const rawItem =
-      type === "monthly"
-        ? await prisma.investorDistribution.findFirst({
-            where: { id, investorId: investor.id },
-            include: { region: true },
-          })
-        : await prisma.quarterlyFundDistribution.findFirst({
-            where: { id, investorId: investor.id },
-            include: { region: true },
-          });
+    const rawItem = await prisma.investorDistribution.findFirst({
+      where: { id, investorId: investor.id },
+      include: { region: true },
+    });
 
     if (!rawItem) {
       return NextResponse.json({ error: "Distribuicao nao encontrada." }, { status: 404 });
     }
 
     const source = rawItem as DistributionSource;
-    let correctedQuarterlyAmountCents = source.totalDistributionCents;
 
-    if (type === "quarterly" && source.quarter) {
-      const preview = await calculateQuarterlyFundPreview(
-        source.regionId,
-        source.quarter,
-        source.year
-      ).catch(() => null);
-      const previewInvestor = preview?.investors.find(
-        (item) => item.investorId === investor.id
-      );
-
-      if (preview && previewInvestor) {
-        correctedQuarterlyAmountCents = previewInvestor.totalDistributionCents;
-
-        if (
-          source.status !== "PAID" &&
-          source.totalDistributionCents !== correctedQuarterlyAmountCents
-        ) {
-          await prisma.quarterlyFundDistribution.update({
-            where: { id: source.id },
-            data: {
-              totalDistributionCents: correctedQuarterlyAmountCents,
-              valuePerQuotaCents: Math.floor(
-                correctedQuarterlyAmountCents / Math.max(1, previewInvestor.quotaCount)
-              ),
-              quarterlyFundTotalCents: preview.quarterlyFundTotalCents,
-              payoutPhase: previewInvestor.payoutPhase,
-            },
-          });
-        }
-      }
-    }
-
-    const item =
-      type === "monthly"
-        ? {
-            id: source.id,
-            regionId: source.regionId,
-            region: source.region,
-            month: source.month,
-            year: source.year,
-            totalDistributionCents: source.totalDistributionCents,
-            status: source.status,
-            periodLabel: `${String(source.month).padStart(2, "0")}/${source.year}`,
-          }
-        : {
-            id: source.id,
-            regionId: source.regionId,
-            region: source.region,
-            month: null,
-            year: source.year,
-            quarter: source.quarter,
-            totalDistributionCents: correctedQuarterlyAmountCents,
-            status: source.status,
-            periodLabel: `${source.quarter}o trimestre/${source.year}`,
-          };
+    const item = {
+      id: source.id,
+      regionId: source.regionId,
+      region: source.region,
+      month: source.month,
+      year: source.year,
+      totalDistributionCents: source.totalDistributionCents,
+      status: source.status,
+      periodLabel: `${String(source.month).padStart(2, "0")}/${source.year}`,
+    };
 
     if (item.status === "PAID") {
       return NextResponse.json({ error: "Este pagamento ja foi pago." }, { status: 400 });
     }
 
-    const availableAt =
-      type === "monthly"
-        ? monthlyAvailableAt(item.month!, item.year)
-        : quarterlyAvailableAt(item.quarter!, item.year);
+    const availableAt = monthlyAvailableAt(item.month, item.year);
     const now = new Date();
 
     if (now < availableAt) {
@@ -266,7 +202,7 @@ export async function POST(request: Request) {
     }
 
     const period = item.periodLabel;
-    const paymentName = type === "monthly" ? "EBITDA mensal" : "Fundo trimestral";
+    const paymentName = "Distribuição mensal";
     const description = `Solicitacao de pagamento - ${paymentName} - ${investor.name} - ${period}`;
 
     const transaction = await prisma.financeTransaction.create({
@@ -280,7 +216,7 @@ export async function POST(request: Request) {
         regionId: item.regionId,
         investorId: investor.id,
         dueDate: now,
-        competenceMonth: type === "monthly" ? item.month! : undefined,
+        competenceMonth: item.month,
         competenceYear: item.year,
         isSystemGenerated: true,
         notes: marker,

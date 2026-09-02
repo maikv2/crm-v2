@@ -34,8 +34,7 @@ type QuotaSummaryItem = {
   availableQuotaCount: number;
   grossRevenueCents: number;
   operatingProfitCents: number;
-  ebitdaCents: number;
-  reserveCents: number;
+  stockReplenishmentCents: number;
   investorPoolCents: number;
   companyPoolCents: number;
   valuePerQuotaCents: number;
@@ -325,12 +324,6 @@ function RegionCard({
           value={moneyFromCents(item.operatingProfitCents)}
           theme={theme}
         />
-        <InfoBox
-          label="EBITDA"
-          value={moneyFromCents(item.ebitdaCents)}
-          theme={theme}
-          color="#22c55e"
-        />
       </div>
 
       <div
@@ -342,8 +335,8 @@ function RegionCard({
         }}
       >
         <InfoBox
-          label="Fundo trimestral"
-          value={moneyFromCents(item.reserveCents)}
+          label="Reposição de estoque (30%)"
+          value={moneyFromCents(item.stockReplenishmentCents)}
           theme={theme}
           color="#f59e0b"
         />
@@ -537,8 +530,7 @@ export default function InvestorQuotasPage() {
         acc.availableQuotaCount += item.availableQuotaCount;
         acc.grossRevenueCents += item.grossRevenueCents;
         acc.operatingProfitCents += item.operatingProfitCents;
-        acc.ebitdaCents += item.ebitdaCents;
-        acc.reserveCents += item.reserveCents;
+        acc.stockReplenishmentCents += item.stockReplenishmentCents;
         acc.investorPoolCents += item.investorPoolCents;
         acc.companyPoolCents += item.companyPoolCents;
         return acc;
@@ -551,8 +543,7 @@ export default function InvestorQuotasPage() {
         availableQuotaCount: 0,
         grossRevenueCents: 0,
         operatingProfitCents: 0,
-        ebitdaCents: 0,
-        reserveCents: 0,
+        stockReplenishmentCents: 0,
         investorPoolCents: 0,
         companyPoolCents: 0,
       }
@@ -608,7 +599,7 @@ export default function InvestorQuotasPage() {
               color: muted,
             }}
           >
-            Análise por região com cotistas, cotas ativas, fundo trimestral e previsão de repasse.
+            Análise por região com cotistas, cotas ativas, reposição de estoque e previsão de repasse.
           </div>
         </div>
 
@@ -713,8 +704,8 @@ export default function InvestorQuotasPage() {
           color="#2563eb"
         />
         <SummaryCard
-          title="Fundo trimestral"
-          value={moneyFromCents(totals.reserveCents)}
+          title="Reposição de estoque (30%)"
+          value={moneyFromCents(totals.stockReplenishmentCents)}
           theme={theme}
           color="#f59e0b"
         />
@@ -737,12 +728,6 @@ export default function InvestorQuotasPage() {
           title="Lucro operacional"
           value={moneyFromCents(totals.operatingProfitCents)}
           theme={theme}
-        />
-        <SummaryCard
-          title="EBITDA"
-          value={moneyFromCents(totals.ebitdaCents)}
-          theme={theme}
-          color="#22c55e"
         />
         <SummaryCard
           title="Previsto investidores"

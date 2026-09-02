@@ -113,8 +113,6 @@ export async function GET(request: NextRequest) {
         // a contagem correta de cotas calculada acima.
         let monthlyResult: {
           grossRevenueCents: number;
-          ebitdaCents: number;
-          reserveCents: number;
         } | null = null;
 
         try {
@@ -126,8 +124,6 @@ export async function GET(request: NextRequest) {
             },
             select: {
               grossRevenueCents: true,
-              ebitdaCents: true,
-              reserveCents: true,
             },
           });
         } catch (monthlyError) {
@@ -177,29 +173,23 @@ export async function GET(request: NextRequest) {
 
           const operatingProfitCents =
             dailySnapshot?.operatingProfitCents ??
-            ((monthlyResult?.ebitdaCents ?? 0) + (monthlyResult?.reserveCents ?? 0));
-
-          const ebitdaCents =
-            dailySnapshot?.ebitdaEstimatedCents ??
-            monthlyResult?.ebitdaCents ??
-            preview?.ebitdaCents ??
+            preview?.operatingProfitCents ??
             0;
 
-          const reserveCents =
-            dailySnapshot?.reserveEstimatedCents ??
-            monthlyResult?.reserveCents ??
+          const stockReplenishmentCents =
+            dailySnapshot?.stockReplenishmentEstimatedCents ??
+            preview?.stockReplenishmentCents ??
             0;
 
           const investorPoolCents =
             dailySnapshot?.estimatedInvestorPoolCents ??
-            (preview?.investors ?? []).reduce(
-              (sum, investor) => sum + (investor.totalDistributionCents ?? 0),
-              0
-            );
+            preview?.investorPoolCents ??
+            0;
 
           const companyPoolCents =
             dailySnapshot?.estimatedCompanyPoolCents ??
-            Math.max(0, ebitdaCents + reserveCents - investorPoolCents);
+            preview?.companyPoolCents ??
+            0;
 
           const valuePerQuotaCents =
             dailySnapshot?.estimatedValuePerInvestorQuotaCents ??
@@ -259,8 +249,7 @@ export async function GET(request: NextRequest) {
             availableQuotaCount,
             grossRevenueCents,
             operatingProfitCents,
-            ebitdaCents,
-            reserveCents,
+            stockReplenishmentCents,
             investorPoolCents,
             companyPoolCents,
             valuePerQuotaCents,
@@ -287,8 +276,7 @@ export async function GET(request: NextRequest) {
             availableQuotaCount,
             grossRevenueCents: 0,
             operatingProfitCents: 0,
-            ebitdaCents: 0,
-            reserveCents: 0,
+            stockReplenishmentCents: 0,
             investorPoolCents: 0,
             companyPoolCents: 0,
             valuePerQuotaCents: 0,

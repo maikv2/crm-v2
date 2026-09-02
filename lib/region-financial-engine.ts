@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 
+// Regra de distribuição vigente (definitiva, sem período de payback):
+// 1) Lucro operacional = receita bruta − todas as despesas lançadas no sistema
+//    (CMV, logística, comissão de vendedor, impostos, administrativo).
+// 2) 30% do lucro operacional é reservado para reposição de estoque.
+// 3) O restante (70%) é dividido fixo: 60% investidor / 40% empresa, por cota.
+const STOCK_REPLENISHMENT_RATE_BPS = 3000; // 30%
+const INVESTOR_SPLIT_RATE_BPS = 6000; // 60% do que sobra após a reposição de estoque
 
 type RegionFinancialSnapshot = {
   regionId: string;
@@ -11,10 +18,11 @@ type RegionFinancialSnapshot = {
   commissionCents: number;
   taxesCents: number;
   administrativeCents: number;
-  reserveCents: number;
-  ebitdaCents: number;
   operatingProfitCents: number;
-  quarterlyFundContributionCents: number;
+  stockReplenishmentCents: number;
+  distributableCents: number;
+  investorPoolCents: number;
+  companyPoolCents: number;
   activePdvs: number;
   activeClients: number;
 };
@@ -68,6 +76,104 @@ function mapExpenseToBucket(category: string | null | undefined) {
   }
 }
 
+/**
+ * Regime de caixa: receita, CMV e comissão de uma venda só entram no período em
+ * que o dinheiro foi efetivamente recebido (Receipt.receivedAt) — não na data
+ * de emissão do pedido. Uma venda parcelada reconhece cada parcela apenas no
+ * mês em que ela é paga, proporcionalmente ao valor recebido sobre o total do
+ * pedido (mesmo princípio já usado no fechamento semanal de comissão).
+ */
+export async function calculateCashBasisOrderTotals(
+  regionId: string,
+  periodStart: Date,
+  periodEnd: Date
+) {
+  const receipts = await prisma.receipt.findMany({
+    where: {
+      receivedAt: {
+        gte: periodStart,
+        lt: periodEnd,
+      },
+      order: {
+        regionId,
+        type: "SALE",
+        financialMovement: true,
+        status: {
+          not: "CANCELLED",
+        },
+      },
+    },
+    select: {
+      amountCents: true,
+      orderId: true,
+    },
+  });
+
+  const receivedByOrder = new Map<string, number>();
+  for (const receipt of receipts) {
+    if (!receipt.orderId) continue;
+    receivedByOrder.set(
+      receipt.orderId,
+      (receivedByOrder.get(receipt.orderId) ?? 0) + toCents(receipt.amountCents)
+    );
+  }
+
+  if (receivedByOrder.size === 0) {
+    return { grossRevenueCents: 0, cmvCents: 0, commissionCents: 0 };
+  }
+
+  const orders = await prisma.order.findMany({
+    where: {
+      id: { in: Array.from(receivedByOrder.keys()) },
+    },
+    select: {
+      id: true,
+      totalCents: true,
+      commissionTotalCents: true,
+      items: {
+        select: {
+          qty: true,
+          product: {
+            select: {
+              purchaseCostCents: true,
+              taxCostCents: true,
+              packagingCostCents: true,
+              freightCostCents: true,
+              extraCostCents: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  let grossRevenueCents = 0;
+  let cmvCents = 0;
+  let commissionCents = 0;
+
+  for (const order of orders) {
+    const receivedCents = receivedByOrder.get(order.id) ?? 0;
+    if (receivedCents <= 0) continue;
+
+    const orderTotalCents = toCents(order.totalCents);
+    // Trava o reconhecimento no valor do pedido, para não passar de 100% caso
+    // haja alguma inconsistência de dados nos recebimentos.
+    const recognizedRevenueCents = Math.min(receivedCents, orderTotalCents);
+    const ratio = orderTotalCents > 0 ? recognizedRevenueCents / orderTotalCents : 0;
+
+    let orderCmvCents = 0;
+    for (const item of order.items) {
+      orderCmvCents += getProductUnitCostCents(item.product) * toCents(item.qty);
+    }
+
+    grossRevenueCents += recognizedRevenueCents;
+    cmvCents += Math.round(orderCmvCents * ratio);
+    commissionCents += Math.round(toCents(order.commissionTotalCents) * ratio);
+  }
+
+  return { grossRevenueCents, cmvCents, commissionCents };
+}
+
 export async function calculateRegionFinancialSnapshot(
   regionId: string,
   month: number,
@@ -76,7 +182,7 @@ export async function calculateRegionFinancialSnapshot(
   const periodStart = startOfMonth(month, year);
   const periodEnd = startOfNextMonth(month, year);
 
-  const [region, orders, manualExpenses, activePdvs, activeClients] =
+  const [region, cashBasisTotals, manualExpenses, activePdvs, activeClients] =
     await Promise.all([
       prisma.region.findUnique({
         where: { id: regionId },
@@ -86,39 +192,7 @@ export async function calculateRegionFinancialSnapshot(
         },
       }),
 
-      prisma.order.findMany({
-        where: {
-          regionId,
-          financialMovement: true,
-          type: "SALE",
-          issuedAt: {
-            gte: periodStart,
-            lt: periodEnd,
-          },
-          status: {
-            not: "CANCELLED",
-          },
-        },
-        select: {
-          id: true,
-          totalCents: true,
-          commissionTotalCents: true,
-          items: {
-            select: {
-              qty: true,
-              product: {
-                select: {
-                  purchaseCostCents: true,
-                  taxCostCents: true,
-                  packagingCostCents: true,
-                  freightCostCents: true,
-                  extraCostCents: true,
-                },
-              },
-            },
-          },
-        },
-      }),
+      calculateCashBasisOrderTotals(regionId, periodStart, periodEnd),
 
       prisma.financeTransaction.findMany({
         where: {
@@ -160,22 +234,12 @@ export async function calculateRegionFinancialSnapshot(
     throw new Error("Região não encontrada.");
   }
 
-  let grossRevenueCents = 0;
-  let cmvCents = 0;
-  let commissionCents = 0;
+  let grossRevenueCents = cashBasisTotals.grossRevenueCents;
+  let cmvCents = cashBasisTotals.cmvCents;
+  let commissionCents = cashBasisTotals.commissionCents;
   let logisticsCents = 0;
   let taxesCents = 0;
   let administrativeCents = 0;
-
-  for (const order of orders) {
-    grossRevenueCents += toCents(order.totalCents);
-    commissionCents += toCents(order.commissionTotalCents);
-
-    for (const item of order.items) {
-      const unitCostCents = getProductUnitCostCents(item.product);
-      cmvCents += unitCostCents * toCents(item.qty);
-    }
-  }
 
   for (const expense of manualExpenses) {
     const bucket = mapExpenseToBucket(expense.category);
@@ -195,12 +259,17 @@ export async function calculateRegionFinancialSnapshot(
     taxesCents -
     administrativeCents;
 
-  // EBITDA: monthly investor payment, deducted before the quarterly fund.
-  const ebitdaCents = Math.max(0, Math.floor(grossRevenueCents * 0.15));
-  const reserveCents = Math.max(0, operatingProfitCents - ebitdaCents);
-  // Quarterly fund base = what remains after expenses and monthly EBITDA.
-  // The investor rate (60% pre-payback / 40% post-payback) is applied per quota in the distribution engine.
-  const quarterlyFundContributionCents = reserveCents;
+  // 30% do lucro operacional (nunca negativo) fica reservado para reposição de estoque.
+  const stockReplenishmentCents = Math.max(
+    0,
+    Math.floor((Math.max(0, operatingProfitCents) * STOCK_REPLENISHMENT_RATE_BPS) / 10000)
+  );
+  // O que sobra é dividido definitivamente 60% investidor / 40% empresa (sem payback).
+  const distributableCents = Math.max(0, operatingProfitCents) - stockReplenishmentCents;
+  const investorPoolCents = Math.floor(
+    (distributableCents * INVESTOR_SPLIT_RATE_BPS) / 10000
+  );
+  const companyPoolCents = distributableCents - investorPoolCents;
 
   return {
     regionId,
@@ -212,10 +281,11 @@ export async function calculateRegionFinancialSnapshot(
     commissionCents,
     taxesCents,
     administrativeCents,
-    reserveCents,
-    ebitdaCents,
     operatingProfitCents,
-    quarterlyFundContributionCents,
+    stockReplenishmentCents,
+    distributableCents,
+    investorPoolCents,
+    companyPoolCents,
     activePdvs,
     activeClients,
   };
@@ -236,6 +306,11 @@ export async function recalculateRegionMonthlyResult(
         year,
       },
     },
+    // Nota: `reserveCents` passou a armazenar a reposição de estoque (30%).
+    // `ebitdaCents` e `quarterlyFundContributionCents` ficaram obsoletos com a
+    // regra atual (sem EBITDA e sem fundo trimestral) e são mantidos zerados
+    // daqui pra frente — não são apagados do schema para preservar o histórico
+    // de períodos calculados sob a regra antiga.
     update: {
       grossRevenueCents: snapshot.grossRevenueCents,
       cmvCents: snapshot.cmvCents,
@@ -243,9 +318,9 @@ export async function recalculateRegionMonthlyResult(
       commissionCents: snapshot.commissionCents,
       taxesCents: snapshot.taxesCents,
       administrativeCents: snapshot.administrativeCents,
-      reserveCents: snapshot.reserveCents,
-      ebitdaCents: snapshot.ebitdaCents,
-      quarterlyFundContributionCents: snapshot.quarterlyFundContributionCents,
+      reserveCents: snapshot.stockReplenishmentCents,
+      ebitdaCents: 0,
+      quarterlyFundContributionCents: 0,
       activePdvs: snapshot.activePdvs,
       activeClients: snapshot.activeClients,
     },
@@ -259,9 +334,9 @@ export async function recalculateRegionMonthlyResult(
       commissionCents: snapshot.commissionCents,
       taxesCents: snapshot.taxesCents,
       administrativeCents: snapshot.administrativeCents,
-      reserveCents: snapshot.reserveCents,
-      ebitdaCents: snapshot.ebitdaCents,
-      quarterlyFundContributionCents: snapshot.quarterlyFundContributionCents,
+      reserveCents: snapshot.stockReplenishmentCents,
+      ebitdaCents: 0,
+      quarterlyFundContributionCents: 0,
       activePdvs: snapshot.activePdvs,
       activeClients: snapshot.activeClients,
     },

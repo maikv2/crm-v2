@@ -105,6 +105,7 @@ export default function ExhibitorsPage() {
   const [search, setSearch] = useState("");
   const [regionId, setRegionId] = useState("");
   const [type, setType] = useState<ExhibitorType | "">("");
+  const [sendingAccessId, setSendingAccessId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -152,6 +153,37 @@ export default function ExhibitorsPage() {
       active = false;
     };
   }, [clientId]);
+
+  async function handleSendPortalAccess(clientId: string) {
+    if (!clientId || sendingAccessId) return;
+
+    try {
+      setSendingAccessId(clientId);
+
+      const res = await fetch("/api/whatsapp/send-portal-access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          clientId,
+          portalUrl: `${window.location.origin}/portal/login`,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Não foi possível enviar o acesso.");
+      }
+
+      alert("Acesso ao portal enviado pelo WhatsApp.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Não foi possível enviar o acesso.");
+    } finally {
+      setSendingAccessId(null);
+    }
+  }
 
   const regionOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -452,6 +484,21 @@ export default function ExhibitorsPage() {
                     onClick={() => router.push(`/visits/new?exhibitorId=${item.id}`)}
                   >
                     Registrar visita
+                  </button>
+
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      cursor:
+                        sendingAccessId === item.client?.id ? "not-allowed" : "pointer",
+                      opacity: sendingAccessId === item.client?.id ? 0.7 : 1,
+                    }}
+                    disabled={sendingAccessId === item.client?.id}
+                    onClick={() => handleSendPortalAccess(item.client?.id)}
+                  >
+                    {sendingAccessId === item.client?.id
+                      ? "Enviando..."
+                      : "Enviar acesso ao portal"}
                   </button>
                 </div>
               </div>

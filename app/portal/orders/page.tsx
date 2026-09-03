@@ -2,9 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, FileText } from "lucide-react";
+import { Copy, Download, FileText, Receipt, RefreshCw } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
+
+type ExternalPayment = {
+  id: string;
+  type: string;
+  status: string;
+  amountCents: number;
+  paidCents: number;
+  dueDate?: string | null;
+  paidAt?: string | null;
+  boletoLink?: string | null;
+  boletoPdfUrl?: string | null;
+  barcode?: string | null;
+  pixCopyPaste?: string | null;
+  installmentId?: string | null;
+};
 
 type Order = {
   id: string;
@@ -16,6 +31,7 @@ type Order = {
   nfeNumber?: string | null;
   nfeKey?: string | null;
   nfeXmlUrl?: string | null;
+  externalPayments?: ExternalPayment[];
 };
 
 function money(cents: number) {
@@ -27,6 +43,15 @@ function money(cents: number) {
 
 function dateBR(date: string) {
   return new Date(date).toLocaleDateString("pt-BR");
+}
+
+async function copyToClipboard(value: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    alert("Copiado para a área de transferência.");
+  } catch {
+    alert("Não foi possível copiar automaticamente. Copie manualmente:\n\n" + value);
+  }
 }
 
 function statusLabel(status: string) {
@@ -41,6 +66,52 @@ function statusLabel(status: string) {
       return "Vencido";
     default:
       return status;
+  }
+}
+
+function paymentStatusLabel(status: string) {
+  switch (status) {
+    case "PAID":
+      return "Pago";
+    case "PARTIAL":
+      return "Pago parcialmente";
+    case "OVERDUE":
+      return "Vencido";
+    case "CANCELED":
+      return "Cancelado";
+    case "EXPIRED":
+      return "Expirado";
+    case "FAILED":
+      return "Falhou";
+    default:
+      return "Pendente";
+  }
+}
+
+function paymentStatusColors(status: string, isDark: boolean) {
+  switch (status) {
+    case "PAID":
+      return {
+        bg: isDark ? "rgba(34,197,94,0.18)" : "#dcfce7",
+        color: "#16a34a",
+      };
+    case "OVERDUE":
+    case "FAILED":
+      return {
+        bg: isDark ? "rgba(239,68,68,0.18)" : "#fee2e2",
+        color: "#dc2626",
+      };
+    case "CANCELED":
+    case "EXPIRED":
+      return {
+        bg: isDark ? "rgba(100,116,139,0.18)" : "#f1f5f9",
+        color: "#64748b",
+      };
+    default:
+      return {
+        bg: isDark ? "rgba(245,158,11,0.18)" : "#fef3c7",
+        color: "#b45309",
+      };
   }
 }
 
@@ -174,6 +245,53 @@ export default function PortalOrdersPage() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshingPaymentId, setRefreshingPaymentId] = useState<string | null>(null);
+
+  async function handleRefreshBoleto(orderId: string, payment: ExternalPayment) {
+    if (!payment.installmentId || refreshingPaymentId) return;
+
+    try {
+      setRefreshingPaymentId(payment.id);
+
+      const res = await fetch("/api/portal/boleto/refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId,
+          installmentId: payment.installmentId,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Não foi possível atualizar o boleto.");
+      }
+
+      setOrders((current) =>
+        current.map((order) =>
+          order.id !== orderId
+            ? order
+            : {
+                ...order,
+                externalPayments: order.externalPayments?.map((item) =>
+                  item.id === payment.id ? { ...item, ...json.payment } : item
+                ),
+              }
+        )
+      );
+
+      alert(
+        "Boleto atualizado. Ao pagar, os juros e a multa por atraso são aplicados automaticamente pelo banco."
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Não foi possível atualizar o boleto.");
+    } finally {
+      setRefreshingPaymentId(null);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -476,6 +594,253 @@ export default function PortalOrdersPage() {
                         Pedido resumido
                       </div>
                     </div>
+
+                    {order.externalPayments && order.externalPayments.length > 0 ? (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          paddingTop: 16,
+                          borderTop: `1px solid ${colors.border}`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 800,
+                            color: colors.text,
+                            marginBottom: 10,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <Receipt size={15} />
+                          Cobrança / Boletos
+                        </div>
+
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {order.externalPayments.map((payment, index) => {
+                            const badge = paymentStatusColors(
+                              payment.status,
+                              colors.isDark
+                            );
+
+                            return (
+                              <div
+                                key={payment.id}
+                                style={{
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: 12,
+                                  padding: 14,
+                                  background: colors.isDark ? "#0b1220" : "#ffffff",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                    flexWrap: "wrap",
+                                    marginBottom: 10,
+                                  }}
+                                >
+                                  <div style={{ fontSize: 13, color: colors.text }}>
+                                    <strong>
+                                      Parcela {index + 1}/{order.externalPayments!.length}
+                                    </strong>
+                                    {" • "}
+                                    {money(payment.amountCents)}
+                                    {payment.dueDate
+                                      ? ` • Vencimento: ${dateBR(payment.dueDate)}`
+                                      : ""}
+                                  </div>
+
+                                  <span
+                                    style={{
+                                      borderRadius: 999,
+                                      padding: "6px 10px",
+                                      fontSize: 11,
+                                      fontWeight: 800,
+                                      background: badge.bg,
+                                      color: badge.color,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {paymentStatusLabel(payment.status)}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: 8,
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  {payment.boletoPdfUrl ? (
+                                    <a
+                                      href={payment.boletoPdfUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{ textDecoration: "none" }}
+                                    >
+                                      <div
+                                        style={{
+                                          minHeight: 36,
+                                          padding: "0 12px",
+                                          borderRadius: 10,
+                                          background: "#2563eb",
+                                          color: "#ffffff",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          gap: 6,
+                                          fontSize: 12,
+                                          fontWeight: 800,
+                                        }}
+                                      >
+                                        <Download size={13} />
+                                        Baixar boleto
+                                      </div>
+                                    </a>
+                                  ) : payment.boletoLink ? (
+                                    <a
+                                      href={payment.boletoLink}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{ textDecoration: "none" }}
+                                    >
+                                      <div
+                                        style={{
+                                          minHeight: 36,
+                                          padding: "0 12px",
+                                          borderRadius: 10,
+                                          background: "#2563eb",
+                                          color: "#ffffff",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          gap: 6,
+                                          fontSize: 12,
+                                          fontWeight: 800,
+                                        }}
+                                      >
+                                        <FileText size={13} />
+                                        Ver boleto
+                                      </div>
+                                    </a>
+                                  ) : null}
+
+                                  {payment.barcode ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => copyToClipboard(payment.barcode!)}
+                                      style={{
+                                        minHeight: 36,
+                                        padding: "0 12px",
+                                        borderRadius: 10,
+                                        border: `1px solid ${colors.border}`,
+                                        background: colors.cardBg,
+                                        color: colors.text,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        gap: 6,
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      <Copy size={13} />
+                                      Copiar linha digitável
+                                    </button>
+                                  ) : null}
+
+                                  {payment.pixCopyPaste ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        copyToClipboard(payment.pixCopyPaste!)
+                                      }
+                                      style={{
+                                        minHeight: 36,
+                                        padding: "0 12px",
+                                        borderRadius: 10,
+                                        border: `1px solid ${colors.border}`,
+                                        background: colors.cardBg,
+                                        color: colors.text,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        gap: 6,
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      <Copy size={13} />
+                                      Copiar Pix copia e cola
+                                    </button>
+                                  ) : null}
+
+                                  {payment.status === "OVERDUE" &&
+                                  payment.installmentId ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRefreshBoleto(order.id, payment)
+                                      }
+                                      disabled={refreshingPaymentId === payment.id}
+                                      style={{
+                                        minHeight: 36,
+                                        padding: "0 12px",
+                                        borderRadius: 10,
+                                        border: "1px solid #b45309",
+                                        background: "transparent",
+                                        color: "#b45309",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        gap: 6,
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        cursor:
+                                          refreshingPaymentId === payment.id
+                                            ? "not-allowed"
+                                            : "pointer",
+                                        opacity:
+                                          refreshingPaymentId === payment.id ? 0.7 : 1,
+                                      }}
+                                    >
+                                      <RefreshCw size={13} />
+                                      {refreshingPaymentId === payment.id
+                                        ? "Atualizando..."
+                                        : "Atualizar boleto vencido"}
+                                    </button>
+                                  ) : null}
+                                </div>
+
+                                {payment.status === "OVERDUE" ? (
+                                  <div
+                                    style={{
+                                      marginTop: 10,
+                                      fontSize: 12,
+                                      color: colors.subtext,
+                                      lineHeight: 1.5,
+                                    }}
+                                  >
+                                    Boleto vencido. Ao pagar, juros e multa por atraso
+                                    são calculados automaticamente pelo banco no
+                                    momento do pagamento.
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}

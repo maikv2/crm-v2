@@ -47,6 +47,25 @@ export async function GET() {
         nfeNumber: true,
         nfeKey: true,
         nfeXmlUrl: true,
+        externalPayments: {
+          orderBy: {
+            dueDate: "asc",
+          },
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            amountCents: true,
+            paidCents: true,
+            dueDate: true,
+            paidAt: true,
+            boletoLink: true,
+            boletoPdfUrl: true,
+            barcode: true,
+            pixCopyPaste: true,
+            installmentId: true,
+          },
+        },
         items: {
           select: {
             id: true,

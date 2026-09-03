@@ -56,6 +56,12 @@ type OrderDetail = {
   region?: { id: string; name?: string | null } | null;
   seller?: { id: string; name?: string | null } | null;
   items?: OrderItem[];
+  accountsReceivables?: {
+    id: string;
+    paymentMethod: string;
+    status?: string | null;
+    amountCents: number;
+  }[];
 };
 
 function getStatusLabel(v?: string | null) {
@@ -80,6 +86,14 @@ function getPaymentMethodLabel(v?: string | null) {
     CARD_DEBIT: "Cartão débito", CARD_CREDIT: "Cartão crédito",
   };
   return m[v || ""] || v || "-";
+}
+
+function getPaymentSplitSummary(order: OrderDetail) {
+  const active = (order.accountsReceivables ?? []).filter((item) => item.status !== "CANCELED");
+  if (active.length <= 1) return getPaymentMethodLabel(order.paymentMethod);
+  return active
+    .map((item) => `${getPaymentMethodLabel(item.paymentMethod)} (${formatMoneyBR(item.amountCents)})`)
+    .join(" + ");
 }
 
 function getNfeStatusLabel(v?: string | null) {
@@ -281,7 +295,7 @@ export default function MobileAdminOrderDetailPage() {
             <div style={{ fontSize: 13, color: colors.isDark ? "rgba(255,255,255,0.85)" : colors.subtext, display: "grid", gap: 3, marginBottom: 14 }}>
               <div>Status: {getStatusLabel(order.status)}</div>
               <div>Pagamento: {getPaymentStatusLabel(order.paymentStatus)}</div>
-              <div>Forma: {getPaymentMethodLabel(order.paymentMethod)}</div>
+              <div>Forma: {getPaymentSplitSummary(order)}</div>
               <div>NF-e: {getNfeStatusLabel(order.nfeStatus)}</div>
               <div>Criado: {formatDateTimeBR(order.issuedAt || order.createdAt)}</div>
             </div>
@@ -336,7 +350,7 @@ export default function MobileAdminOrderDetailPage() {
                 </button>
               )}
 
-              {order.paymentMethod === "BOLETO" && (
+              {order.accountsReceivables?.some((item) => item.paymentMethod === "BOLETO") && (
                 <button
                   type="button"
                   disabled={busy !== null || !hasWhatsApp}
@@ -347,7 +361,7 @@ export default function MobileAdminOrderDetailPage() {
                   {busy === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
                 </button>
               )}
-              {order.paymentMethod === "PIX" && (
+              {order.accountsReceivables?.some((item) => item.paymentMethod === "PIX") && (
                 <button
                   type="button"
                   disabled={busy !== null || !hasWhatsApp}
@@ -358,7 +372,7 @@ export default function MobileAdminOrderDetailPage() {
                   {busy === "boleto" ? "Enviando..." : "📱 Enviar Pix"}
                 </button>
               )}
-              {order.paymentMethod === "CARD_CREDIT" && (
+              {order.accountsReceivables?.some((item) => item.paymentMethod === "CARD_CREDIT") && (
                 <button
                   type="button"
                   disabled={busy !== null || !hasWhatsApp}
@@ -402,7 +416,7 @@ export default function MobileAdminOrderDetailPage() {
             <MobileInfoRow title="Subtotal" right={formatMoneyBR(order.subtotalCents)} />
             <MobileInfoRow title="Desconto" right={formatMoneyBR(order.discountCents)} />
             <MobileInfoRow title="Total" right={formatMoneyBR(order.totalCents)} />
-            <MobileInfoRow title="Forma de pagamento" right={getPaymentMethodLabel(order.paymentMethod)} />
+            <MobileInfoRow title="Forma de pagamento" right={getPaymentSplitSummary(order)} />
             <MobileInfoRow
               title="Recebedor"
               right={order.paymentReceiver === "REGION" ? "Região" : "Matriz"}

@@ -60,6 +60,12 @@ type OrderDetail = {
   region?: { id: string; name?: string | null } | null;
   seller?: { id: string; name?: string | null } | null;
   items?: OrderItem[];
+  accountsReceivables?: {
+    id: string;
+    paymentMethod: string;
+    status?: string | null;
+    amountCents: number;
+  }[];
 };
 
 function getStatusLabel(value?: string | null) {
@@ -93,6 +99,14 @@ function getPaymentMethodLabel(value?: string | null) {
     CARD_CREDIT: "Cartão crédito",
   };
   return map[value || ""] || value || "-";
+}
+
+function getPaymentSplitSummary(order: OrderDetail) {
+  const active = (order.accountsReceivables ?? []).filter((item) => item.status !== "CANCELED");
+  if (active.length <= 1) return getPaymentMethodLabel(order.paymentMethod);
+  return active
+    .map((item) => `${getPaymentMethodLabel(item.paymentMethod)} (${formatMoneyBR(item.amountCents)})`)
+    .join(" + ");
 }
 
 function getNfeStatusLabel(value?: string | null) {
@@ -383,7 +397,7 @@ export default function MobileRepOrderDetailsPage() {
             >
               <div>Status: {getStatusLabel(order.status)}</div>
               <div>Pagamento: {getPaymentStatusLabel(order.paymentStatus)}</div>
-              <div>Forma: {getPaymentMethodLabel(order.paymentMethod)}</div>
+              <div>Forma: {getPaymentSplitSummary(order)}</div>
               <div>NF-e: {getNfeStatusLabel(order.nfeStatus)}</div>
               <div>
                 Emissão: {formatDateTimeBR(order.issuedAt || order.createdAt)}
@@ -460,7 +474,7 @@ export default function MobileRepOrderDetailsPage() {
                 </button>
               )}
 
-              {order.paymentMethod === "BOLETO" && (
+              {order.accountsReceivables?.some((item) => item.paymentMethod === "BOLETO") && (
                 <button
                   type="button"
                   disabled={busy !== null || !hasWhatsApp}
@@ -476,7 +490,7 @@ export default function MobileRepOrderDetailsPage() {
                   {busy === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
                 </button>
               )}
-              {order.paymentMethod === "PIX" && (
+              {order.accountsReceivables?.some((item) => item.paymentMethod === "PIX") && (
                 <button
                   type="button"
                   disabled={busy !== null || !hasWhatsApp}
@@ -492,7 +506,7 @@ export default function MobileRepOrderDetailsPage() {
                   {busy === "boleto" ? "Enviando..." : "📱 Enviar Pix"}
                 </button>
               )}
-              {order.paymentMethod === "CARD_CREDIT" && (
+              {order.accountsReceivables?.some((item) => item.paymentMethod === "CARD_CREDIT") && (
                 <button
                   type="button"
                   disabled={busy !== null || !hasWhatsApp}

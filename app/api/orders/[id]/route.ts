@@ -6,14 +6,25 @@ import {
   PaymentMethod,
   PaymentReceiver,
   PaymentStatus,
+  ReceiptLocation,
   ReceivableStatus,
   StockMovementType,
 } from "@prisma/client";
+import { recomputeOrderPaymentStatus } from "@/lib/receivables";
 
 type OrderItemPatchInput = {
   productId: string;
   qty: number;
   unitCents?: number | null;
+};
+
+type PaymentSplitPatchInput = {
+  id?: string;
+  paymentMethod?: string;
+  amountCents?: number;
+  dueDate?: string;
+  installmentCount?: number;
+  installmentDates?: string[];
 };
 
 export async function GET(
@@ -109,20 +120,26 @@ function getFinancialRules(paymentMethod: PaymentMethod) {
         paymentStatus: PaymentStatus.PENDING,
         paymentReceiver: PaymentReceiver.MATRIX,
         receivableStatus: ReceivableStatus.PENDING,
+        receiptLocation: null as ReceiptLocation | null,
+        autoCreateReceipt: false,
         autoPaidAt: false,
       };
     case PaymentMethod.CASH:
       return {
-        paymentStatus: PaymentStatus.PAID,
+        paymentStatus: PaymentStatus.PENDING,
         paymentReceiver: PaymentReceiver.REGION,
-        receivableStatus: ReceivableStatus.PAID,
-        autoPaidAt: true,
+        receivableStatus: ReceivableStatus.PENDING,
+        receiptLocation: null as ReceiptLocation | null,
+        autoCreateReceipt: false,
+        autoPaidAt: false,
       };
     case PaymentMethod.CARD_DEBIT:
       return {
         paymentStatus: PaymentStatus.PAID,
         paymentReceiver: PaymentReceiver.MATRIX,
         receivableStatus: ReceivableStatus.PAID,
+        receiptLocation: ReceiptLocation.MATRIX as ReceiptLocation | null,
+        autoCreateReceipt: true,
         autoPaidAt: true,
       };
     case PaymentMethod.BOLETO:
@@ -132,6 +149,8 @@ function getFinancialRules(paymentMethod: PaymentMethod) {
         paymentStatus: PaymentStatus.PENDING,
         paymentReceiver: PaymentReceiver.MATRIX,
         receivableStatus: ReceivableStatus.PENDING,
+        receiptLocation: null as ReceiptLocation | null,
+        autoCreateReceipt: false,
         autoPaidAt: false,
       };
   }
@@ -150,6 +169,12 @@ function distributeInstallments(totalCents: number, count: number) {
   return Array.from({ length: safeCount }, (_, index) =>
     base + (index < remainder ? 1 : 0)
   );
+}
+
+function addMonths(date: Date, months: number) {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
 }
 
 export async function PATCH(
@@ -191,12 +216,6 @@ export async function PATCH(
       );
     }
 
-    const paymentMethod =
-      typeof body.paymentMethod === "string" &&
-      (VALID_PAYMENT_METHODS as readonly string[]).includes(body.paymentMethod)
-        ? (body.paymentMethod as PaymentMethod)
-        : undefined;
-
     const paymentReceiver =
       typeof body.paymentReceiver === "string" &&
       (VALID_PAYMENT_RECEIVERS as readonly string[]).includes(
@@ -208,16 +227,18 @@ export async function PATCH(
     const notes = typeof body.notes === "string" ? body.notes : undefined;
     const hasItemsPatch = Array.isArray(body.items);
     const itemsInput = hasItemsPatch ? (body.items as OrderItemPatchInput[]) : [];
-    const hasInstallmentsPatch = Array.isArray(body.installments);
-    const installments = hasInstallmentsPatch ? body.installments : [];
     const discountCents =
       typeof body.discountCents === "number" && Number.isFinite(body.discountCents)
         ? Math.max(0, Math.round(body.discountCents))
         : undefined;
-    const requestedInstallmentCount =
-      typeof body.installmentCount === "number" && Number.isFinite(body.installmentCount)
-        ? Math.max(1, Math.trunc(body.installmentCount))
-        : undefined;
+
+    // Divisão de forma de pagamento (ex: parte em dinheiro + parte em
+    // boleto). Quando enviado, é a ÚNICA fonte da verdade sobre as
+    // AccountsReceivable do pedido — substitui o campo `paymentMethod` solto.
+    const hasPaymentsPatch = Array.isArray(body.payments);
+    const paymentsPatchInput: PaymentSplitPatchInput[] = hasPaymentsPatch
+      ? (body.payments as PaymentSplitPatchInput[])
+      : [];
 
     await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
@@ -236,9 +257,8 @@ export async function PATCH(
         throw new Error("Pedido não encontrado.");
       }
 
-      const receivable = order.accountsReceivables[0] ?? null;
-      const hasReceipts = order.accountsReceivables.some(
-        (item) => item.receipts.length > 0
+      const activeReceivables = order.accountsReceivables.filter(
+        (item) => item.status !== ReceivableStatus.CANCELED
       );
       const originalItems = new Map<string, number>();
       for (const item of order.items) {
@@ -247,7 +267,7 @@ export async function PATCH(
 
       let subtotalCents = order.subtotalCents ?? 0;
       let commissionTotalCents = order.commissionTotalCents ?? 0;
-      let nextDiscountCents = discountCents ?? order.discountCents ?? 0;
+      const nextDiscountCents = discountCents ?? order.discountCents ?? 0;
       let totalCents = Math.max(0, subtotalCents - nextDiscountCents);
 
       if (hasItemsPatch) {
@@ -424,13 +444,23 @@ export async function PATCH(
         totalCents = Math.max(0, subtotalCents - nextDiscountCents);
       }
 
-      const effectivePaymentMethod = paymentMethod ?? order.paymentMethod;
-      const rules = getFinancialRules(effectivePaymentMethod);
+      // Se itens/desconto mudaram o total do pedido, mas ninguém mandou a
+      // divisão de pagamento atualizada, não dá pra saber como redistribuir
+      // o novo total entre as formas de pagamento existentes — melhor pedir
+      // explicitamente do que deixar `AccountsReceivable.amountCents`
+      // desatualizado em relação ao pedido.
+      if (
+        !hasPaymentsPatch &&
+        (hasItemsPatch || discountCents !== undefined) &&
+        totalCents !== (order.totalCents ?? 0) &&
+        activeReceivables.length > 0
+      ) {
+        throw new Error(
+          "Este pedido já tem forma de pagamento configurada. Ao alterar itens ou desconto, envie também a divisão de forma de pagamento atualizada."
+        );
+      }
 
       const orderUpdate: Record<string, unknown> = {};
-      if (paymentMethod !== undefined) orderUpdate.paymentMethod = paymentMethod;
-      if (paymentReceiver !== undefined) orderUpdate.paymentReceiver = paymentReceiver;
-      else if (paymentMethod !== undefined) orderUpdate.paymentReceiver = rules.paymentReceiver;
       if (notes !== undefined) orderUpdate.notes = notes;
       if (hasItemsPatch || discountCents !== undefined) {
         orderUpdate.subtotalCents = subtotalCents;
@@ -438,10 +468,8 @@ export async function PATCH(
         orderUpdate.totalCents = totalCents;
         orderUpdate.commissionTotalCents = commissionTotalCents;
       }
-
-      if (paymentMethod !== undefined && !hasReceipts) {
-        orderUpdate.paymentStatus = rules.paymentStatus;
-        orderUpdate.status = rules.paymentStatus === PaymentStatus.PAID ? "PAID" : "PENDING";
+      if (paymentReceiver !== undefined && !hasPaymentsPatch) {
+        orderUpdate.paymentReceiver = paymentReceiver;
       }
 
       if (Object.keys(orderUpdate).length > 0) {
@@ -451,39 +479,72 @@ export async function PATCH(
         });
       }
 
-      if (receivable) {
-        const receivableUpdate: Record<string, unknown> = {};
-        if (paymentMethod !== undefined) receivableUpdate.paymentMethod = paymentMethod;
-        if (hasItemsPatch || discountCents !== undefined) {
-          receivableUpdate.amountCents = totalCents;
-        }
-        if (paymentMethod !== undefined && !hasReceipts) {
-          receivableUpdate.status = rules.receivableStatus;
-          receivableUpdate.receivedCents = rules.autoPaidAt ? totalCents : 0;
-          receivableUpdate.paidAt = rules.autoPaidAt ? new Date() : null;
+      if (hasPaymentsPatch) {
+        if (!paymentsPatchInput.length) {
+          throw new Error("Informe ao menos uma forma de pagamento.");
         }
 
-        const existingInstallments = receivable.installments.sort(
-          (a, b) => a.installmentNumber - b.installmentNumber
-        );
-        const paidInstallments = existingInstallments.filter(
-          (item) => item.status === ReceivableStatus.PAID
-        );
-        const openInstallments = existingInstallments.filter(
-          (item) => item.status !== ReceivableStatus.PAID
-        );
-        const openById = new Map(openInstallments.map((item) => [item.id, item]));
-        const shouldRewriteInstallments =
-          hasInstallmentsPatch ||
-          hasItemsPatch ||
-          discountCents !== undefined ||
-          paymentMethod !== undefined ||
-          requestedInstallmentCount !== undefined;
+        const normalizedSplits = paymentsPatchInput.map((item) => {
+          const method =
+            typeof item.paymentMethod === "string" &&
+            (VALID_PAYMENT_METHODS as readonly string[]).includes(item.paymentMethod)
+              ? (item.paymentMethod as PaymentMethod)
+              : undefined;
+          if (!method) {
+            throw new Error("Forma de pagamento inválida na divisão de pagamento.");
+          }
+          return {
+            id:
+              typeof item.id === "string" && isValidUuid(item.id)
+                ? item.id
+                : undefined,
+            paymentMethod: method,
+            amountCents: Math.max(0, toInt(item.amountCents, 0)),
+            dueDate: dateFromInput(item.dueDate),
+            installmentCount: Math.max(1, toInt(item.installmentCount ?? 1, 1)),
+            installmentDates: Array.isArray(item.installmentDates)
+              ? item.installmentDates.map((d) => String(d))
+              : ([] as string[]),
+          };
+        });
 
-        if (shouldRewriteInstallments) {
+        const splitsSumCents = normalizedSplits.reduce(
+          (sum, split) => sum + split.amountCents,
+          0
+        );
+        if (splitsSumCents !== totalCents) {
+          throw new Error(
+            `A soma das formas de pagamento (${(splitsSumCents / 100).toFixed(
+              2
+            )}) não bate com o total do pedido (${(totalCents / 100).toFixed(2)}).`
+          );
+        }
+        if (totalCents > 0 && normalizedSplits.some((split) => split.amountCents <= 0)) {
+          throw new Error(
+            "Cada forma de pagamento na divisão deve ter um valor maior que zero."
+          );
+        }
+
+        const existingById = new Map(
+          activeReceivables.map((item) => [item.id, item])
+        );
+
+        // Divisões existentes que não vieram mais na lista: só podem ser
+        // canceladas se nada foi recebido nelas (nunca apagamos histórico
+        // financeiro — só marcamos como cancelada).
+        for (const existing of activeReceivables) {
+          const stillPresent = normalizedSplits.some((split) => split.id === existing.id);
+          if (stillPresent) continue;
+
+          if ((existing.receivedCents ?? 0) > 0) {
+            throw new Error(
+              `Não é possível remover a forma de pagamento "${existing.paymentMethod}" pois já há valor recebido nela.`
+            );
+          }
+
           await tx.externalPayment.updateMany({
             where: {
-              orderId: order.id,
+              accountsReceivableId: existing.id,
               status: {
                 in: [ExternalPaymentStatus.PENDING, ExternalPaymentStatus.OVERDUE],
               },
@@ -494,95 +555,202 @@ export async function PATCH(
               errorMessage: "Cobrança aberta cancelada no CRM por edição do pedido.",
             },
           });
+          await tx.accountsReceivableInstallment.updateMany({
+            where: { accountsReceivableId: existing.id, status: { not: ReceivableStatus.PAID } },
+            data: { status: ReceivableStatus.CANCELED },
+          });
+          await tx.accountsReceivable.update({
+            where: { id: existing.id },
+            data: { status: ReceivableStatus.CANCELED },
+          });
+        }
 
-          const count =
-            requestedInstallmentCount ??
-            (hasInstallmentsPatch ? Math.max(1, installments.length) : receivable.installmentCount);
-          const defaultAmounts = distributeInstallments(totalCents, count);
-          const incoming =
-            hasInstallmentsPatch && installments.length
-              ? installments
-              : Array.from({ length: count }, (_, index) => ({
-                  id: openInstallments[index]?.id,
-                  dueDate: openInstallments[index]?.dueDate?.toISOString(),
-                  amountCents: defaultAmounts[index],
-                }));
-          const seenOpenIds = new Set<string>();
+        for (const split of normalizedSplits) {
+          const existing = split.id ? existingById.get(split.id) : undefined;
+          const splitRules = getFinancialRules(split.paymentMethod);
 
-          for (let index = 0; index < incoming.length; index++) {
-            const inst = incoming[index];
-            const dueDate = dateFromInput(inst?.dueDate) ?? new Date();
-            const amountCents =
-              typeof inst?.amountCents === "number" && Number.isFinite(inst.amountCents)
-                ? Math.max(0, Math.round(inst.amountCents))
-                : defaultAmounts[index] ?? 0;
-            const existing =
-              typeof inst?.id === "string" ? openById.get(inst.id) : undefined;
+          if (existing) {
+            const paidCentsForSplit = existing.receivedCents ?? 0;
+            if (paidCentsForSplit > split.amountCents) {
+              throw new Error(
+                `O valor da forma de pagamento "${existing.paymentMethod}" não pode ficar menor do que o já recebido (${(paidCentsForSplit / 100).toFixed(2)}).`
+              );
+            }
 
-            if (existing) {
-              seenOpenIds.add(existing.id);
-              await tx.accountsReceivableInstallment.update({
-                where: { id: existing.id },
-                data: {
-                  installmentNumber: paidInstallments.length + index + 1,
-                  dueDate,
-                  amountCents,
-                  status: rules.receivableStatus,
-                  receivedCents: rules.autoPaidAt ? amountCents : 0,
-                  paidAt: rules.autoPaidAt ? new Date() : null,
+            const existingInstallments = existing.installments.sort(
+              (a, b) => a.installmentNumber - b.installmentNumber
+            );
+            const paidInstallments = existingInstallments.filter(
+              (item) => item.status === ReceivableStatus.PAID
+            );
+            const openInstallments = existingInstallments.filter(
+              (item) => item.status !== ReceivableStatus.PAID
+            );
+            const openTotalCents = Math.max(0, split.amountCents - paidCentsForSplit);
+            const defaultAmounts = distributeInstallments(
+              openTotalCents,
+              split.installmentCount
+            );
+
+            await tx.externalPayment.updateMany({
+              where: {
+                accountsReceivableId: existing.id,
+                status: {
+                  in: [ExternalPaymentStatus.PENDING, ExternalPaymentStatus.OVERDUE],
                 },
+              },
+              data: {
+                status: ExternalPaymentStatus.CANCELED,
+                canceledAt: new Date(),
+                errorMessage: "Cobrança aberta cancelada no CRM por edição do pedido.",
+              },
+            });
+
+            const seenOpenIds = new Set<string>();
+            for (let index = 0; index < split.installmentCount; index++) {
+              const target = openInstallments[index];
+              const dueDate =
+                dateFromInput(split.installmentDates[index]) ??
+                target?.dueDate ??
+                (split.dueDate ? addMonths(split.dueDate, index) : addMonths(new Date(), index));
+              const amountCents = defaultAmounts[index] ?? 0;
+
+              if (target) {
+                seenOpenIds.add(target.id);
+                await tx.accountsReceivableInstallment.update({
+                  where: { id: target.id },
+                  data: {
+                    installmentNumber: paidInstallments.length + index + 1,
+                    dueDate,
+                    amountCents,
+                    status: splitRules.receivableStatus,
+                  },
+                });
+              } else {
+                await tx.accountsReceivableInstallment.create({
+                  data: {
+                    accountsReceivableId: existing.id,
+                    installmentNumber: paidInstallments.length + index + 1,
+                    dueDate,
+                    amountCents,
+                    status: splitRules.receivableStatus,
+                    receivedCents: 0,
+                    paidAt: null,
+                  },
+                });
+              }
+            }
+
+            const removeIds = openInstallments
+              .filter((item) => !seenOpenIds.has(item.id))
+              .map((item) => item.id);
+            if (removeIds.length) {
+              await tx.accountsReceivableInstallment.deleteMany({
+                where: { id: { in: removeIds } },
               });
-            } else {
-              await tx.accountsReceivableInstallment.create({
+            }
+
+            const refreshed = await tx.accountsReceivableInstallment.findMany({
+              where: { accountsReceivableId: existing.id },
+              orderBy: { installmentNumber: "asc" },
+              select: { status: true, dueDate: true },
+            });
+            const allPaid =
+              refreshed.length > 0 &&
+              refreshed.every((item) => item.status === ReceivableStatus.PAID);
+
+            await tx.accountsReceivable.update({
+              where: { id: existing.id },
+              data: {
+                paymentMethod: split.paymentMethod,
+                amountCents: split.amountCents,
+                installmentCount: refreshed.length || 1,
+                dueDate: refreshed[0]?.dueDate ?? split.dueDate ?? null,
+                status: allPaid
+                  ? ReceivableStatus.PAID
+                  : paidCentsForSplit > 0
+                  ? ReceivableStatus.PARTIAL
+                  : splitRules.receivableStatus,
+                paidAt: allPaid ? new Date() : existing.paidAt,
+              },
+            });
+          } else {
+            const created = await tx.accountsReceivable.create({
+              data: {
+                orderId: order.id,
+                clientId: order.clientId,
+                sellerId: order.sellerId,
+                regionId: order.regionId,
+                paymentMethod: split.paymentMethod,
+                status: splitRules.receivableStatus,
+                amountCents: split.amountCents,
+                receivedCents: splitRules.autoPaidAt ? split.amountCents : 0,
+                dueDate: split.dueDate,
+                paidAt: splitRules.autoPaidAt ? new Date() : null,
+                installmentCount: split.installmentCount,
+              },
+            });
+
+            const amounts = distributeInstallments(split.amountCents, split.installmentCount);
+            await tx.accountsReceivableInstallment.createMany({
+              data: Array.from({ length: split.installmentCount }, (_, index) => ({
+                accountsReceivableId: created.id,
+                installmentNumber: index + 1,
+                amountCents: amounts[index] ?? 0,
+                dueDate:
+                  dateFromInput(split.installmentDates[index]) ??
+                  (split.dueDate ? addMonths(split.dueDate, index) : addMonths(new Date(), index)),
+                status: splitRules.receivableStatus,
+                receivedCents: splitRules.autoPaidAt ? amounts[index] ?? 0 : 0,
+                paidAt: splitRules.autoPaidAt ? new Date() : null,
+              })),
+            });
+
+            if (splitRules.autoCreateReceipt && splitRules.receiptLocation) {
+              await tx.receipt.create({
                 data: {
-                  accountsReceivableId: receivable.id,
-                  installmentNumber: paidInstallments.length + index + 1,
-                  dueDate,
-                  amountCents,
-                  status: rules.receivableStatus,
-                  receivedCents: rules.autoPaidAt ? amountCents : 0,
-                  paidAt: rules.autoPaidAt ? new Date() : null,
+                  accountsReceivableId: created.id,
+                  orderId: order.id,
+                  regionId: order.regionId,
+                  amountCents: split.amountCents,
+                  paymentMethod: split.paymentMethod,
+                  receivedAt: new Date(),
+                  location: splitRules.receiptLocation,
+                  notes: "Recebimento automático adicionado na edição do pedido.",
                 },
               });
             }
           }
-
-          const removeIds = openInstallments
-            .filter((item) => !seenOpenIds.has(item.id))
-            .map((item) => item.id);
-          if (removeIds.length) {
-            await tx.accountsReceivableInstallment.deleteMany({
-              where: { id: { in: removeIds } },
-            });
-          }
         }
 
-        const refreshed = await tx.accountsReceivableInstallment.findMany({
-          where: { accountsReceivableId: receivable.id },
-          orderBy: { installmentNumber: "asc" },
-          select: { amountCents: true, receivedCents: true, status: true, dueDate: true },
+        const finalReceivables = await tx.accountsReceivable.findMany({
+          where: { orderId: order.id, status: { not: ReceivableStatus.CANCELED } },
+          select: { paymentMethod: true, amountCents: true },
         });
-        const receivableTotal = refreshed.reduce((acc, item) => acc + item.amountCents, 0);
-        const receivedTotal = refreshed.reduce(
-          (acc, item) => acc + (item.receivedCents ?? 0),
-          0
+        const primary = finalReceivables.reduce<
+          (typeof finalReceivables)[number] | null
+        >(
+          (best, current) =>
+            !best || current.amountCents > best.amountCents ? current : best,
+          null
         );
-        const allPaid = refreshed.length > 0 && refreshed.every((item) => item.status === ReceivableStatus.PAID);
 
-        receivableUpdate.amountCents = receivableTotal;
-        receivableUpdate.receivedCents = receivedTotal;
-        receivableUpdate.installmentCount = refreshed.length || 1;
-        receivableUpdate.dueDate = refreshed[0]?.dueDate ?? null;
-        if (!hasReceipts || allPaid) {
-          receivableUpdate.status = allPaid ? ReceivableStatus.PAID : rules.receivableStatus;
-          receivableUpdate.paidAt = allPaid ? new Date() : null;
+        if (primary) {
+          const primaryRules = getFinancialRules(primary.paymentMethod);
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              paymentMethod: primary.paymentMethod,
+              paymentReceiver: paymentReceiver ?? primaryRules.paymentReceiver,
+            },
+          });
         }
-
-        await tx.accountsReceivable.update({
-          where: { id: receivable.id },
-          data: receivableUpdate,
-        });
       }
+
+      await recomputeOrderPaymentStatus(tx, order.id);
+    }, {
+      maxWait: 10000,
+      timeout: 20000,
     });
 
     return NextResponse.json({

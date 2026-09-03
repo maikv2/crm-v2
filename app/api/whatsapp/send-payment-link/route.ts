@@ -86,6 +86,12 @@ export async function POST(request: Request) {
             phone: true,
           },
         },
+        // Pedido pode ter forma de pagamento dividida — só habilita o envio
+        // se alguma divisão realmente for cartão de crédito.
+        accountsReceivables: {
+          where: { paymentMethod: "CARD_CREDIT" },
+          select: { id: true },
+        },
       },
     });
 
@@ -96,9 +102,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (order.paymentMethod !== "CARD_CREDIT") {
+    if (!order.accountsReceivables.length) {
       return NextResponse.json(
-        { error: "Este pedido não está marcado como cartão de crédito." },
+        { error: "Este pedido não tem nenhuma forma de pagamento em cartão de crédito." },
         { status: 400 }
       );
     }

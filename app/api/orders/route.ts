@@ -10,7 +10,6 @@ import {
   ReceivableStatus,
   ReceiptLocation,
   StockMovementType,
-  TransferStatus,
 } from "@prisma/client";
 
 type OrderItemInput = {
@@ -24,6 +23,14 @@ type DefectReturnItemInput = {
   quantity: number;
   reason?: string | null;
   notes?: string | null;
+};
+
+type PaymentSplitInput = {
+  paymentMethod: PaymentMethod;
+  amountCents: number;
+  dueDate: Date | null;
+  installmentCount: number;
+  installmentDates: string[];
 };
 
 function isValidUuid(value?: string | null) {
@@ -88,12 +95,12 @@ function getFinancialRules(paymentMethod: PaymentMethod) {
 
     case PaymentMethod.CASH:
       return {
-        paymentStatus: PaymentStatus.PAID,
+        paymentStatus: PaymentStatus.PENDING,
         paymentReceiver: PaymentReceiver.REGION,
-        receivableStatus: ReceivableStatus.PAID,
-        receiptLocation: ReceiptLocation.REGION,
-        autoCreateReceipt: true,
-        autoPaidAt: true,
+        receivableStatus: ReceivableStatus.PENDING,
+        receiptLocation: null,
+        autoCreateReceipt: false,
+        autoPaidAt: false,
       };
 
     case PaymentMethod.CARD_DEBIT:
@@ -195,6 +202,31 @@ function buildInstallments(params: {
   }
 
   return installments;
+}
+
+/**
+ * Lê `body.payments` (divisão de forma de pagamento) quando presente.
+ * Retorna null se o body não trouxer o campo (usa-se então o fluxo
+ * legado de forma de pagamento única).
+ */
+function parsePaymentSplitsInput(raw: unknown): PaymentSplitInput[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  return raw.map((item) => {
+    const obj = (item ?? {}) as Record<string, unknown>;
+    return {
+      paymentMethod: normalizePaymentMethod(obj.paymentMethod),
+      amountCents: Math.max(0, toInt(obj.amountCents, 0)),
+      dueDate:
+        obj.dueDate && isValidDate(obj.dueDate) ? new Date(String(obj.dueDate)) : null,
+      installmentCount: Math.max(1, toInt(obj.installmentCount, 1)),
+      installmentDates: Array.isArray(obj.installmentDates)
+        ? (obj.installmentDates as unknown[])
+            .map((d) => String(d))
+            .filter((d) => isValidDate(d))
+        : [],
+    };
+  });
 }
 
 async function ensureStockBalances(
@@ -300,6 +332,10 @@ export async function POST(request: Request) {
           .map((d) => String(d))
           .filter((d) => isValidDate(d))
       : [];
+
+    // Divisão de forma de pagamento (ex: parte em dinheiro + parte em
+    // boleto). Quando ausente, cai no fluxo legado de forma única acima.
+    const paymentSplitsInput = parsePaymentSplitsInput(body.payments);
 
     const discountCents = isDefectExchange
       ? 0
@@ -606,7 +642,70 @@ export async function POST(request: Request) {
           }
         }
 
-        const rules = getFinancialRules(paymentMethod);
+        // Divisão de forma de pagamento: usa o que veio em `payments`, ou
+        // cai para uma única divisão com a forma legada (compatibilidade).
+        const finalizedSplits: PaymentSplitInput[] = isDefectExchange
+          ? []
+          : paymentSplitsInput ?? [
+              {
+                paymentMethod,
+                amountCents: totalCents,
+                dueDate,
+                installmentCount,
+                installmentDates,
+              },
+            ];
+
+        if (!isDefectExchange) {
+          if (!finalizedSplits.length) {
+            throw new Error("Informe ao menos uma forma de pagamento.");
+          }
+
+          const splitsSumCents = finalizedSplits.reduce(
+            (sum, split) => sum + split.amountCents,
+            0
+          );
+
+          if (splitsSumCents !== totalCents) {
+            throw new Error(
+              `A soma das formas de pagamento (${(splitsSumCents / 100).toFixed(
+                2
+              )}) não bate com o total do pedido (${(totalCents / 100).toFixed(2)}).`
+            );
+          }
+
+          if (
+            totalCents > 0 &&
+            finalizedSplits.some((split) => split.amountCents <= 0)
+          ) {
+            throw new Error(
+              "Cada forma de pagamento na divisão deve ter um valor maior que zero."
+            );
+          }
+        }
+
+        const splitRules = finalizedSplits.map((split) => ({
+          split,
+          rules: getFinancialRules(split.paymentMethod),
+        }));
+
+        const primarySplit = splitRules.reduce<typeof splitRules[number] | null>(
+          (best, current) =>
+            !best || current.split.amountCents > best.split.amountCents
+              ? current
+              : best,
+          null
+        );
+
+        const paidCents = splitRules
+          .filter((item) => item.rules.autoPaidAt)
+          .reduce((sum, item) => sum + item.split.amountCents, 0);
+        const orderAllPaid = totalCents > 0 && paidCents === totalCents;
+        const orderPaymentStatus = orderAllPaid
+          ? PaymentStatus.PAID
+          : paidCents > 0
+          ? PaymentStatus.PARTIAL
+          : PaymentStatus.PENDING;
 
         const lastOrderForNumber = await tx.order.findFirst({
           orderBy: { number: "desc" },
@@ -623,17 +722,19 @@ export async function POST(request: Request) {
             sellerId: sellerId ?? null,
             type,
             financialMovement: !isDefectExchange,
-            paymentMethod: isDefectExchange ? PaymentMethod.CASH : paymentMethod,
+            paymentMethod: isDefectExchange
+              ? PaymentMethod.CASH
+              : primarySplit!.split.paymentMethod,
             paymentStatus: isDefectExchange
               ? PaymentStatus.CANCELLED
-              : rules.paymentStatus,
+              : orderPaymentStatus,
             paymentReceiver: isDefectExchange
               ? PaymentReceiver.REGION
-              : rules.paymentReceiver,
+              : primarySplit!.rules.paymentReceiver,
             commissionTotalCents: isDefectExchange ? 0 : commissionTotalCents,
             status: isDefectExchange
               ? "DEFECT_EXCHANGE"
-              : rules.paymentStatus === PaymentStatus.PAID
+              : orderPaymentStatus === PaymentStatus.PAID
               ? "PAID"
               : "PENDING",
             issuedAt: new Date(),
@@ -714,98 +815,90 @@ export async function POST(request: Request) {
           };
         }
 
-        const accountsReceivable = await tx.accountsReceivable.create({
-          data: {
-            orderId: order.id,
-            clientId: clientId!,
-            sellerId: sellerId ?? null,
-            regionId: regionId!,
-            paymentMethod,
-            status: rules.receivableStatus,
-            amountCents: totalCents,
-            receivedCents: rules.autoCreateReceipt ? totalCents : 0,
-            dueDate,
-            paidAt: rules.autoPaidAt ? new Date() : null,
-            installmentCount,
-            notes:
-              paymentMethod === PaymentMethod.PIX
-                ? "Conta a receber gerada por Pix."
-                : paymentMethod === PaymentMethod.CASH
-                ? "Recebimento registrado em dinheiro na região."
-                : paymentMethod === PaymentMethod.CARD_DEBIT
-                ? "Recebimento automático por cartão de débito."
-                : paymentMethod === PaymentMethod.BOLETO
-                ? "Conta a receber gerada por boleto."
-                : paymentMethod === PaymentMethod.CARD_CREDIT
-                ? "Conta a receber gerada por cartão de crédito."
-                : null,
-          },
-        });
+        const createdReceivables: Awaited<
+          ReturnType<typeof tx.accountsReceivable.create>
+        >[] = [];
+        const createdReceipts: Awaited<ReturnType<typeof tx.receipt.create>>[] = [];
 
-        const installments = buildInstallments({
-          totalCents,
-          installmentCount,
-          installmentDates,
-          firstDueDate: dueDate,
-          defaultStatus: rules.receivableStatus,
-        });
-
-        if (installments.length) {
-          await tx.accountsReceivableInstallment.createMany({
-            data: installments.map((item) => ({
-              accountsReceivableId: accountsReceivable.id,
-              installmentNumber: item.installmentNumber,
-              amountCents: item.amountCents,
-              dueDate: item.dueDate,
-              paidAt: item.paidAt,
-              receivedCents: item.receivedCents,
-              status: item.status,
-            })),
-          });
-        }
-
-        let receipt = null;
-
-        if (rules.autoCreateReceipt && rules.receiptLocation) {
-          receipt = await tx.receipt.create({
+        for (const { split, rules } of splitRules) {
+          const accountsReceivable = await tx.accountsReceivable.create({
             data: {
-              accountsReceivableId: accountsReceivable.id,
               orderId: order.id,
+              clientId: clientId!,
+              sellerId: sellerId ?? null,
               regionId: regionId!,
-              receivedById: sellerId ?? null,
-              amountCents: totalCents,
-              paymentMethod,
-              receivedAt: new Date(),
-              location: rules.receiptLocation,
+              paymentMethod: split.paymentMethod,
+              status: rules.receivableStatus,
+              amountCents: split.amountCents,
+              receivedCents: rules.autoCreateReceipt ? split.amountCents : 0,
+              dueDate: split.dueDate,
+              paidAt: rules.autoPaidAt ? new Date() : null,
+              installmentCount: split.installmentCount,
               notes:
-                paymentMethod === PaymentMethod.PIX
-                  ? "Recebimento automático via PIX instantâneo."
-                  : paymentMethod === PaymentMethod.CASH
-                  ? "Recebimento em dinheiro retido na região até repasse."
-                  : paymentMethod === PaymentMethod.CARD_DEBIT
+                split.paymentMethod === PaymentMethod.PIX
+                  ? "Conta a receber gerada por Pix."
+                  : split.paymentMethod === PaymentMethod.CASH
+                  ? "Pagamento em dinheiro a receber/confirmar."
+                  : split.paymentMethod === PaymentMethod.CARD_DEBIT
                   ? "Recebimento automático por cartão de débito."
+                  : split.paymentMethod === PaymentMethod.BOLETO
+                  ? "Conta a receber gerada por boleto."
+                  : split.paymentMethod === PaymentMethod.CARD_CREDIT
+                  ? "Conta a receber gerada por cartão de crédito."
                   : null,
             },
           });
+          createdReceivables.push(accountsReceivable);
 
-          if (paymentMethod === PaymentMethod.CASH) {
-            await tx.cashTransfer.create({
+          const installments = buildInstallments({
+            totalCents: split.amountCents,
+            installmentCount: split.installmentCount,
+            installmentDates: split.installmentDates,
+            firstDueDate: split.dueDate,
+            defaultStatus: rules.receivableStatus,
+          });
+
+          if (installments.length) {
+            await tx.accountsReceivableInstallment.createMany({
+              data: installments.map((item) => ({
+                accountsReceivableId: accountsReceivable.id,
+                installmentNumber: item.installmentNumber,
+                amountCents: item.amountCents,
+                dueDate: item.dueDate,
+                paidAt: item.paidAt,
+                receivedCents: item.receivedCents,
+                status: item.status,
+              })),
+            });
+          }
+
+          if (rules.autoCreateReceipt && rules.receiptLocation) {
+            const receipt = await tx.receipt.create({
               data: {
-                receiptId: receipt.id,
+                accountsReceivableId: accountsReceivable.id,
+                orderId: order.id,
                 regionId: regionId!,
-                transferredById: null,
-                amountCents: totalCents,
-                status: TransferStatus.PENDING,
-                notes: "Aguardando repasse da região para a matriz.",
+                receivedById: sellerId ?? null,
+                amountCents: split.amountCents,
+                paymentMethod: split.paymentMethod,
+                receivedAt: new Date(),
+                location: rules.receiptLocation,
+                notes:
+                  split.paymentMethod === PaymentMethod.PIX
+                    ? "Recebimento automático via PIX instantâneo."
+                    : split.paymentMethod === PaymentMethod.CARD_DEBIT
+                    ? "Recebimento automático por cartão de débito."
+                    : null,
               },
             });
+            createdReceipts.push(receipt);
           }
         }
 
         return {
           order,
-          accountsReceivable,
-          receipt,
+          accountsReceivable: createdReceivables,
+          receipt: createdReceipts,
         };
       },
       {

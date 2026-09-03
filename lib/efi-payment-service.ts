@@ -278,6 +278,10 @@ async function findOrderForBillet(orderId: string) {
         },
       },
       accountsReceivables: {
+        // Pedido pode ter forma de pagamento dividida (ex: parte em
+        // dinheiro + parte em boleto) — só cobramos via Efí a(s) divisão(ões)
+        // que realmente são boleto/Pix, nunca o pedido inteiro.
+        where: { paymentMethod: { in: [PaymentMethod.BOLETO, PaymentMethod.PIX] } },
         select: {
           id: true,
           installmentCount: true,
@@ -299,11 +303,8 @@ async function findOrderForBillet(orderId: string) {
   });
 
   if (!order) throw new Error("Pedido não encontrado.");
-  if (
-    order.paymentMethod !== PaymentMethod.BOLETO &&
-    order.paymentMethod !== PaymentMethod.PIX
-  ) {
-    throw new Error("Este pedido não está marcado como boleto ou Pix.");
+  if (!order.accountsReceivables.length) {
+    throw new Error("Este pedido não tem nenhuma forma de pagamento em boleto ou Pix.");
   }
 
   return order;
@@ -346,15 +347,32 @@ async function findOrderForCardLink(orderId: string): Promise<OrderForLink> {
           billingEmail: true,
         },
       },
+      accountsReceivables: {
+        where: { paymentMethod: PaymentMethod.CARD_CREDIT },
+        select: { id: true, amountCents: true },
+      },
     },
   });
 
   if (!order) throw new Error("Pedido não encontrado.");
-  if (order.paymentMethod !== PaymentMethod.CARD_CREDIT) {
-    throw new Error("Este pedido não está marcado como cartão de crédito.");
+  if (!order.accountsReceivables.length) {
+    throw new Error("Este pedido não tem nenhuma forma de pagamento em cartão de crédito.");
   }
 
-  return order;
+  // O link de pagamento cobra só a(s) divisão(ões) em cartão de crédito,
+  // nunca o total do pedido (que pode ter outras formas misturadas).
+  const cardCreditTotalCents = order.accountsReceivables.reduce(
+    (sum, item) => sum + item.amountCents,
+    0
+  );
+
+  return {
+    id: order.id,
+    number: order.number,
+    totalCents: cardCreditTotalCents,
+    paymentMethod: order.paymentMethod,
+    client: order.client,
+  };
 }
 
 async function markOrderInstallmentsPaidFromLink(
@@ -367,7 +385,13 @@ async function markOrderInstallmentsPaidFromLink(
   const openInstallments = await tx.accountsReceivableInstallment.findMany({
     where: {
       status: { not: "PAID" },
-      accountsReceivable: { orderId: params.orderId },
+      // Só quita a(s) divisão(ões) em cartão de crédito — um pedido com
+      // forma de pagamento dividida pode ter outras parcelas (dinheiro,
+      // boleto etc.) que não têm nada a ver com esse link de pagamento.
+      accountsReceivable: {
+        orderId: params.orderId,
+        paymentMethod: PaymentMethod.CARD_CREDIT,
+      },
     },
     orderBy: { installmentNumber: "asc" },
   });

@@ -17,6 +17,49 @@ export type MarkInstallmentPaidInput = {
   receivedById?: string | null;
 };
 
+/**
+ * Recalcula o paymentStatus/status do pedido a partir de TODAS as
+ * AccountsReceivable vinculadas a ele (suporta pedidos com forma de
+ * pagamento dividida em várias parcelas/divisões).
+ */
+export async function recomputeOrderPaymentStatus(
+  tx: Prisma.TransactionClient,
+  orderId: string
+) {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    select: { status: true },
+  });
+
+  const receivables = await tx.accountsReceivable.findMany({
+    where: { orderId, status: { not: ReceivableStatus.CANCELED } },
+    select: { status: true, receivedCents: true },
+  });
+
+  const allPaid =
+    receivables.length > 0 &&
+    receivables.every((item) => item.status === ReceivableStatus.PAID);
+  const hasAnyPaid = receivables.some(
+    (item) => (item.receivedCents ?? 0) > 0 || item.status === ReceivableStatus.PAID
+  );
+
+  const paymentStatus = allPaid
+    ? PaymentStatus.PAID
+    : hasAnyPaid
+    ? PaymentStatus.PARTIAL
+    : PaymentStatus.PENDING;
+
+  await tx.order.update({
+    where: { id: orderId },
+    data: {
+      paymentStatus,
+      ...(allPaid && order?.status === "PENDING" ? { status: "PAID" } : {}),
+    },
+  });
+
+  return { paymentStatus, allPaid };
+}
+
 export async function markReceivableInstallmentPaid(
   tx: Prisma.TransactionClient,
   input: MarkInstallmentPaidInput
@@ -97,33 +140,7 @@ export async function markReceivableInstallmentPaid(
     },
   });
 
-  const orderReceivables = await tx.accountsReceivable.findMany({
-    where: { orderId: receivable.orderId },
-    select: { id: true, status: true, receivedCents: true, amountCents: true },
-  });
-
-  const orderAllPaid = orderReceivables.every((item) =>
-    item.id === receivable.id ? allPaid : item.status === ReceivableStatus.PAID
-  );
-  const orderHasAnyPaid = orderReceivables.some((item) =>
-    item.id === receivable.id
-      ? updatedReceivedCents > 0
-      : (item.receivedCents ?? 0) > 0 || item.status === ReceivableStatus.PAID
-  );
-
-  await tx.order.update({
-    where: { id: receivable.orderId },
-    data: {
-      paymentStatus: orderAllPaid
-        ? PaymentStatus.PAID
-        : orderHasAnyPaid
-        ? PaymentStatus.PARTIAL
-        : PaymentStatus.PENDING,
-      ...(orderAllPaid && receivable.order.status === "PENDING"
-        ? { status: "PAID" }
-        : {}),
-    },
-  });
+  await recomputeOrderPaymentStatus(tx, receivable.orderId);
 
   const location =
     finalPaymentMethod === PaymentMethod.CASH

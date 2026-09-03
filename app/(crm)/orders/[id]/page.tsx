@@ -4,6 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTheme } from "../../../providers/theme-provider";
 import { getThemeColors } from "../../../../lib/theme";
+import PaymentSplitsEditor, {
+  PaymentSplitLine,
+  makeDefaultSplits,
+  splitsFromAccountsReceivables,
+  splitsMissingDates,
+  splitsSumCents,
+  splitsToPayload,
+} from "../../../components/payment-splits-editor";
 
 type OrderItem = {
   id: string;
@@ -114,6 +122,10 @@ type OrderDetail = {
 
   accountsReceivables?: {
     id: string;
+    paymentMethod: string;
+    status?: string | null;
+    amountCents: number;
+    receivedCents?: number | null;
     installmentCount: number;
     installments?: Installment[];
   }[];
@@ -143,13 +155,6 @@ function formatDateTimeBR(value?: string | null) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleString("pt-BR");
-}
-
-function toDateInputValue(value?: string | null) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
 }
 
 function centsFromCurrencyInput(value: string) {
@@ -208,6 +213,18 @@ function paymentMethodLabel(value?: string | null) {
     case "CARD_CREDIT":  return "Cartão crédito";
     default:          return value || "-";
   }
+}
+
+function paymentSplitSummaryLabel(order: OrderDetail) {
+  const active = (order.accountsReceivables ?? []).filter((item) => item.status !== "CANCELED");
+  if (active.length <= 1) return paymentMethodLabel(order.paymentMethod);
+
+  return active
+    .map(
+      (item) =>
+        `${paymentMethodLabel(item.paymentMethod)} (${money(item.amountCents)})`
+    )
+    .join(" + ");
 }
 
 function paymentStatusLabel(value?: string | null) {
@@ -1154,7 +1171,7 @@ export default function OrderDetailPage() {
             disabled={busyAction !== null}
             onClick={handleEmitNfe}
           />
-          {order?.paymentMethod === "BOLETO" && (
+          {order?.accountsReceivables?.some((item) => item.paymentMethod === "BOLETO") && (
             <ActionButton
               label={busyAction === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
               theme={theme}
@@ -1164,7 +1181,7 @@ export default function OrderDetailPage() {
               onClick={handleSendBoletoRequest}
             />
           )}
-          {order?.paymentMethod === "PIX" && (
+          {order?.accountsReceivables?.some((item) => item.paymentMethod === "PIX") && (
             <ActionButton
               label={busyAction === "boleto" ? "Enviando..." : "📱 Enviar Pix"}
               theme={theme}
@@ -1174,7 +1191,7 @@ export default function OrderDetailPage() {
               onClick={handleSendBoletoRequest}
             />
           )}
-          {order?.paymentMethod === "CARD_CREDIT" && (
+          {order?.accountsReceivables?.some((item) => item.paymentMethod === "CARD_CREDIT") && (
             <ActionButton
               label={
                 busyAction === "payment-link"
@@ -1228,7 +1245,7 @@ export default function OrderDetailPage() {
 
           <Block title="Resumo do pedido" theme={theme}>
             <div style={{ display: "grid", gap: 12 }}>
-              <InfoRow label="Forma de pagamento" value={paymentMethodLabel(order.paymentMethod)} theme={theme} />
+              <InfoRow label="Forma de pagamento" value={paymentSplitSummaryLabel(order)} theme={theme} />
               <InfoRow label="Status do pedido"   value={order.status || "-"}                     theme={theme} />
               <InfoRow label="Status do pagamento" value={paymentStatusLabel(order.paymentStatus)} theme={theme} />
               <InfoRow
@@ -1329,7 +1346,7 @@ export default function OrderDetailPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
           <Block title="Condição de pagamento" theme={theme}>
             <div style={{ display: "grid", gap: 10 }}>
-              <InfoRow label="Forma de pagamento" value={paymentMethodLabel(order.paymentMethod)} theme={theme} />
+              <InfoRow label="Forma de pagamento" value={paymentSplitSummaryLabel(order)} theme={theme} />
               {order.accountsReceivables?.[0]?.installmentCount ? (
                 <InfoRow
                   label="Quantidade de parcelas"
@@ -1357,68 +1374,101 @@ export default function OrderDetailPage() {
           </Block>
         </div>
 
-        {/* Linha 4 — Parcelas */}
+        {/* Linha 4 — Parcelas (uma seção por forma de pagamento, quando dividido) */}
         <Block title="Parcelas" theme={theme}>
-          <div style={{ display: "grid", gap: 12 }}>
-            {order.accountsReceivables?.[0]?.installments?.length ? (
-              order.accountsReceivables[0].installments.map((item) => {
-                const paid = item.status === "PAID";
+          <div style={{ display: "grid", gap: 20 }}>
+            {(() => {
+              const activeReceivables = (order.accountsReceivables ?? []).filter(
+                (item) => item.status !== "CANCELED"
+              );
+              if (!activeReceivables.length) {
                 return (
                   <div
-                    key={item.id}
                     style={{
                       border: `1px solid ${theme.border}`,
                       borderRadius: 14,
                       background: subtleCard,
-                      padding: 16,
-                      display: "grid",
-                      gridTemplateColumns: "repeat(6, minmax(0, 1fr)) auto",
-                      gap: 12,
-                      alignItems: "center",
+                      padding: 20,
+                      color: muted,
+                      textAlign: "center",
                     }}
                   >
-                    <MetricMini
-                      label="Parcela"
-                      value={`${item.installmentNumber}/${order.accountsReceivables?.[0]?.installmentCount || 1}`}
-                      theme={theme}
-                    />
-                    <MetricMini label="Vencimento" value={formatDateBR(item.dueDate)}             theme={theme} />
-                    <MetricMini label="Valor"       value={money(item.amountCents)}                theme={theme} />
-                    <MetricMini label="Status"      value={paymentStatusLabel(item.status)}        theme={theme} valueColor={statusColor(item.status)} />
-                    <MetricMini label="Pago em"     value={formatDateBR(item.paidAt)}              theme={theme} />
-                    <MetricMini label="Situação"    value={paid ? "Pago" : "A receber"}            theme={theme} valueColor={paid ? "#16a34a" : "#2563eb"} />
-
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                      {!paid ? (
-                        <ActionButton
-                          label={receivingId === item.id ? "Recebendo..." : "Receber"}
-                          theme={theme}
-                          primary
-                          onClick={() => receiveInstallment(item.id)}
-                        />
-                      ) : (
-                        <div style={{ fontSize: 14, fontWeight: 800, color: "#16a34a" }}>
-                          Pago
-                        </div>
-                      )}
-                    </div>
+                    Nenhuma parcela encontrada.
                   </div>
                 );
-              })
-            ) : (
-              <div
-                style={{
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 14,
-                  background: subtleCard,
-                  padding: 20,
-                  color: muted,
-                  textAlign: "center",
-                }}
-              >
-                Nenhuma parcela encontrada.
-              </div>
-            )}
+              }
+
+              const showHeadings = activeReceivables.length > 1;
+
+              return activeReceivables.map((receivable) => (
+                <div key={receivable.id} style={{ display: "grid", gap: 12 }}>
+                  {showHeadings && (
+                    <div style={{ fontSize: 14, fontWeight: 800, color: theme.text }}>
+                      {paymentMethodLabel(receivable.paymentMethod)} — {money(receivable.amountCents)}
+                    </div>
+                  )}
+                  {receivable.installments?.length ? (
+                    receivable.installments.map((item) => {
+                      const paid = item.status === "PAID";
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            border: `1px solid ${theme.border}`,
+                            borderRadius: 14,
+                            background: subtleCard,
+                            padding: 16,
+                            display: "grid",
+                            gridTemplateColumns: "repeat(6, minmax(0, 1fr)) auto",
+                            gap: 12,
+                            alignItems: "center",
+                          }}
+                        >
+                          <MetricMini
+                            label="Parcela"
+                            value={`${item.installmentNumber}/${receivable.installmentCount || 1}`}
+                            theme={theme}
+                          />
+                          <MetricMini label="Vencimento" value={formatDateBR(item.dueDate)}             theme={theme} />
+                          <MetricMini label="Valor"       value={money(item.amountCents)}                theme={theme} />
+                          <MetricMini label="Status"      value={paymentStatusLabel(item.status)}        theme={theme} valueColor={statusColor(item.status)} />
+                          <MetricMini label="Pago em"     value={formatDateBR(item.paidAt)}              theme={theme} />
+                          <MetricMini label="Situação"    value={paid ? "Pago" : "A receber"}            theme={theme} valueColor={paid ? "#16a34a" : "#2563eb"} />
+
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            {!paid ? (
+                              <ActionButton
+                                label={receivingId === item.id ? "Recebendo..." : "Receber"}
+                                theme={theme}
+                                primary
+                                onClick={() => receiveInstallment(item.id)}
+                              />
+                            ) : (
+                              <div style={{ fontSize: 14, fontWeight: 800, color: "#16a34a" }}>
+                                Pago
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div
+                      style={{
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 14,
+                        background: subtleCard,
+                        padding: 20,
+                        color: muted,
+                        textAlign: "center",
+                      }}
+                    >
+                      Nenhuma parcela encontrada.
+                    </div>
+                  )}
+                </div>
+              ));
+            })()}
           </div>
         </Block>
       </div>
@@ -1453,15 +1503,6 @@ function EditOrderModal({
   const subtleCard = theme.isDark ? "#0b1324" : "#f8fafc";
   const inputBg = theme.isDark ? "#0f172a" : "#ffffff";
 
-  const initialInstallments =
-    order.accountsReceivables?.[0]?.installments?.map((i) => ({
-      id: i.id,
-      key: i.id,
-      installmentNumber: i.installmentNumber,
-      status: i.status,
-      dueDate: toDateInputValue(i.dueDate),
-      amount: currencyInputFromCents(i.amountCents),
-    })) ?? [];
   const initialItems =
     order.items?.map((item) => ({
       key: item.id,
@@ -1470,9 +1511,6 @@ function EditOrderModal({
       unitValue: currencyInputFromCents(item.unitCents),
     })) ?? [];
 
-  const [paymentMethod, setPaymentMethod] = useState(
-    order.paymentMethod ?? "CASH"
-  );
   const [paymentReceiver, setPaymentReceiver] = useState(
     order.paymentReceiver ?? "REGION"
   );
@@ -1481,11 +1519,12 @@ function EditOrderModal({
   const [discountValue, setDiscountValue] = useState(
     currencyInputFromCents(order.discountCents)
   );
-  const [installmentCount, setInstallmentCount] = useState(
-    Math.max(1, initialInstallments.length || 1)
-  );
   const [notes, setNotes] = useState(order.notes ?? "");
-  const [installments, setInstallments] = useState(initialInstallments);
+  const [splits, setSplits] = useState<PaymentSplitLine[]>(() =>
+    order.accountsReceivables?.length
+      ? splitsFromAccountsReceivables(order.accountsReceivables)
+      : makeDefaultSplits(order.totalCents ?? 0)
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1524,44 +1563,17 @@ function EditOrderModal({
   );
   const editableTotalCents = Math.max(0, editableSubtotalCents - editableDiscountCents);
 
-  function buildInstallmentsForCount(count: number) {
-    const safeCount = Math.max(1, count);
-    const base = Math.floor(editableTotalCents / safeCount);
-    const remainder = editableTotalCents % safeCount;
-    const firstDate =
-      installments.find((item) => item.dueDate)?.dueDate ||
-      new Date().toISOString().slice(0, 10);
-
-    return Array.from({ length: safeCount }, (_, index) => {
-      const existing = installments[index];
-      let dueDate = existing?.dueDate || "";
-      if (!dueDate && firstDate) {
-        const date = new Date(`${firstDate}T12:00:00`);
-        date.setMonth(date.getMonth() + index);
-        dueDate = date.toISOString().slice(0, 10);
-      }
-      const amountCents = base + (index < remainder ? 1 : 0);
-      return {
-        id: existing?.id,
-        key: existing?.key || `new-${Date.now()}-${index}`,
-        installmentNumber: index + 1,
-        status: existing?.status || "PENDING",
-        dueDate,
-        amount: currencyInputFromCents(amountCents),
-      };
+  // Caso simples (uma única forma de pagamento): mantém o valor da divisão
+  // sincronizado automaticamente com o total do pedido enquanto os itens são
+  // editados. Quando há mais de uma divisão, o ajuste é manual (o indicador
+  // de soma abaixo do editor mostra se está batendo).
+  useEffect(() => {
+    setSplits((prev) => {
+      if (prev.length !== 1) return prev;
+      if (centsFromCurrencyInput(prev[0].amountValue) === editableTotalCents) return prev;
+      return [{ ...prev[0], amountValue: currencyInputFromCents(editableTotalCents) }];
     });
-  }
-
-  useEffect(() => {
-    if (paymentMethod !== "BOLETO" && paymentMethod !== "CARD_CREDIT") {
-      setInstallmentCount(1);
-    }
-  }, [paymentMethod]);
-
-  useEffect(() => {
-    setInstallments(buildInstallmentsForCount(installmentCount));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editableTotalCents, installmentCount]);
+  }, [editableTotalCents]);
 
   function updateItem(
     key: string,
@@ -1608,22 +1620,23 @@ function EditOrderModal({
     setItems((prev) => prev.filter((item) => item.key !== key));
   }
 
-  function updateInstallment(
-    id: string,
-    field: "dueDate" | "amount",
-    value: string
-  ) {
-    setInstallments((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, [field]: value } : it))
-    );
-  }
-
   async function handleSave() {
-    setSaving(true);
     setError(null);
+
+    if (splitsSumCents(splits) !== editableTotalCents) {
+      setError(
+        "A soma das formas de pagamento precisa bater com o total do pedido."
+      );
+      return;
+    }
+    if (splitsMissingDates(splits)) {
+      setError("Informe a data de vencimento de todas as parcelas.");
+      return;
+    }
+
+    setSaving(true);
     try {
       const payload = {
-        paymentMethod,
         paymentReceiver,
         discountCents: editableDiscountCents,
         notes,
@@ -1632,19 +1645,7 @@ function EditOrderModal({
           qty: item.qty,
           unitCents: centsFromCurrencyInput(item.unitValue),
         })),
-        installmentCount:
-          paymentMethod === "BOLETO" ||
-          paymentMethod === "CARD_CREDIT" ||
-          paymentMethod === "PIX"
-            ? installmentCount
-            : 1,
-        installments: installments
-          .filter((i) => i.status !== "PAID")
-          .map((i) => ({
-            id: i.id?.startsWith("new-") ? undefined : i.id,
-            dueDate: i.dueDate || undefined,
-            amountCents: centsFromCurrencyInput(i.amount),
-          })),
+        payments: splitsToPayload(splits),
       };
 
       const res = await fetch(`/api/orders/${order.id}`, {
@@ -1854,32 +1855,16 @@ function EditOrderModal({
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Forma de pagamento</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="CASH">Dinheiro</option>
-                <option value="PIX">Pix</option>
-                <option value="BOLETO">Boleto</option>
-                <option value="CARD_DEBIT">Cartão débito</option>
-                <option value="CARD_CREDIT">Cartão crédito</option>
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Quem recebeu</label>
-              <select
-                value={paymentReceiver}
-                onChange={(e) => setPaymentReceiver(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="REGION">Região</option>
-                <option value="MATRIX">Matriz</option>
-              </select>
-            </div>
+          <div>
+            <label style={labelStyle}>Quem recebeu</label>
+            <select
+              value={paymentReceiver}
+              onChange={(e) => setPaymentReceiver(e.target.value)}
+              style={{ ...inputStyle, maxWidth: 240 }}
+            >
+              <option value="REGION">Região</option>
+              <option value="MATRIX">Matriz</option>
+            </select>
           </div>
 
           <div
@@ -1927,113 +1912,14 @@ function EditOrderModal({
                 marginBottom: 8,
               }}
             >
-              Parcelas
+              Forma(s) de pagamento
             </div>
-            {(paymentMethod === "BOLETO" ||
-              paymentMethod === "CARD_CREDIT" ||
-              paymentMethod === "PIX") && (
-              <div style={{ marginBottom: 8 }}>
-                <label style={labelStyle}>Quantidade de parcelas</label>
-                <select
-                  value={installmentCount}
-                  onChange={(e) => setInstallmentCount(Math.max(1, Number(e.target.value)))}
-                  style={{ ...inputStyle, maxWidth: 180 }}
-                >
-                  {Array.from({ length: 12 }, (_, index) => index + 1).map((count) => (
-                    <option key={count} value={count}>
-                      {count}x
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div style={{ display: "grid", gap: 8 }}>
-              {installments.length === 0 ? (
-                <div
-                  style={{
-                    border: `1px solid ${theme.border}`,
-                    background: subtleCard,
-                    padding: 14,
-                    borderRadius: 10,
-                    color: muted,
-                    fontSize: 13,
-                    textAlign: "center",
-                  }}
-                >
-                  Nenhuma parcela.
-                </div>
-              ) : (
-                installments.map((it) => {
-                  const paid = it.status === "PAID";
-                  return (
-                    <div
-                      key={it.id}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "60px 1fr 1fr 90px",
-                        gap: 10,
-                        alignItems: "center",
-                        background: subtleCard,
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 10,
-                        padding: "10px 12px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 800,
-                          color: theme.text,
-                        }}
-                      >
-                        #{it.installmentNumber}
-                      </div>
-                      <input
-                        type="date"
-                        value={it.dueDate}
-                        disabled={paid}
-                        onChange={(e) =>
-                          updateInstallment(it.id, "dueDate", e.target.value)
-                        }
-                        style={{
-                          ...inputStyle,
-                          opacity: paid ? 0.6 : 1,
-                        }}
-                      />
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={it.amount}
-                        disabled={paid}
-                        onChange={(e) =>
-                          updateInstallment(it.id, "amount", e.target.value)
-                        }
-                        placeholder="0,00"
-                        style={{
-                          ...inputStyle,
-                          opacity: paid ? 0.6 : 1,
-                        }}
-                      />
-                      <div
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 800,
-                          color: paid ? "#16a34a" : "#2563eb",
-                          textAlign: "center",
-                        }}
-                      >
-                        {paid ? "PAGO" : "A receber"}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            {installments.some((i) => i.status === "PAID") && (
-              <div style={{ fontSize: 11, color: muted, marginTop: 6 }}>
-                Parcelas já pagas não podem ser editadas.
-              </div>
-            )}
+            <PaymentSplitsEditor
+              theme={theme}
+              totalCents={editableTotalCents}
+              value={splits}
+              onChange={setSplits}
+            />
           </div>
         </div>
 

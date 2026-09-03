@@ -180,6 +180,12 @@ export async function POST(request: Request) {
             phone: true,
           },
         },
+        // Pedido pode ter forma de pagamento dividida — só habilita o envio
+        // se alguma divisão realmente for boleto ou Pix.
+        accountsReceivables: {
+          where: { paymentMethod: { in: ["BOLETO", "PIX"] } },
+          select: { paymentMethod: true },
+        },
       },
     });
 
@@ -190,14 +196,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (order.paymentMethod !== "BOLETO" && order.paymentMethod !== "PIX") {
+    if (!order.accountsReceivables.length) {
       return NextResponse.json(
-        { error: "Este pedido não está marcado como boleto ou Pix." },
+        { error: "Este pedido não tem nenhuma forma de pagamento em boleto ou Pix." },
         { status: 400 }
       );
     }
 
-    const isPix = order.paymentMethod === "PIX";
+    const isPix = order.accountsReceivables.every((item) => item.paymentMethod === "PIX");
 
     const phoneOverride =
       typeof body.phone === "string" ? body.phone.trim() : "";

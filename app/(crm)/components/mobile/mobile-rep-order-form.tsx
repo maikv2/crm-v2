@@ -25,6 +25,15 @@ import {
   MobileSectionTitle,
   formatMoneyBR,
 } from "@/app/components/mobile/mobile-shell";
+import PaymentSplitsEditor, {
+  PaymentSplitLine,
+  centsFromCurrencyInput,
+  currencyInputFromCents,
+  makeDefaultSplits,
+  splitsMissingDates,
+  splitsSumCents,
+  splitsToPayload,
+} from "@/app/components/payment-splits-editor";
 
 type Client = {
   id: string;
@@ -110,14 +119,6 @@ type DefectReturnItem = {
   reason: string;
   notes: string;
 };
-
-const PAYMENT_METHODS = [
-  { value: "CASH", label: "Dinheiro" },
-  { value: "PIX", label: "PIX" },
-  { value: "CARD_DEBIT", label: "Débito" },
-  { value: "CARD_CREDIT", label: "Crédito" },
-  { value: "BOLETO", label: "Boleto" },
-] as const;
 
 function normalizeWhatsapp(phone?: string | null) {
   if (!phone) return "";
@@ -330,11 +331,8 @@ export default function MobileRepOrderForm() {
   const [clientSearch, setClientSearch] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [discountValue, setDiscountValue] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [installmentCount, setInstallmentCount] = useState(1);
-  const [installmentDates, setInstallmentDates] = useState<string[]>([""]);
+  const [splits, setSplits] = useState<PaymentSplitLine[]>(() => makeDefaultSplits(0));
   const [cart, setCart] = useState<CartItem[]>([]);
   const [defectReturnItems, setDefectReturnItems] = useState<DefectReturnItem[]>([]);
   const [defectSearch, setDefectSearch] = useState("");
@@ -584,17 +582,15 @@ export default function MobileRepOrderForm() {
 
   const totalCents = Math.max(0, subtotalCents - discountCents);
 
+  // Caso simples (uma única forma de pagamento): mantém o valor da divisão
+  // sincronizado com o total do carrinho enquanto os itens mudam.
   useEffect(() => {
-    setInstallmentDates((current) =>
-      Array.from({ length: installmentCount }, (_, index) => {
-        if (current[index]) return current[index];
-        if (!dueDate) return "";
-        const date = new Date(`${dueDate}T12:00:00`);
-        date.setMonth(date.getMonth() + index);
-        return date.toISOString().slice(0, 10);
-      })
-    );
-  }, [dueDate, installmentCount]);
+    setSplits((prev) => {
+      if (prev.length !== 1) return prev;
+      if (centsFromCurrencyInput(prev[0].amountValue) === totalCents) return prev;
+      return [{ ...prev[0], amountValue: currencyInputFromCents(totalCents) }];
+    });
+  }, [totalCents]);
 
   const savedPdfUrl = useMemo(() => {
     if (!savedOrderId) return "";
@@ -712,10 +708,7 @@ export default function MobileRepOrderForm() {
     setSearch("");
     setCategoryFilter("");
     setDiscountValue("");
-    setDueDate("");
-    setInstallmentCount(1);
-    setInstallmentDates([""]);
-    setPaymentMethod("CASH");
+    setSplits(makeDefaultSplits(0));
     setDefectReturnItems([]);
     setCart((prev) => prev.map((item) => ({ ...item, qty: 0 })));
   }
@@ -749,18 +742,12 @@ export default function MobileRepOrderForm() {
         return;
       }
 
-      if (
-        (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX") &&
-        !dueDate
-      ) {
-        setError("Informe a data do primeiro vencimento.");
+      if (splitsSumCents(splits) !== totalCents) {
+        setError("A soma das formas de pagamento precisa bater com o total do pedido.");
         return;
       }
 
-      if (
-        (paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX") &&
-        installmentDates.slice(0, installmentCount).some((date) => !date)
-      ) {
+      if (splitsMissingDates(splits)) {
         setError("Informe a data de todas as parcelas.");
         return;
       }
@@ -785,19 +772,7 @@ export default function MobileRepOrderForm() {
           subtotalCents,
           discountCents,
           totalCents,
-          paymentMethod,
-          dueDate:
-            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX"
-              ? dueDate || null
-              : null,
-          installmentCount:
-            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX"
-              ? installmentCount
-              : 1,
-          installmentDates:
-            paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX"
-              ? installmentDates
-              : [],
+          payments: splitsToPayload(splits),
           defectReturnItems: selectedDefectReturnItems.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
@@ -1600,44 +1575,7 @@ router.push(targetPath);
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
             gap: 10,
-          }}
-        >
-          {PAYMENT_METHODS.map((method) => {
-            const active = paymentMethod === method.value;
-
-            return (
-              <button
-                key={method.value}
-                type="button"
-                onClick={() => setPaymentMethod(method.value)}
-                style={{
-                  minHeight: 46,
-                  borderRadius: 14,
-                  border: `1px solid ${active ? colors.primary : colors.border}`,
-                  background: active
-                    ? colors.isDark
-                      ? "#111f39"
-                      : "#e8f0ff"
-                    : colors.cardBg,
-                  color: active ? colors.primary : colors.text,
-                  fontSize: 13,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                {method.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gap: 10,
-            marginTop: 14,
           }}
         >
           <input
@@ -1658,98 +1596,12 @@ router.push(targetPath);
             }}
           />
 
-          {paymentMethod === "BOLETO" || paymentMethod === "CARD_CREDIT" || paymentMethod === "PIX" ? (
-            <>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                style={{
-                  width: "100%",
-                  height: 46,
-                  borderRadius: 14,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.inputBg,
-                  color: colors.text,
-                  padding: "0 14px",
-                  outline: "none",
-                  fontSize: 14,
-                }}
-              />
-
-              <select
-                value={installmentCount}
-                onChange={(e) => setInstallmentCount(Math.max(1, Number(e.target.value)))}
-                style={{
-                  width: "100%",
-                  height: 46,
-                  borderRadius: 14,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.inputBg,
-                  color: colors.text,
-                  padding: "0 14px",
-                  outline: "none",
-                  fontSize: 14,
-                }}
-              >
-                {Array.from({ length: 12 }, (_, index) => index + 1).map((count) => (
-                  <option key={count} value={count}>
-                    {count}x
-                  </option>
-                ))}
-              </select>
-
-              {installmentCount > 1 ? (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {Array.from({ length: installmentCount }, (_, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "88px 1fr",
-                        gap: 8,
-                        alignItems: "center",
-                      }}
-                    >
-                      <div
-                        style={{
-                          color: colors.subtext,
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        {index + 1}ª parcela
-                      </div>
-                      <input
-                        type="date"
-                        value={installmentDates[index] ?? ""}
-                        onChange={(e) =>
-                          setInstallmentDates((current) =>
-                            Array.from({ length: installmentCount }, (_, dateIndex) =>
-                              dateIndex === index
-                                ? e.target.value
-                                : current[dateIndex] ?? ""
-                            )
-                          )
-                        }
-                        style={{
-                          width: "100%",
-                          height: 42,
-                          borderRadius: 12,
-                          border: `1px solid ${colors.border}`,
-                          background: colors.inputBg,
-                          color: colors.text,
-                          padding: "0 12px",
-                          outline: "none",
-                          fontSize: 13,
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </>
-          ) : null}
+          <PaymentSplitsEditor
+            theme={colors}
+            totalCents={totalCents}
+            value={splits}
+            onChange={setSplits}
+          />
         </div>
       </MobileCard>
 

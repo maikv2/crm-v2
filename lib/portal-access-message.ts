@@ -35,6 +35,7 @@ export function buildPortalAccessMessage({
     "- Solicitar novos pedidos",
     "- Solicitar visita",
     "- Solicitar manutenção do expositor",
+    "- Ver o que ficou no expositor na primeira visita",
     "",
     "Qualquer dúvida, é só nos chamar por aqui.",
   ].join("\n");

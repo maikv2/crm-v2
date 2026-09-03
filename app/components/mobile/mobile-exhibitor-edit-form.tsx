@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
 import {
@@ -46,6 +46,12 @@ type ExhibitorProduct = {
     name?: string | null;
     sku?: string | null;
   } | null;
+};
+
+type CatalogProduct = {
+  id: string;
+  sku?: string | null;
+  name: string;
 };
 
 const EXHIBITOR_TYPES = [
@@ -97,6 +103,9 @@ export default function MobileExhibitorEditForm({
   const [initialStockNote, setInitialStockNote] = useState("");
   const [products, setProducts] = useState<ExhibitorProduct[]>([]);
 
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [newProductId, setNewProductId] = useState("");
+
   const backHref = useMemo(
     () =>
       variant === "rep"
@@ -113,10 +122,12 @@ export default function MobileExhibitorEditForm({
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/exhibitors/${exhibitorId}`, {
-          cache: "no-store",
-        });
+        const [res, productsRes] = await Promise.all([
+          fetch(`/api/exhibitors/${exhibitorId}`, { cache: "no-store" }),
+          fetch(`/api/products`, { cache: "no-store" }),
+        ]);
         const json = await res.json().catch(() => null);
+        const productsJson = await productsRes.json().catch(() => null);
 
         if (!res.ok) {
           throw new Error(json?.error || "Erro ao carregar expositor.");
@@ -137,6 +148,7 @@ export default function MobileExhibitorEditForm({
         setProducts(
           loaded.initialItems?.length ? loaded.initialItems : loaded.products ?? []
         );
+        setCatalogProducts(Array.isArray(productsJson) ? productsJson : []);
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "Erro ao carregar expositor.");
@@ -229,6 +241,53 @@ export default function MobileExhibitorEditForm({
       )
     );
   }
+
+  function removeProduct(productId: string) {
+    setProducts((current) =>
+      current.filter(
+        (product) => (product.product?.id || product.productId) !== productId
+      )
+    );
+  }
+
+  function addProduct() {
+    if (!newProductId) return;
+
+    const alreadyAdded = products.some(
+      (product) => (product.product?.id || product.productId) === newProductId
+    );
+    if (alreadyAdded) {
+      setNewProductId("");
+      return;
+    }
+
+    const catalogProduct = catalogProducts.find((p) => p.id === newProductId);
+    if (!catalogProduct) return;
+
+    setProducts((current) => [
+      ...current,
+      {
+        id: `new-${catalogProduct.id}`,
+        productId: catalogProduct.id,
+        quantity: 1,
+        product: {
+          id: catalogProduct.id,
+          name: catalogProduct.name,
+          sku: catalogProduct.sku,
+        },
+      },
+    ]);
+    setNewProductId("");
+  }
+
+  const availableProducts = useMemo(() => {
+    const usedIds = new Set(
+      products.map((product) => product.product?.id || product.productId)
+    );
+    return catalogProducts
+      .filter((product) => !usedIds.has(product.id))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [catalogProducts, products]);
 
   if (loading) {
     return <MobileCard>Carregando expositor...</MobileCard>;
@@ -345,11 +404,11 @@ export default function MobileExhibitorEditForm({
       <MobileCard>
         <MobileSectionTitle title="Itens no expositor" />
         {products.length === 0 ? (
-          <div style={{ fontSize: 13, color: colors.subtext }}>
+          <div style={{ fontSize: 13, color: colors.subtext, marginBottom: 12 }}>
             Nenhum item registrado neste expositor.
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
             {products.map((product) => {
               const productId = product.product?.id || product.productId || "";
 
@@ -358,7 +417,7 @@ export default function MobileExhibitorEditForm({
                   key={product.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) 116px",
+                    gridTemplateColumns: "minmax(0, 1fr) 92px 34px",
                     gap: 10,
                     alignItems: "center",
                   }}
@@ -394,11 +453,69 @@ export default function MobileExhibitorEditForm({
                     style={{ ...inputStyle, textAlign: "center" }}
                     aria-label={`Quantidade de ${product.product?.name || "produto"}`}
                   />
+
+                  <button
+                    type="button"
+                    onClick={() => removeProduct(productId)}
+                    aria-label={`Remover ${product.product?.name || "produto"}`}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 10,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.cardBg,
+                      color: "#ef4444",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 44px", gap: 10 }}>
+          <select
+            value={newProductId}
+            onChange={(event) => setNewProductId(event.target.value)}
+            style={inputStyle}
+          >
+            <option value="">Selecione um produto para adicionar</option>
+            {availableProducts.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.name}
+                {product.sku ? ` (${product.sku})` : ""}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={addProduct}
+            disabled={!newProductId}
+            aria-label="Adicionar produto"
+            style={{
+              width: 44,
+              height: 46,
+              borderRadius: 14,
+              border: "none",
+              background: colors.primary,
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: newProductId ? "pointer" : "not-allowed",
+              opacity: newProductId ? 1 : 0.6,
+            }}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
       </MobileCard>
 
       <button

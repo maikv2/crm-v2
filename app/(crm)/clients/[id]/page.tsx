@@ -31,20 +31,23 @@ function ActionButton({
   theme,
   onClick,
   danger = false,
+  disabled = false,
 }: {
   label: string;
   theme: ThemeShape;
   onClick?: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
 
-  const isDangerHover = danger && hover;
+  const isDangerHover = danger && hover && !disabled;
 
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -52,17 +55,18 @@ function ActionButton({
         padding: "0 12px",
         borderRadius: 10,
         border: danger
-          ? `1px solid ${hover ? "#dc2626" : theme.border}`
+          ? `1px solid ${hover && !disabled ? "#dc2626" : theme.border}`
           : `1px solid ${theme.border}`,
         background: isDangerHover
           ? "#dc2626"
-          : hover
+          : hover && !disabled
           ? theme.primary
           : theme.cardBg,
-        color: hover ? "#ffffff" : danger ? "#dc2626" : theme.text,
+        color: hover && !disabled ? "#ffffff" : danger ? "#dc2626" : theme.text,
         fontWeight: 700,
         fontSize: 13,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.7 : 1,
         whiteSpace: "nowrap",
         transition: "all 0.15s ease",
       }}
@@ -139,6 +143,7 @@ export default function ClientPage({
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendingPortalAccess, setSendingPortalAccess] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -227,6 +232,49 @@ export default function ClientPage({
       alert("Erro ao excluir cliente.");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleSendPortalAccess() {
+    if (!client || sendingPortalAccess) return;
+
+    const accessCode = client.code?.trim();
+    if (!accessCode) {
+      alert("Este cliente ainda não possui código de acesso cadastrado.");
+      return;
+    }
+
+    const phone = client.whatsapp || client.phone;
+    if (!phone) {
+      alert("Este cliente não possui WhatsApp ou telefone cadastrado.");
+      return;
+    }
+
+    try {
+      setSendingPortalAccess(true);
+
+      const res = await fetch("/api/whatsapp/send-portal-access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          portalUrl: `${window.location.origin}/portal/login`,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Não foi possível enviar o acesso.");
+      }
+
+      alert("Acesso ao portal enviado pelo WhatsApp.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Não foi possível enviar o acesso.");
+    } finally {
+      setSendingPortalAccess(false);
     }
   }
 
@@ -429,6 +477,12 @@ export default function ClientPage({
                   : `/orders/new?clientId=${client.id}`
               )
             }
+          />
+          <ActionButton
+            label={sendingPortalAccess ? "Enviando..." : "Enviar acesso ao portal"}
+            theme={theme}
+            onClick={handleSendPortalAccess}
+            disabled={sendingPortalAccess}
           />
 
           {isRepresentative ? (

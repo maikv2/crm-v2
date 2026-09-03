@@ -226,8 +226,10 @@ export async function GET(request: Request) {
             operatingProfitCents: snapshot.operatingProfitCents,
             stockReplenishmentCents: snapshot.stockReplenishmentCents,
             distributableCents: snapshot.distributableCents,
-            investorPoolCents: snapshot.investorPoolCents,
-            companyPoolCents: snapshot.companyPoolCents,
+            // Por cota (não 60/40 "cego" sobre o total): descontam-se as cotas
+            // ainda não vendidas a nenhum investidor, que ficam com a empresa.
+            investorPoolCents: generated.investorPoolCents,
+            companyPoolCents: generated.companyPoolCents,
             quotaCount: investor.quotaCount,
             totalDistributionCents: distribution.totalDistributionCents,
           };

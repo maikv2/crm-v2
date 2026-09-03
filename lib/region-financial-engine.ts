@@ -5,8 +5,13 @@ import { prisma } from "@/lib/prisma";
 //    (CMV, logística, comissão de vendedor, impostos, administrativo).
 // 2) 30% do lucro operacional é reservado para reposição de estoque.
 // 3) O restante (70%) é dividido fixo: 60% investidor / 40% empresa, por cota.
+// IMPORTANTE: a divisão investidor/empresa (passo 3) é sempre por cota — uma
+// cota ainda não emitida/vendida a um investidor fica implicitamente com a
+// empresa. Esse cálculo por cota vive em investor-distribution.ts
+// (calculateInvestorDistributionPreview) e em region-daily-engine.ts, nunca
+// aqui: este arquivo só apura o resultado da região (receita/despesas/lucro),
+// não sabe quantas das cotas já foram vendidas a investidores.
 const STOCK_REPLENISHMENT_RATE_BPS = 3000; // 30%
-const INVESTOR_SPLIT_RATE_BPS = 6000; // 60% do que sobra após a reposição de estoque
 
 type RegionFinancialSnapshot = {
   regionId: string;
@@ -21,8 +26,6 @@ type RegionFinancialSnapshot = {
   operatingProfitCents: number;
   stockReplenishmentCents: number;
   distributableCents: number;
-  investorPoolCents: number;
-  companyPoolCents: number;
   activePdvs: number;
   activeClients: number;
 };
@@ -264,12 +267,9 @@ export async function calculateRegionFinancialSnapshot(
     0,
     Math.floor((Math.max(0, operatingProfitCents) * STOCK_REPLENISHMENT_RATE_BPS) / 10000)
   );
-  // O que sobra é dividido definitivamente 60% investidor / 40% empresa (sem payback).
+  // O que sobra é a base a dividir (60% investidor / 40% empresa, por cota —
+  // ver nota no topo do arquivo; esse split fica em investor-distribution.ts).
   const distributableCents = Math.max(0, operatingProfitCents) - stockReplenishmentCents;
-  const investorPoolCents = Math.floor(
-    (distributableCents * INVESTOR_SPLIT_RATE_BPS) / 10000
-  );
-  const companyPoolCents = distributableCents - investorPoolCents;
 
   return {
     regionId,
@@ -284,8 +284,6 @@ export async function calculateRegionFinancialSnapshot(
     operatingProfitCents,
     stockReplenishmentCents,
     distributableCents,
-    investorPoolCents,
-    companyPoolCents,
     activePdvs,
     activeClients,
   };

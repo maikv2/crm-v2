@@ -149,6 +149,50 @@ function parsePercentEnv(name: string, fallback: number) {
   return Math.max(0, Math.trunc(value));
 }
 
+/**
+ * Estima o valor atualizado de um boleto vencido (valor base + multa + juros
+ * ao dia), usando as mesmas taxas configuradas na emissão (EFI_BOLETO_FINE /
+ * EFI_BOLETO_INTEREST). É só informativo para a mensagem ao cliente — quem
+ * calcula o valor real cobrado na liquidação é o banco/Efí a partir do
+ * código de barras, não este número.
+ */
+export function estimateOverdueTotalCents(
+  baseAmountCents: number,
+  dueDate: Date | null | undefined,
+  asOf: Date = new Date()
+) {
+  if (!dueDate) {
+    return { totalCents: baseAmountCents, daysOverdue: 0 };
+  }
+
+  const dueMidnight = new Date(
+    Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate())
+  );
+  const asOfMidnight = new Date(
+    Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate())
+  );
+  const daysOverdue = Math.floor(
+    (asOfMidnight.getTime() - dueMidnight.getTime()) / (24 * 60 * 60 * 1000)
+  );
+
+  if (daysOverdue <= 0) {
+    return { totalCents: baseAmountCents, daysOverdue: 0 };
+  }
+
+  const finePercent = parsePercentEnv("EFI_BOLETO_FINE", 200) / 100;
+  const dailyInterestPercent = parsePercentEnv("EFI_BOLETO_INTEREST", 33) / 100;
+
+  const fineCents = Math.round((baseAmountCents * finePercent) / 100);
+  const interestCents = Math.round(
+    (baseAmountCents * dailyInterestPercent * daysOverdue) / 100
+  );
+
+  return {
+    totalCents: baseAmountCents + fineCents + interestCents,
+    daysOverdue,
+  };
+}
+
 function boletoMessage(orderNumber: number) {
   const configured = process.env.EFI_BOLETO_MESSAGE?.trim();
   const message =

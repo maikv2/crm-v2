@@ -129,6 +129,12 @@ type OrderDetail = {
     installmentCount: number;
     installments?: Installment[];
   }[];
+
+  externalPayments?: {
+    id: string;
+    type?: string | null;
+    status?: string | null;
+  }[];
 };
 
 type ThemeShape = ReturnType<typeof getThemeColors>;
@@ -1042,6 +1048,15 @@ export default function OrderDetailPage() {
     }
   }
 
+  const hasOverdueBoleto = useMemo(
+    () =>
+      order?.externalPayments?.some(
+        (ep) =>
+          (ep.type === "BOLETO" || ep.type === "BOLIX") && ep.status === "OVERDUE"
+      ) ?? false,
+    [order]
+  );
+
   const totalItems = useMemo(
     () => order?.items?.reduce((sum, item) => sum + item.qty, 0) ?? 0,
     [order]
@@ -1173,9 +1188,15 @@ export default function OrderDetailPage() {
           />
           {order?.accountsReceivables?.some((item) => item.paymentMethod === "BOLETO") && (
             <ActionButton
-              label={busyAction === "boleto" ? "Enviando..." : "🏦 Enviar boleto"}
+              label={
+                busyAction === "boleto"
+                  ? "Enviando..."
+                  : hasOverdueBoleto
+                  ? "🔄 Atualizar boleto vencido"
+                  : "🏦 Enviar boleto"
+              }
               theme={theme}
-              color="#2563eb"
+              color={hasOverdueBoleto ? "#dc2626" : "#2563eb"}
               primary
               disabled={busyAction !== null}
               onClick={handleSendBoletoRequest}

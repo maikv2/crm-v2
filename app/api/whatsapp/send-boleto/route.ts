@@ -5,6 +5,7 @@ import {
   EfiChargesApiError,
   EfiChargesConfigError,
   ensureEfiBilletsForOrder,
+  estimateOverdueTotalCents,
 } from "@/lib/efi-payment-service";
 import {
   sendDocument,
@@ -45,6 +46,7 @@ function buildMessage(params: {
   payments: Awaited<ReturnType<typeof ensureEfiBilletsForOrder>>;
 }) {
   const { isPix } = params;
+  const anyOverdue = !isPix && params.payments.some((item) => item.payment.status === "OVERDUE");
   const lines = [
     `Olá, ${params.clientName}!`,
     "",
@@ -56,6 +58,11 @@ function buildMessage(params: {
 
   for (const item of params.payments) {
     const payment = item.payment;
+    const overdue = payment.status === "OVERDUE";
+    const updated = overdue
+      ? estimateOverdueTotalCents(payment.amountCents, payment.dueDate)
+      : null;
+
     const rows = isPix
       ? [
           `Parcela: ${centsToBRL(payment.amountCents)}`,
@@ -68,11 +75,23 @@ function buildMessage(params: {
       : [
           `Parcela: ${centsToBRL(payment.amountCents)}`,
           `Vencimento: ${dateToBR(payment.dueDate)}`,
+          overdue
+            ? `Boleto vencido há ${updated!.daysOverdue} dia(s).`
+            : "",
+          updated && updated.totalCents !== payment.amountCents
+            ? `Valor atualizado hoje (com multa e juros): ${centsToBRL(updated.totalCents)}`
+            : "",
           payment.boletoLink ? `Link: ${payment.boletoLink}` : "",
           payment.barcode ? `Linha digitável: ${payment.barcode}` : "",
           payment.pixCopyPaste ? `Pix copia e cola: ${payment.pixCopyPaste}` : "",
         ];
     lines.push(...rows, "");
+  }
+
+  if (anyOverdue) {
+    lines.push(
+      "O valor atualizado acima é uma estimativa; o valor final é o calculado pelo banco/código de barras no momento do pagamento."
+    );
   }
 
   lines.push(

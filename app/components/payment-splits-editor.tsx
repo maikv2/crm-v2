@@ -330,7 +330,7 @@ export default function PaymentSplitsEditor({ theme, totalCents, value, onChange
                     value={split.dueDate}
                     onChange={(e) => {
                       const nextDates = split.installmentDates.map((d, index) =>
-                        d ? d : addMonthsToDateInput(e.target.value, index)
+                        index === 0 ? e.target.value : d ? d : addMonthsToDateInput(e.target.value, index)
                       );
                       updateSplit(split.key, {
                         dueDate: e.target.value,

@@ -240,22 +240,24 @@ export async function POST(request: Request) {
         : { sent: false, skipped: isPix ? "pedido_pix" : "multiplos_boletos" };
 
     const pixResults = [];
-    for (const [index, item] of payments.entries()) {
-      const caption =
-        payments.length > 1
-          ? `QR Code Pix - Pedido #${orderNumber(order.number)} - Parcela ${
-              index + 1
-            }/${payments.length}`
-          : `QR Code Pix - Pedido #${orderNumber(order.number)}`;
+    if (isPix) {
+      for (const [index, item] of payments.entries()) {
+        const caption =
+          payments.length > 1
+            ? `QR Code Pix - Pedido #${orderNumber(order.number)} - Parcela ${
+                index + 1
+              }/${payments.length}`
+            : `QR Code Pix - Pedido #${orderNumber(order.number)}`;
 
-      pixResults.push({
-        id: item.payment.id,
-        ...(await trySendPixQrCode({
-          phone,
-          qrCodeImage: item.payment.pixQrCodeImage,
-          caption,
-        })),
-      });
+        pixResults.push({
+          id: item.payment.id,
+          ...(await trySendPixQrCode({
+            phone,
+            qrCodeImage: item.payment.pixQrCodeImage,
+            caption,
+          })),
+        });
+      }
     }
 
     return NextResponse.json({

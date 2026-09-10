@@ -5,6 +5,10 @@
       "schedule": "0 12 * * 1"
     },
     {
+      "path": "/api/cron/efi-reconciliation",
+      "schedule": "0 11 * * *"
+    },
+    {
       "path": "/api/cron/cobranca-boletos",
       "schedule": "0 12 * * *"
     },

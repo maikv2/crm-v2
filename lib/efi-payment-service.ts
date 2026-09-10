@@ -869,4 +869,93 @@ export async function processEfiChargesNotification(token: string) {
   };
 }
 
+export type EfiReconciliationEntry = {
+  externalPaymentId: string;
+  orderId: string;
+  orderNumber: number;
+  providerChargeId: string;
+  previousStatus: ExternalPaymentStatus;
+  currentStatus: ExternalPaymentStatus;
+};
+
+export type EfiReconciliationResult = {
+  checked: number;
+  updated: EfiReconciliationEntry[];
+  paidNow: EfiReconciliationEntry[];
+  errors: Array<{
+    externalPaymentId: string;
+    orderNumber?: number;
+    providerChargeId: string;
+    error: string;
+  }>;
+};
+
+/**
+ * Rede de segurança para a baixa automática de boletos/Pix da Efí: consulta
+ * diretamente na API da Efí o status de toda cobrança ainda aberta (PENDING
+ * ou OVERDUE) no nosso banco. Serve para pegar pagamentos que o cliente já
+ * fez mas cuja notificação de webhook não chegou (falha de rede, webhook não
+ * configurado no momento da emissão, etc.) — sem isso, o cliente continuaria
+ * recebendo cobranças mesmo já tendo pago.
+ */
+export async function reconcileEfiCharges(): Promise<EfiReconciliationResult> {
+  const openPayments = await prisma.externalPayment.findMany({
+    where: {
+      provider: PaymentProvider.EFI,
+      status: { in: [...OPEN_EXTERNAL_STATUSES] },
+      providerChargeId: { not: null },
+    },
+    orderBy: { createdAt: "asc" },
+    include: { order: { select: { number: true } } },
+  });
+
+  const result: EfiReconciliationResult = {
+    checked: 0,
+    updated: [],
+    paidNow: [],
+    errors: [],
+  };
+
+  for (const payment of openPayments) {
+    const providerChargeId = payment.providerChargeId;
+    if (!providerChargeId) continue;
+
+    result.checked += 1;
+
+    try {
+      const charge = await getEfiCharge(providerChargeId);
+      const previousStatus = payment.status;
+
+      const updated =
+        payment.type === ExternalPaymentType.PAYMENT_LINK
+          ? await updateExternalPaymentFromLinkCharge(payment, charge)
+          : await updateExternalPaymentFromCharge(payment, charge);
+
+      if (updated.status !== previousStatus) {
+        const entry: EfiReconciliationEntry = {
+          externalPaymentId: payment.id,
+          orderId: payment.orderId,
+          orderNumber: payment.order.number,
+          providerChargeId,
+          previousStatus,
+          currentStatus: updated.status,
+        };
+        result.updated.push(entry);
+        if (updated.status === ExternalPaymentStatus.PAID) {
+          result.paidNow.push(entry);
+        }
+      }
+    } catch (error: any) {
+      result.errors.push({
+        externalPaymentId: payment.id,
+        orderNumber: payment.order.number,
+        providerChargeId,
+        error: error?.message || "Erro desconhecido ao consultar Efí.",
+      });
+    }
+  }
+
+  return result;
+}
+
 export { EfiChargesApiError, EfiChargesConfigError };

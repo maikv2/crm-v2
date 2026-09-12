@@ -332,6 +332,7 @@ export default function Sidebar() {
           <Item icon={Boxes} label="Estoque" path="/stock" />
           <Item icon={ShoppingCart} label="Pedidos" path="/orders" />
           <Item icon={PlusCircle} label="Novo Pedido" path="/orders/new" />
+          <Item icon={Globe} label="Pedidos do Site" path="/orders/requests" />
 
           <Section title="FINANCEIRO" />
           <Item icon={DollarSign} label="Financeiro" path="/finance" />

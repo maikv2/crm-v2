@@ -25,6 +25,7 @@ import {
   Bell,
   Target,
   BadgeDollarSign,
+  Globe,
 } from "lucide-react";
 
 import { useTheme } from "../providers/theme-provider";
@@ -209,6 +210,7 @@ export default function Sidebar() {
             path="/sales-dashboard"
           />
           <Item icon={ShoppingCart} label="Pedidos" path="/orders" />
+          <Item icon={Globe} label="Pedidos do Site" path="/orders/requests" />
 
           <Section title="FINANCEIRO" />
           <Item icon={DollarSign} label="Financeiro" path="/finance" />

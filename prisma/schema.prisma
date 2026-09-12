@@ -313,6 +313,17 @@ model PortalOrderRequest {
   client    Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   region    Region?                  @relation(fields: [regionId], references: [id])
   items     PortalOrderRequestItem[]
+
+  // --- Pedidos vindos do site (v2-storefront) ---------------------------
+  // Campos adicionados pra integracao ecommerce -> CRM. Todos opcionais/
+  // com default pra nao quebrar nada que ja existia (pedidos antigos do
+  // portal do cliente continuam funcionando sem eles).
+  source                 String    @default("portal") // "portal" (rep) ou "site" (loja online)
+  requestedPaymentMethod PaymentMethod?
+  requestedInstallments  Int            @default(1)
+  isCashOnDelivery       Boolean        @default(false)
+  customPlanRequested    Boolean        @default(false) // true = entrada + parcelas customizadas, precisa atencao extra do financeiro
+  convertedOrderId       String?        @db.Uuid
 }
 
 model PortalOrderRequestItem {

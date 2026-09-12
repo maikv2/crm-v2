@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { PortalOrderRequestStatus, OrderType } from "@prisma/client";
+import { PortalOrderRequestStatus, OrderType, PaymentMethod } from "@prisma/client";
 
 type RouteContext = {
   params: Promise<{
@@ -86,6 +86,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         };
       });
 
+      // "Pagamento na entrega" e formas de pagamento nao mapeadas caem em
+      // CASH (o financeiro ajusta na propria tela do pedido se precisar).
+      const paymentMethod = portalRequest.isCashOnDelivery
+        ? PaymentMethod.CASH
+        : portalRequest.requestedPaymentMethod ?? PaymentMethod.CASH;
+
+      const originLabel =
+        portalRequest.source === "site" ? "loja online (site)" : "portal do cliente";
+
       const order = await prisma.order.create({
         data: {
           clientId: portalRequest.clientId,
@@ -93,8 +102,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           type: OrderType.SALE,
           subtotalCents: subtotal,
           totalCents: subtotal,
+          paymentMethod,
           financialMovement: false,
-          notes: "Pedido criado a partir do portal do cliente",
+          notes: [
+            `Pedido criado a partir do ${originLabel}, aprovado pelo financeiro.`,
+            portalRequest.isCashOnDelivery ? "Combinado: pagamento na entrega (cliente com expositor ativo)." : null,
+            portalRequest.customPlanRequested
+              ? "Plano de pagamento customizado (entrada + parcelas) - conferir condicoes combinadas com o cliente."
+              : null,
+            portalRequest.notes ? `\n${portalRequest.notes}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
           items: {
             create: orderItems,
           },
@@ -105,6 +124,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         where: { id },
         data: {
           status: PortalOrderRequestStatus.CONVERTED_TO_ORDER,
+          convertedOrderId: order.id,
         },
       });
 

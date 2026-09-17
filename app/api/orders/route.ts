@@ -774,6 +774,29 @@ export async function POST(request: Request) {
           },
         });
 
+        // Fazer uma venda (ou troca por defeito) conta como visita ao
+        // cliente: atualiza a data da última visita do cliente e, quando o
+        // pedido está vinculado a um expositor, também a do expositor —
+        // mesma janela de 45 dias usada no registro manual de visita.
+        if (type !== OrderType.EXHIBITOR_INITIAL_STOCK) {
+          const visitNow = new Date();
+
+          await tx.client.update({
+            where: { id: clientId! },
+            data: { lastVisitAt: visitNow },
+          });
+
+          if (exhibitorId) {
+            const nextVisitAt = new Date(visitNow);
+            nextVisitAt.setDate(nextVisitAt.getDate() + 45);
+
+            await tx.exhibitor.update({
+              where: { id: exhibitorId },
+              data: { lastVisitAt: visitNow, nextVisitAt },
+            });
+          }
+        }
+
         for (const item of normalizedItems) {
           const balance = stockBalanceMap.get(item.productId)!;
 

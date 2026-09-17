@@ -78,6 +78,12 @@ type RegionItem = {
   stockLocationId?: string | null;
 };
 
+type Representative = {
+  id: string;
+  name: string;
+  active: boolean;
+};
+
 type StockResponse = {
   locations?: Array<{ id: string; name: string }>;
   products?: Array<{
@@ -321,6 +327,8 @@ export default function MobileAdminOrderForm() {
   const [products, setProducts] = useState<Product[]>([]);
   const [stockLocations, setStockLocations] = useState<StockLocation[]>([]);
   const [regions, setRegions] = useState<RegionItem[]>([]);
+  const [representatives, setRepresentatives] = useState<Representative[]>([]);
+  const [sellerId, setSellerId] = useState("");
   const [stockByProductAndLocation, setStockByProductAndLocation] = useState<
     Record<string, Record<string, number>>
   >({});
@@ -346,7 +354,7 @@ export default function MobileAdminOrderForm() {
         setLoading(true);
         setError(null);
 
-        const [authRes, clientsRes, productsRes, stockRes, stockLocationsRes, regionsRes] =
+        const [authRes, clientsRes, productsRes, stockRes, stockLocationsRes, regionsRes, representativesRes] =
           await Promise.all([
             fetch("/api/auth/me", { cache: "no-store" }),
             fetch("/api/clients", { cache: "no-store" }),
@@ -354,6 +362,7 @@ export default function MobileAdminOrderForm() {
             fetch("/api/stock", { cache: "no-store" }),
             fetch("/api/stock-locations", { cache: "no-store" }),
             fetch("/api/regions", { cache: "no-store" }),
+            fetch("/api/representatives", { cache: "no-store" }),
           ]);
 
         const authJson = (await authRes.json().catch(() => null)) as AuthResponse | null;
@@ -362,6 +371,7 @@ export default function MobileAdminOrderForm() {
         const stockJson = (await stockRes.json().catch(() => null)) as StockResponse | null;
         const stockLocationsJson = await stockLocationsRes.json().catch(() => null);
         const regionsJson = await regionsRes.json().catch(() => null);
+        const representativesJson = await representativesRes.json().catch(() => null);
 
         if (authRes.status === 401) {
           router.push("/login?redirect=/m/admin/orders/new");
@@ -395,6 +405,10 @@ export default function MobileAdminOrderForm() {
           ? regionsJson.items
           : [];
 
+        const nextRepresentatives: Representative[] = (
+          Array.isArray(representativesJson?.items) ? representativesJson.items : []
+        ).filter((rep: Representative) => rep.active);
+
         const stockMap: Record<string, Record<string, number>> = {};
         for (const product of stockJson?.products ?? []) {
           stockMap[product.id] = product.stock ?? {};
@@ -417,6 +431,8 @@ export default function MobileAdminOrderForm() {
         setProducts(activeProducts);
         setStockLocations(nextStockLocations);
         setRegions(nextRegions);
+        setRepresentatives(nextRepresentatives);
+        setSellerId((current) => current || nextRepresentatives[0]?.id || "");
         setStockByProductAndLocation(stockMap);
         setCart(
           activeProducts.map((product) => ({
@@ -696,6 +712,11 @@ export default function MobileAdminOrderForm() {
         return;
       }
 
+      if (!sellerId) {
+        setError("Selecione o vendedor responsável pela venda.");
+        return;
+      }
+
       if (selectedItems.length === 0) {
         setError("Adicione pelo menos um produto ao pedido.");
         return;
@@ -722,6 +743,7 @@ export default function MobileAdminOrderForm() {
           type: "SALE",
           clientId: selectedClientId,
           regionId: selectedClient.regionId,
+          sellerId,
           stockLocationId: selectedStockLocationId,
           items: selectedItems.map((item) => ({
             productId: item.productId,
@@ -1022,6 +1044,33 @@ router.push(targetPath);
           {stockLocations.map((location) => (
             <option key={location.id} value={location.id}>
               {location.name}
+            </option>
+          ))}
+        </select>
+      </MobileCard>
+
+      <MobileCard>
+        <MobileSectionTitle title="Vendedor" />
+
+        <select
+          value={sellerId}
+          onChange={(e) => setSellerId(e.target.value)}
+          style={{
+            width: "100%",
+            height: 46,
+            borderRadius: 14,
+            border: `1px solid ${colors.border}`,
+            background: colors.inputBg,
+            color: colors.text,
+            padding: "0 14px",
+            outline: "none",
+            fontSize: 14,
+          }}
+        >
+          <option value="">Selecione o vendedor</option>
+          {representatives.map((rep) => (
+            <option key={rep.id} value={rep.id}>
+              {rep.name}
             </option>
           ))}
         </select>

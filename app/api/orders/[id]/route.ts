@@ -11,6 +11,7 @@ import {
   StockMovementType,
 } from "@prisma/client";
 import { recomputeOrderPaymentStatus } from "@/lib/receivables";
+import { calculateSellerCommissionCents } from "@/lib/commission";
 
 type OrderItemPatchInput = {
   productId: string;
@@ -299,7 +300,6 @@ export async function PATCH(
             id: true,
             name: true,
             priceCents: true,
-            commissionCents: true,
             active: true,
             ncm: true,
             cfop: true,
@@ -332,7 +332,6 @@ export async function PATCH(
             cst: product.cst || "200",
             icmsRate: product.icmsRate ?? 17,
             unit: product.commercialUnit || "QU",
-            commissionCents: product.commissionCents ?? 0,
           };
         });
 
@@ -340,11 +339,8 @@ export async function PATCH(
           (sum, item) => sum + item.qty * item.unitCents,
           0
         );
-        commissionTotalCents = normalizedItems.reduce(
-          (sum, item) => sum + item.qty * item.commissionCents,
-          0
-        );
         totalCents = Math.max(0, subtotalCents - nextDiscountCents);
+        commissionTotalCents = calculateSellerCommissionCents(totalCents);
 
         const nextItems = new Map<string, number>();
         for (const item of normalizedItems) {
@@ -442,6 +438,7 @@ export async function PATCH(
         });
       } else if (discountCents !== undefined) {
         totalCents = Math.max(0, subtotalCents - nextDiscountCents);
+        commissionTotalCents = calculateSellerCommissionCents(totalCents);
       }
 
       // Se itens/desconto mudaram o total do pedido, mas ninguém mandou a

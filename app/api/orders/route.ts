@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth-user";
+import { calculateSellerCommissionCents } from "@/lib/commission";
 import {
   DefectReturnStatus,
   OrderType,
@@ -463,10 +464,8 @@ export async function POST(request: Request) {
             throw new Error("Vendedor não encontrado.");
           }
 
-          if (seller.regionId && seller.regionId !== regionId) {
-            throw new Error("O vendedor não pertence à região informada.");
-          }
-
+          // Vendedor identifica a comissão do pedido independente da região
+          // (comissão é única, 16%, e não depende mais de onde a venda caiu).
           if (authUser?.role === "REPRESENTATIVE" && seller.id !== authUser.id) {
             throw new Error(
               "Representante não pode criar pedido em nome de outro usuário."
@@ -526,7 +525,6 @@ export async function POST(request: Request) {
           id: true,
           name: true,
           priceCents: true,
-          commissionCents: true,
           active: true,
           ncm: true,
           cfop: true,
@@ -543,7 +541,6 @@ export async function POST(request: Request) {
         const productMap = new Map(products.map((p) => [p.id, p]));
 
         let subtotalCents = 0;
-        let commissionTotalCents = 0;
 
         const normalizedItems = itemsInput.map((item) => {
           const product = productMap.get(item.productId);
@@ -564,10 +561,6 @@ export async function POST(request: Request) {
             : Math.max(0, product.priceCents);
 
           subtotalCents += qty * unitCents;
-
-          if (!isDefectExchange) {
-            commissionTotalCents += qty * (product.commissionCents ?? 0);
-          }
 
           return {
             productId: product.id,
@@ -611,6 +604,10 @@ export async function POST(request: Request) {
         const totalCents = isDefectExchange
           ? 0
           : Math.max(0, subtotalCents - discountCents);
+
+        const commissionTotalCents = isDefectExchange
+          ? 0
+          : calculateSellerCommissionCents(totalCents);
 
         await ensureStockBalances(tx as any, stockLocationId!, productIds);
 

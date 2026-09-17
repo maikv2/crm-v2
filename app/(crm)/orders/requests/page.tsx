@@ -17,6 +17,12 @@ type RequestItem = {
   };
 };
 
+type Representative = {
+  id: string;
+  name: string;
+  active: boolean;
+};
+
 type OrderRequest = {
   id: string;
   status: "PENDING" | "APPROVED" | "REJECTED" | "CONVERTED_TO_ORDER";
@@ -99,6 +105,8 @@ export default function OrderRequestsPage() {
   const theme = getThemeColors(mode);
 
   const [requests, setRequests] = useState<OrderRequest[]>([]);
+  const [representatives, setRepresentatives] = useState<Representative[]>([]);
+  const [sellerId, setSellerId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +129,29 @@ export default function OrderRequestsPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    async function loadRepresentatives() {
+      try {
+        const res = await fetch("/api/representatives");
+        const data = await res.json();
+        const items: Representative[] = Array.isArray(data?.items) ? data.items : [];
+        const activeReps = items.filter((rep) => rep.active);
+        setRepresentatives(activeReps);
+        setSellerId((current) => current || activeReps[0]?.id || "");
+      } catch {
+        // Sem vendedores carregados, o select fica vazio e a conversão exige seleção manual.
+      }
+    }
+
+    loadRepresentatives();
+  }, []);
+
   async function updateStatus(id: string, status: string) {
+    if (status === "CONVERTED_TO_ORDER" && !sellerId) {
+      setError("Selecione o vendedor responsável pela comissão antes de converter.");
+      return;
+    }
+
     setBusyId(id);
     setError(null);
     setConvertedOrderId(null);
@@ -129,7 +159,9 @@ export default function OrderRequestsPage() {
       const res = await fetch(`/api/orders/requests/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(
+          status === "CONVERTED_TO_ORDER" ? { status, sellerId } : { status }
+        ),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -160,6 +192,44 @@ export default function OrderRequestsPage() {
         Solicitações de pedido feitas pelo cliente na loja online (v2distribuidora.com). Toda solicitação precisa ser
         aprovada aqui antes de virar um pedido de verdade.
       </p>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 20,
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 10,
+          padding: "12px 14px",
+        }}
+      >
+        <label style={{ fontSize: 13, fontWeight: 700, color: theme.text, whiteSpace: "nowrap" }}>
+          Vendedor (comissão)
+        </label>
+        <select
+          value={sellerId}
+          onChange={(e) => setSellerId(e.target.value)}
+          style={{
+            flex: 1,
+            maxWidth: 280,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 8,
+            padding: "6px 10px",
+            background: theme.inputBg ?? theme.cardBg,
+            color: theme.text,
+            fontSize: 13,
+          }}
+        >
+          <option value="">Selecione...</option>
+          {representatives.map((rep) => (
+            <option key={rep.id} value={rep.id}>
+              {rep.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {error ? (
         <div style={{ background: "#fee2e2", color: "#991b1b", padding: 12, borderRadius: 8, marginBottom: 16 }}>

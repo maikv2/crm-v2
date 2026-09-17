@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PortalOrderRequestStatus, OrderType, PaymentMethod } from "@prisma/client";
+import { calculateSellerCommissionCents } from "@/lib/commission";
 
 type RouteContext = {
   params: Promise<{
@@ -59,6 +60,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         );
       }
 
+      const sellerId = typeof body?.sellerId === "string" ? body.sellerId : undefined;
+
+      if (!sellerId) {
+        return NextResponse.json(
+          { error: "Selecione o vendedor responsável pela comissão antes de converter." },
+          { status: 400 }
+        );
+      }
+
+      const seller = await prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { id: true, active: true, role: true },
+      });
+
+      if (!seller || seller.role !== "REPRESENTATIVE" || !seller.active) {
+        return NextResponse.json(
+          { error: "Vendedor inválido ou inativo." },
+          { status: 400 }
+        );
+      }
+
       const productIds = items.map((item) => item.productId);
 
       const products = await prisma.product.findMany({
@@ -99,9 +121,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         data: {
           clientId: portalRequest.clientId,
           regionId: portalRequest.regionId!,
+          sellerId: seller.id,
           type: OrderType.SALE,
           subtotalCents: subtotal,
           totalCents: subtotal,
+          commissionTotalCents: calculateSellerCommissionCents(subtotal),
           paymentMethod,
           financialMovement: false,
           notes: [

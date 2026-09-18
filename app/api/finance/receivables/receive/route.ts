@@ -4,6 +4,7 @@ import {
   PaymentMethod,
 } from "@prisma/client";
 import { markReceivableInstallmentPaid } from "@/lib/receivables";
+import { sendPaymentReceipt } from "@/lib/send-payment-receipt";
 
 function isValidUuid(value?: string | null) {
   if (!value) return false;
@@ -44,6 +45,10 @@ export async function POST(request: Request) {
         paymentMethod: paymentMethod ?? undefined,
       })
     );
+
+    if (!result.alreadyProcessed && result.receiptId) {
+      await sendPaymentReceipt(result.receiptId);
+    }
 
     return NextResponse.json({
       ok: true,

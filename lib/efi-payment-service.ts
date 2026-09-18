@@ -21,6 +21,7 @@ import {
   mapEfiChargeStatus,
 } from "@/lib/efi-charges";
 import { markReceivableInstallmentPaid } from "@/lib/receivables";
+import { sendPaymentReceipt } from "@/lib/send-payment-receipt";
 
 type ClientForBillet = {
   name: string;
@@ -440,8 +441,10 @@ async function markOrderInstallmentsPaidFromLink(
     orderBy: { installmentNumber: "asc" },
   });
 
+  const receiptIds: string[] = [];
+
   for (const installment of openInstallments) {
-    await markReceivableInstallmentPaid(tx, {
+    const result = await markReceivableInstallmentPaid(tx, {
       installmentId: installment.id,
       paymentMethod: PaymentMethod.CARD_CREDIT,
       amountCents: installment.amountCents,
@@ -452,7 +455,13 @@ async function markOrderInstallmentsPaidFromLink(
         ? `Baixa automática Efí (link de pagamento) da cobrança ${params.providerChargeId}.`
         : "Baixa automática Efí (link de pagamento).",
     });
+
+    if (!result.alreadyProcessed && result.receiptId) {
+      receiptIds.push(result.receiptId);
+    }
   }
+
+  return receiptIds;
 }
 
 async function updateExternalPaymentFromLinkCharge(
@@ -464,7 +473,7 @@ async function updateExternalPaymentFromLinkCharge(
     artifacts.providerChargeId || payment.providerChargeId || null;
   const paid = isEfiPaidStatus(charge.status);
 
-  return prisma.$transaction(async (tx) => {
+  const { updated, receiptIds } = await prisma.$transaction(async (tx) => {
     const updated = await tx.externalPayment.update({
       where: { id: payment.id },
       data: {
@@ -479,15 +488,23 @@ async function updateExternalPaymentFromLinkCharge(
       },
     });
 
+    let receiptIds: string[] = [];
+
     if (paid) {
-      await markOrderInstallmentsPaidFromLink(tx, {
+      receiptIds = await markOrderInstallmentsPaidFromLink(tx, {
         orderId: payment.orderId,
         providerChargeId,
       });
     }
 
-    return updated;
+    return { updated, receiptIds };
   });
+
+  for (const receiptId of receiptIds) {
+    await sendPaymentReceipt(receiptId);
+  }
+
+  return updated;
 }
 
 export async function ensureEfiPaymentLinkForOrder(
@@ -584,7 +601,7 @@ async function updateExternalPaymentFromCharge(
     artifacts.providerChargeId || payment.providerChargeId || null;
   const paid = isEfiPaidStatus(charge.status);
 
-  return prisma.$transaction(async (tx) => {
+  const { updated, receiptId } = await prisma.$transaction(async (tx) => {
     const updated = await tx.externalPayment.update({
       where: { id: payment.id },
       data: {
@@ -605,18 +622,30 @@ async function updateExternalPaymentFromCharge(
       },
     });
 
+    let receiptId: string | null = null;
+
     if (paid && payment.installmentId) {
-      await markReceivableInstallmentPaid(tx, {
+      const result = await markReceivableInstallmentPaid(tx, {
         installmentId: payment.installmentId,
         paymentMethod: PaymentMethod.BOLETO,
         amountCents: artifacts.amountCents || payment.amountCents,
         externalReference: providerChargeId ? `EFI:${providerChargeId}` : null,
         notes: `Baixa automática Efí da cobrança ${providerChargeId ?? payment.id}.`,
       });
+
+      if (!result.alreadyProcessed) {
+        receiptId = result.receiptId;
+      }
     }
 
-    return updated;
+    return { updated, receiptId };
   });
+
+  if (receiptId) {
+    await sendPaymentReceipt(receiptId);
+  }
+
+  return updated;
 }
 
 async function createBilletForInstallment(
@@ -827,9 +856,11 @@ export async function processEfiChargesNotification(token: string) {
         },
       });
 
+      const receiptIds: string[] = [];
+
       if (isEfiPaidStatus(currentStatus)) {
         if (externalPayment.installmentId) {
-          await markReceivableInstallmentPaid(tx, {
+          const markResult = await markReceivableInstallmentPaid(tx, {
             installmentId: externalPayment.installmentId,
             paymentMethod:
               externalPayment.type === ExternalPaymentType.BOLIX
@@ -843,11 +874,16 @@ export async function processEfiChargesNotification(token: string) {
               ? `Baixa automática Efí da cobrança ${externalPayment.providerChargeId}.`
               : "Baixa automática Efí.",
           });
+
+          if (!markResult.alreadyProcessed && markResult.receiptId) {
+            receiptIds.push(markResult.receiptId);
+          }
         } else if (externalPayment.type === ExternalPaymentType.PAYMENT_LINK) {
-          await markOrderInstallmentsPaidFromLink(tx, {
+          const linkReceiptIds = await markOrderInstallmentsPaidFromLink(tx, {
             orderId: externalPayment.orderId,
             providerChargeId: externalPayment.providerChargeId,
           });
+          receiptIds.push(...linkReceiptIds);
         }
       }
 
@@ -856,10 +892,15 @@ export async function processEfiChargesNotification(token: string) {
         data: { processedAt: new Date(), error: null },
       });
 
-      return { skipped: false, eventId: event.id };
+      return { skipped: false, eventId: event.id, receiptIds };
     });
 
     processed.push(result);
+
+    const resultReceiptIds = (result as { receiptIds?: string[] }).receiptIds ?? [];
+    for (const receiptId of resultReceiptIds) {
+      await sendPaymentReceipt(receiptId);
+    }
   }
 
   return {

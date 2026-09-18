@@ -46,6 +46,10 @@ export async function PUT(request: Request) {
     const freightCostCents = Number(body.freightCostCents ?? 0);
 
     const priceCents = Number(body.priceCents ?? 0);
+    const sitePriceCents =
+      body.sitePriceCents === null || body.sitePriceCents === undefined || body.sitePriceCents === ""
+        ? null
+        : Number(body.sitePriceCents);
 
 const commissionCents = Number(body.commissionCents ?? 0);
 
@@ -75,6 +79,7 @@ const origem = body.origem ? String(body.origem) : "2";
   barcode,
   imageUrl,
   priceCents,
+  sitePriceCents,
   purchaseCostCents,
   packagingCostCents,
   extraCostCents,

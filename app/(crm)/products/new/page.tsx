@@ -37,6 +37,7 @@ export default function NewProductPage() {
   const [previewUrl, setPreviewUrl] = useState("");
 
   const [price, setPrice] = useState("");
+  const [sitePrice, setSitePrice] = useState("");
   const [purchaseCost, setPurchaseCost] = useState("");
   const [packagingCost, setPackagingCost] = useState("");
   const [extraCost, setExtraCost] = useState("");
@@ -54,6 +55,7 @@ export default function NewProductPage() {
   const [error, setError] = useState<string | null>(null);
 
   const priceCents = useMemo(() => toCents(price), [price]);
+  const sitePriceCents = useMemo(() => (sitePrice ? toCents(sitePrice) : null), [sitePrice]);
   const purchaseCostCents = useMemo(() => toCents(purchaseCost), [purchaseCost]);
   const packagingCostCents = useMemo(() => toCents(packagingCost), [packagingCost]);
   const extraCostCents = useMemo(() => toCents(extraCost), [extraCost]);
@@ -142,6 +144,7 @@ export default function NewProductPage() {
           barcode: barcode || null,
           imageUrl: imageUrl || null,
           priceCents,
+          sitePriceCents,
           purchaseCostCents,
           packagingCostCents,
           extraCostCents,
@@ -435,7 +438,7 @@ export default function NewProductPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns: "1fr 1fr 1fr",
               gap: 12,
               marginBottom: 12,
             }}
@@ -447,6 +450,16 @@ export default function NewProductPage() {
                 placeholder="Ex: 12,90"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Preço site (atacado)</label>
+              <input
+                style={inputStyle}
+                placeholder="Vazio = usa o preço de venda"
+                value={sitePrice}
+                onChange={(e) => setSitePrice(e.target.value)}
               />
             </div>
 

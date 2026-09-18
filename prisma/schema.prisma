@@ -217,6 +217,10 @@ model Product {
   createdAt          DateTime @default(now())
   id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   priceCents         Int
+  // Preco de atacado da loja online (v2distribuidora.com) - separado do
+  // priceCents (usado em pedidos normais/consignacao com expositores)
+  // porque o site vende no atacado por um valor diferente.
+  sitePriceCents     Int?
   barcode            String?
   cest               String?
   ncm                String?

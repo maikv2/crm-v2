@@ -91,12 +91,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
       const productMap = new Map(products.map((product) => [product.id, product]));
 
+      // Pedido vindo do site vende no preco de atacado (sitePriceCents),
+      // diferente do preco normal/consignacao (priceCents). Cai pro preco
+      // normal se o produto ainda nao tiver preco de site cadastrado.
+      const useSitePrice = portalRequest.source === "site";
+
       let subtotal = 0;
 
       const orderItems = items.map((item) => {
         const product = productMap.get(item.productId);
 
-        const unit = product?.priceCents ?? 0;
+        const unit = (useSitePrice ? product?.sitePriceCents : null) ?? product?.priceCents ?? 0;
         const line = unit * item.quantity;
 
         subtotal += line;

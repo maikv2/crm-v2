@@ -59,7 +59,7 @@ export async function notifyCompanyNewOrderRequest(params: { requestId: string; 
       include: {
         client: { select: { name: true, code: true } },
         items: {
-          include: { product: { select: { name: true, sku: true, priceCents: true } } },
+          include: { product: { select: { name: true, sku: true, priceCents: true, sitePriceCents: true } } },
           orderBy: { createdAt: "asc" },
         },
       },
@@ -67,8 +67,14 @@ export async function notifyCompanyNewOrderRequest(params: { requestId: string; 
 
     if (!portalRequest) return;
 
+    // Pedido do site usa o preco de atacado (sitePriceCents), nao o preco
+    // normal/consignacao.
+    const useSitePrice = portalRequest.source === "site";
+    const itemPriceCents = (item: (typeof portalRequest.items)[number]) =>
+      (useSitePrice ? item.product.sitePriceCents : null) ?? item.product.priceCents ?? 0;
+
     const subtotalCents = portalRequest.items.reduce(
-      (sum, item) => sum + item.quantity * (item.product.priceCents ?? 0),
+      (sum, item) => sum + item.quantity * itemPriceCents(item),
       0
     );
 

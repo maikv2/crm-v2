@@ -67,6 +67,10 @@ export async function POST(request: Request) {
     const imageUrl = body.imageUrl ? String(body.imageUrl).trim() : null;
 
     const priceCents = Number(body.priceCents ?? 0);
+    const sitePriceCents =
+      body.sitePriceCents === null || body.sitePriceCents === undefined || body.sitePriceCents === ""
+        ? null
+        : Number(body.sitePriceCents);
 
     const purchaseCostCents = Number(body.purchaseCostCents ?? 0);
     const packagingCostCents = Number(body.packagingCostCents ?? 0);
@@ -97,6 +101,7 @@ export async function POST(request: Request) {
         barcode,
         imageUrl,
         priceCents,
+        sitePriceCents,
         purchaseCostCents,
         packagingCostCents,
         extraCostCents,

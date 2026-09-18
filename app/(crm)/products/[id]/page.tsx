@@ -48,6 +48,7 @@ export default function EditProductPage() {
   const [imageUrl, setImageUrl] = useState("");
 
   const [price, setPrice] = useState("");
+  const [sitePrice, setSitePrice] = useState("");
   const [purchaseCost, setPurchaseCost] = useState("");
   const [packagingCost, setPackagingCost] = useState("");
   const [extraCost, setExtraCost] = useState("");
@@ -61,6 +62,7 @@ export default function EditProductPage() {
   const [active, setActive] = useState(true);
 
   const priceCents = useMemo(() => toCents(price), [price]);
+  const sitePriceCents = useMemo(() => (sitePrice ? toCents(sitePrice) : null), [sitePrice]);
   const purchaseCostCents = useMemo(() => toCents(purchaseCost), [purchaseCost]);
   const packagingCostCents = useMemo(() => toCents(packagingCost), [packagingCost]);
   const extraCostCents = useMemo(() => toCents(extraCost), [extraCost]);
@@ -118,6 +120,7 @@ export default function EditProductPage() {
         setImageUrl(product.imageUrl ?? "");
 
         setPrice(fromCents(product.priceCents));
+        setSitePrice(product.sitePriceCents != null ? fromCents(product.sitePriceCents) : "");
         setPurchaseCost(fromCents(product.purchaseCostCents));
         setPackagingCost(fromCents(product.packagingCostCents));
         setExtraCost(fromCents(product.extraCostCents));
@@ -186,6 +189,7 @@ export default function EditProductPage() {
         barcode: barcode || null,
         imageUrl: imageUrl || null,
         priceCents,
+        sitePriceCents,
         purchaseCostCents,
         packagingCostCents,
         extraCostCents,
@@ -463,7 +467,7 @@ export default function EditProductPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: 12,
               marginBottom: 12,
             }}
@@ -474,6 +478,16 @@ export default function EditProductPage() {
                 style={inputStyle}
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Preço site (atacado)</label>
+              <input
+                style={inputStyle}
+                value={sitePrice}
+                onChange={(e) => setSitePrice(e.target.value)}
+                placeholder="Vazio = usa o preço de venda"
               />
             </div>
 

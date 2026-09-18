@@ -627,17 +627,9 @@ export async function POST(request: Request) {
           stockBalances.map((balance) => [balance.productId, balance])
         );
 
-        for (const item of normalizedItems) {
-          const balance = stockBalanceMap.get(item.productId);
-
-          if (!balance || balance.quantity < item.qty) {
-            throw new Error(
-              `Estoque insuficiente para o produto "${item.productName}". Saldo atual: ${
-                balance?.quantity ?? 0
-              }, solicitado: ${item.qty}.`
-            );
-          }
-        }
+        // Checagem de estoque insuficiente desativada temporariamente (estoque
+        // tratado como infinito) para não bloquear pedidos enquanto o
+        // controle de estoque está sendo ajustado.
 
         // Divisão de forma de pagamento: usa o que veio em `payments`, ou
         // cai para uma única divisão com a forma legada (compatibilidade).

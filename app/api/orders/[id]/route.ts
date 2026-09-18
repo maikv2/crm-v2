@@ -392,12 +392,9 @@ export async function PATCH(
           const balance = balanceMap.get(productId);
           if (!balance) throw new Error("Saldo de estoque não encontrado.");
 
-          if (diff > 0 && balance.quantity < diff) {
-            const productName = productMap.get(productId)?.name ?? "produto";
-            throw new Error(
-              `Estoque insuficiente para o produto "${productName}". Saldo atual: ${balance.quantity}, adicional solicitado: ${diff}.`
-            );
-          }
+          // Checagem de estoque insuficiente desativada temporariamente
+          // (estoque tratado como infinito) para não bloquear a edição do
+          // pedido enquanto o controle de estoque está sendo ajustado.
 
           await tx.stockMovement.create({
             data: {

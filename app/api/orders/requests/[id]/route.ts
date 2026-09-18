@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PortalOrderRequestStatus, OrderType, PaymentMethod } from "@prisma/client";
 import { calculateSellerCommissionCents } from "@/lib/commission";
+import { notifyClientOrderApproved } from "@/lib/order-request-notify";
 
 type RouteContext = {
   params: Promise<{
@@ -46,6 +47,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         where: { id },
         data: { status },
       });
+
+      if (status === PortalOrderRequestStatus.APPROVED) {
+        await notifyClientOrderApproved({ requestId: id });
+      }
 
       return NextResponse.json({ request: updated });
     }

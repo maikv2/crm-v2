@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PortalOrderRequestStatus } from "@prisma/client";
 import { readOrderApprovalToken } from "@/lib/order-approval-token";
+import { notifyClientOrderApproved } from "@/lib/order-request-notify";
 
 /**
  * Aprovacao rapida de pedido via link do WhatsApp - nao exige login no
@@ -91,6 +92,8 @@ export async function POST(request: Request) {
     data: { status: PortalOrderRequestStatus.APPROVED },
     select: { id: true, status: true },
   });
+
+  await notifyClientOrderApproved({ requestId: portalRequest.id });
 
   return NextResponse.json({ ok: true, request: updated });
 }

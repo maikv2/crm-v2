@@ -120,3 +120,43 @@ export async function notifyCompanyNewOrderRequest(params: { requestId: string; 
     }
   }
 }
+
+/**
+ * Avisa o cliente pelo WhatsApp que o pedido dele foi aprovado. Chamado
+ * nos dois lugares onde uma solicitacao pode ser aprovada: aprovacao
+ * rapida pelo link do WhatsApp e aprovacao manual dentro do CRM.
+ */
+export async function notifyClientOrderApproved(params: { requestId: string }) {
+  try {
+    const portalRequest = await prisma.portalOrderRequest.findUnique({
+      where: { id: params.requestId },
+      include: {
+        client: { select: { name: true, whatsapp: true, phone: true } },
+      },
+    });
+
+    if (!portalRequest) return;
+
+    const whatsapp = portalRequest.client.whatsapp || portalRequest.client.phone;
+    if (!whatsapp) {
+      console.warn("Cliente sem WhatsApp cadastrado - aviso de aprovacao nao enviado.");
+      return;
+    }
+
+    const greetingName = portalRequest.client.name;
+
+    await sendText({
+      phone: whatsapp,
+      message:
+        `Boas notícias, ${greetingName}! ✅\n\n` +
+        `Seu pedido na V2 Distribuidora foi aprovado. Em breve nossa equipe entra em contato por aqui pra combinar o prazo de entrega.\n\n` +
+        `Qualquer dúvida, é só chamar por aqui mesmo.`,
+    });
+  } catch (error) {
+    if (error instanceof ZApiConfigError) {
+      console.warn("WhatsApp nao configurado - aviso de aprovacao ao cliente nao enviado.");
+    } else {
+      console.error("Falha ao enviar aviso de aprovacao para o cliente:", error);
+    }
+  }
+}

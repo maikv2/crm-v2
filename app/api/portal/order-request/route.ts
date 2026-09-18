@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { PortalOrderRequestStatus } from "@prisma/client";
+import { notifyCompanyNewOrderRequest } from "@/lib/order-request-notify";
 
 type RequestItemInput = {
   productId?: string;
@@ -207,6 +208,8 @@ export async function POST(request: Request) {
     const subtotalCents = createdRequest.items.reduce((acc, item) => {
       return acc + item.quantity * (item.product.priceCents ?? 0);
     }, 0);
+
+    await notifyCompanyNewOrderRequest({ requestId: createdRequest.id, request });
 
     return NextResponse.json(
       {

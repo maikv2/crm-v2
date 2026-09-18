@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendText, ZApiConfigError } from "@/lib/zapi";
+import { notifyCompanyNewOrderRequest } from "@/lib/order-request-notify";
 
 type EcommerceCustomer = {
   companyName?: string;
@@ -428,6 +429,8 @@ export async function POST(request: Request) {
       contactName: normalizeText(customer.contactName) || null,
       companyName,
     });
+
+    await notifyCompanyNewOrderRequest({ requestId: portalRequest.id, request });
 
     return NextResponse.json(
       {

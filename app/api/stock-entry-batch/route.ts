@@ -115,7 +115,7 @@ export async function POST(request: Request) {
       }
 
       return results;
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     return NextResponse.json(
       { ok: true, count: movements.length, movements },

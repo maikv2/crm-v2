@@ -13,6 +13,10 @@ function buildSiteImageUrl(sku: string) {
   return `https://v2distribuidora.com/produtos/${sku.toLowerCase()}/1.jpg`;
 }
 
+function buildProductPageUrl(sku: string) {
+  return `https://v2distribuidora.com/loja/produto/${sku.toLowerCase()}`;
+}
+
 /**
  * Busca a foto do produto no site e converte pra data URL - @react-pdf
  * as vezes recusa imagem remota (formato nao reconhecido, 404, etc), entao
@@ -66,6 +70,7 @@ async function sendProductHighlights(params: { whatsapp: string; logoDataUrl: st
         name: product.name,
         priceCents: product.sitePriceCents ?? 0,
         imageUrl,
+        productUrl: buildProductPageUrl(product.sku),
       });
     }
 

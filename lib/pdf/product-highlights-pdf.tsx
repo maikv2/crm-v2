@@ -6,6 +6,7 @@ export type ProductHighlightItem = {
   name: string;
   priceCents: number;
   imageUrl: string | null;
+  productUrl: string;
 };
 
 export type ProductHighlightsPdfData = {
@@ -115,6 +116,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 700,
     color: "#2563eb",
+    marginBottom: 6,
+  },
+  cardLink: {
+    fontSize: 8,
+    color: "#2563eb",
+    textDecoration: "none",
+    textAlign: "center",
   },
   ctaCard: {
     borderWidth: 1,
@@ -187,6 +195,9 @@ export function ProductHighlightsPdfDocument({ data }: { data: ProductHighlights
               </View>
               <Text style={styles.cardName}>{item.name}</Text>
               <Text style={styles.cardPrice}>{formatMoneyFromCents(item.priceCents)}</Text>
+              <Link src={item.productUrl} style={styles.cardLink}>
+                Ver na loja
+              </Link>
             </View>
           ))}
         </View>

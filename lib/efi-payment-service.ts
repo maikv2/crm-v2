@@ -114,6 +114,21 @@ function formatDateForEfi(date: Date) {
   return `${byType.year}-${byType.month}-${byType.day}`;
 }
 
+/**
+ * Formata uma data-calendario (sem hora, ex: vencimento de parcela) pro
+ * formato aceito pela Efí. Usa os componentes UTC direto porque essas datas
+ * sao criadas a partir de string "YYYY-MM-DD" (meia-noite UTC) - convertendo
+ * pelo fuso de Sao Paulo (como formatDateForEfi faz) a meia-noite UTC vira
+ * 21h do dia anterior, e o boleto sai com vencimento um dia antes do
+ * escolhido.
+ */
+function formatCalendarDateForEfi(date: Date) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function dateFromEfi(value?: string | null) {
   if (!value) return null;
   const date = new Date(`${value}T12:00:00-03:00`);
@@ -655,7 +670,7 @@ async function createBilletForInstallment(
 ) {
   const customId = buildCustomId(installment.id);
   const customer = buildCustomer(order.client);
-  const expireAt = formatDateForEfi(installment.dueDate);
+  const expireAt = formatCalendarDateForEfi(installment.dueDate);
   const payload = {
     items: [
       {

@@ -210,8 +210,9 @@ export default function TransfersPage() {
 
   const [data, setData] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [regionFilter, setRegionFilter] = useState("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   async function load() {
     setLoading(true);
@@ -228,24 +229,38 @@ export default function TransfersPage() {
     }
   }
 
-  async function confirmTransfer(id: string) {
-    const confirmed = window.confirm("Confirmar repasse para matriz?");
+  async function confirmTransfer(ids: string[]) {
+    if (!ids.length) return;
+
+    const confirmed = window.confirm(
+      ids.length === 1
+        ? "Confirmar repasse para matriz?"
+        : `Confirmar repasse de ${ids.length} pedidos para a matriz?`
+    );
     if (!confirmed) return;
 
     try {
-      setSavingId(id);
+      setSaving(true);
 
-      await fetch("/api/finance/transfers/confirm", {
+      const res = await fetch("/api/finance/transfers/confirm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ ids }),
       });
 
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        alert(json?.error || "Erro ao confirmar repasse.");
+        return;
+      }
+
+      setSelectedIds((current) => current.filter((id) => !ids.includes(id)));
       await load();
     } finally {
-      setSavingId(null);
+      setSaving(false);
     }
   }
 
@@ -295,6 +310,38 @@ export default function TransfersPage() {
       canceled,
     };
   }, [filteredData]);
+
+  const pendingRows = useMemo(
+    () => filteredData.filter((item) => item.status === "PENDING"),
+    [filteredData]
+  );
+
+  useEffect(() => {
+    setSelectedIds((current) =>
+      current.filter((id) => pendingRows.some((item) => item.id === id))
+    );
+  }, [pendingRows]);
+
+  const selectedTotalCents = useMemo(() => {
+    return pendingRows.reduce((sum, item) => {
+      return selectedIds.includes(item.id) ? sum + item.amountCents : sum;
+    }, 0);
+  }, [pendingRows, selectedIds]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  }
+
+  function toggleAll() {
+    if (selectedIds.length === pendingRows.length) {
+      setSelectedIds([]);
+      return;
+    }
+
+    setSelectedIds(pendingRows.map((item) => item.id));
+  }
 
   if (loading) {
     return (
@@ -414,8 +461,53 @@ export default function TransfersPage() {
       <Block
         title="Lista de repasses"
         theme={theme}
-        right={<ActionButton label="Atualizar" theme={theme} onClick={load} />}
+        right={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <ActionButton
+              label={
+                selectedIds.length === pendingRows.length && pendingRows.length
+                  ? "Limpar seleção"
+                  : "Selecionar todos"
+              }
+              theme={theme}
+              onClick={toggleAll}
+              disabled={!pendingRows.length}
+            />
+            <ActionButton label="Atualizar" theme={theme} onClick={load} />
+          </div>
+        }
       >
+        {pendingRows.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 14,
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: `1px solid ${theme.border}`,
+              background: subtleCard,
+            }}
+          >
+            <div style={{ fontSize: 13, color: theme.subtext }}>
+              {selectedIds.length
+                ? `${selectedIds.length} repasse(s) selecionado(s) • ${money(selectedTotalCents)}`
+                : "Selecione um ou mais repasses pendentes pra confirmar em massa."}
+            </div>
+
+            <ActionButton
+              label={saving ? "Confirmando..." : "Repassar selecionados"}
+              theme={theme}
+              onClick={() => confirmTransfer(selectedIds)}
+              disabled={saving || selectedIds.length === 0}
+              primary
+            />
+          </div>
+        )}
+
         <div
           style={{
             overflowX: "auto",
@@ -437,6 +529,7 @@ export default function TransfersPage() {
                   background: theme.isDark ? "#0b1324" : "#f8fafc",
                 }}
               >
+                <th style={th(theme)}></th>
                 <th style={th(theme)}>Região</th>
                 <th style={th(theme)}>Pedido</th>
                 <th style={th(theme)}>Valor</th>
@@ -448,67 +541,82 @@ export default function TransfersPage() {
             </thead>
 
             <tbody>
-              {filteredData.map((item) => (
-                <tr
-                  key={item.id}
-                  style={{
-                    borderTop: `1px solid ${theme.border}`,
-                    background: theme.cardBg,
-                  }}
-                >
-                  <td style={td(theme)}>{item.region?.name ?? "-"}</td>
+              {filteredData.map((item) => {
+                const isPending = item.status === "PENDING";
+                const checked = selectedIds.includes(item.id);
 
-                  <td style={td(theme)}>
-                    {item.receipt.order?.number
-                      ? `PED-${String(item.receipt.order.number).padStart(4, "0")}`
-                      : "-"}
-                  </td>
-
-                  <td style={{ ...td(theme), fontWeight: 700 }}>
-                    {money(item.amountCents)}
-                  </td>
-
-                  <td style={td(theme)}>{formatDate(item.createdAt)}</td>
-
-                  <td
+                return (
+                  <tr
+                    key={item.id}
                     style={{
-                      ...td(theme),
-                      fontWeight: 700,
-                      color: statusColor(item.status),
+                      borderTop: `1px solid ${theme.border}`,
+                      background: theme.cardBg,
                     }}
                   >
-                    {statusLabel(item.status)}
-                  </td>
+                    <td style={td(theme)}>
+                      {isPending && (
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSelected(item.id)}
+                        />
+                      )}
+                    </td>
 
-                  <td style={td(theme)}>{formatDate(item.transferredAt)}</td>
+                    <td style={td(theme)}>{item.region?.name ?? "-"}</td>
 
-                  <td style={td(theme)}>
-                    {item.status === "PENDING" ? (
-                      <ActionButton
-                        label={savingId === item.id ? "Salvando..." : "Marcar repasse"}
-                        theme={theme}
-                        onClick={() => confirmTransfer(item.id)}
-                        disabled={savingId === item.id}
-                        primary
-                      />
-                    ) : (
-                      <span
-                        style={{
-                          fontSize: 13,
-                          color: theme.subtext,
-                        }}
-                      >
-                        -
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    <td style={td(theme)}>
+                      {item.receipt.order?.number
+                        ? `PED-${String(item.receipt.order.number).padStart(4, "0")}`
+                        : "-"}
+                    </td>
+
+                    <td style={{ ...td(theme), fontWeight: 700 }}>
+                      {money(item.amountCents)}
+                    </td>
+
+                    <td style={td(theme)}>{formatDate(item.createdAt)}</td>
+
+                    <td
+                      style={{
+                        ...td(theme),
+                        fontWeight: 700,
+                        color: statusColor(item.status),
+                      }}
+                    >
+                      {statusLabel(item.status)}
+                    </td>
+
+                    <td style={td(theme)}>{formatDate(item.transferredAt)}</td>
+
+                    <td style={td(theme)}>
+                      {isPending ? (
+                        <ActionButton
+                          label="Marcar repasse"
+                          theme={theme}
+                          onClick={() => confirmTransfer([item.id])}
+                          disabled={saving}
+                          primary
+                        />
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 13,
+                            color: theme.subtext,
+                          }}
+                        >
+                          -
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
 
               {filteredData.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     style={{
                       padding: 24,
                       textAlign: "center",

@@ -139,22 +139,32 @@ function SummaryCard({
   value,
   theme,
   valueColor,
+  onClick,
+  active,
 }: {
   title: string;
   value: string;
   theme: ThemeShape;
   valueColor?: string;
+  onClick?: () => void;
+  active?: boolean;
 }) {
   return (
     <div
+      onClick={onClick}
       style={{
         background: theme.cardBg,
-        border: `1px solid ${theme.border}`,
+        border: `1px solid ${active ? valueColor || theme.primary : theme.border}`,
+        boxSizing: "border-box",
         borderRadius: 16,
         padding: 18,
-        boxShadow: theme.isDark
+        cursor: onClick ? "pointer" : "default",
+        boxShadow: active
+          ? `0 0 0 2px ${valueColor || theme.primary}33`
+          : theme.isDark
           ? "0 10px 30px rgba(2,6,23,0.20)"
           : "0 8px 24px rgba(15,23,42,0.05)",
+        transition: "all 0.15s ease",
       }}
     >
       <div
@@ -243,6 +253,9 @@ export default function ReceivablesPage() {
   const [data, setData] = useState<Installment[]>([]);
   const [loading, setLoading] = useState(true);
   const [regionFilter, setRegionFilter] = useState("all");
+  const [bucketFilter, setBucketFilter] = useState<
+    "all" | "overdue" | "dueToday" | "dueThisWeek" | "future"
+  >("all");
 
   async function load() {
     setLoading(true);
@@ -371,6 +384,22 @@ export default function ReceivablesPage() {
     };
   }, [grouped]);
 
+  // Igual ao mobile: só títulos em aberto, vencidos primeiro e depois por
+  // vencimento - sem misturar com os já pagos nem ordenar por lançamento.
+  const orderedOpenData = useMemo(
+    () => [...grouped.overdue, ...grouped.dueToday, ...grouped.dueThisWeek, ...grouped.future],
+    [grouped]
+  );
+
+  const visibleData = useMemo(() => {
+    if (bucketFilter === "all") return orderedOpenData;
+    return grouped[bucketFilter];
+  }, [bucketFilter, orderedOpenData, grouped]);
+
+  function toggleBucket(bucket: "overdue" | "dueToday" | "dueThisWeek" | "future") {
+    setBucketFilter((prev) => (prev === bucket ? "all" : bucket));
+  }
+
   if (loading) {
     return (
       <div
@@ -468,6 +497,8 @@ export default function ReceivablesPage() {
           value={money(totals.dueToday)}
           theme={theme}
           valueColor="#ea580c"
+          active={bucketFilter === "dueToday"}
+          onClick={() => toggleBucket("dueToday")}
         />
 
         <SummaryCard
@@ -475,6 +506,8 @@ export default function ReceivablesPage() {
           value={money(totals.dueThisWeek)}
           theme={theme}
           valueColor="#ca8a04"
+          active={bucketFilter === "dueThisWeek"}
+          onClick={() => toggleBucket("dueThisWeek")}
         />
 
         <SummaryCard
@@ -482,6 +515,8 @@ export default function ReceivablesPage() {
           value={money(totals.future)}
           theme={theme}
           valueColor="#2563eb"
+          active={bucketFilter === "future"}
+          onClick={() => toggleBucket("future")}
         />
 
         <SummaryCard
@@ -489,6 +524,8 @@ export default function ReceivablesPage() {
           value={money(totals.overdue)}
           theme={theme}
           valueColor="#dc2626"
+          active={bucketFilter === "overdue"}
+          onClick={() => toggleBucket("overdue")}
         />
       </div>
 
@@ -496,11 +533,20 @@ export default function ReceivablesPage() {
         title="Parcelas"
         theme={theme}
         right={
-          <ActionButton
-            label="Atualizar"
-            theme={theme}
-            onClick={load}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {bucketFilter !== "all" && (
+              <ActionButton
+                label="Limpar filtro"
+                theme={theme}
+                onClick={() => setBucketFilter("all")}
+              />
+            )}
+            <ActionButton
+              label="Atualizar"
+              theme={theme}
+              onClick={load}
+            />
+          </div>
         }
       >
         <div
@@ -536,7 +582,7 @@ export default function ReceivablesPage() {
             </thead>
 
             <tbody>
-              {filteredData.map((item) => {
+              {visibleData.map((item) => {
                 const labelText = getStatusLabel(item);
 
                 return (
@@ -605,7 +651,7 @@ export default function ReceivablesPage() {
                 );
               })}
 
-              {filteredData.length === 0 && (
+              {visibleData.length === 0 && (
                 <tr>
                   <td
                     colSpan={8}

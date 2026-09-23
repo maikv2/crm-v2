@@ -219,7 +219,11 @@ export default function PaymentSplitsEditor({ theme, totalCents, value, onChange
         if (split.key !== key) return split;
         const dates = [...split.installmentDates];
         dates[index] = date;
-        return { ...split, installmentDates: dates };
+        return {
+          ...split,
+          installmentDates: dates,
+          dueDate: index === 0 ? date : split.dueDate,
+        };
       })
     );
   }

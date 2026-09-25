@@ -14,6 +14,34 @@ type InitialItem = {
   quantity: number;
 };
 
+// Mix sugerido que já vem preenchido ao cadastrar um expositor novo (por SKU).
+const DEFAULT_INITIAL_MIX: { sku: string; quantity: number }[] = [
+  { sku: "CB0001", quantity: 4 }, // Cabo de dados V8
+  { sku: "CB0002", quantity: 4 }, // Cabo de dados TC
+  { sku: "CB0003", quantity: 4 }, // Cabo de dados iOS
+  { sku: "CR0003", quantity: 3 }, // Kit carregador V8
+  { sku: "CR0004", quantity: 3 }, // Kit carregador TC
+  { sku: "CR0005", quantity: 3 }, // Kit carregador iOS
+  { sku: "CR0002", quantity: 1 }, // Carregador fonte tomada
+  { sku: "CR0001", quantity: 1 }, // Carregador fonte veicular
+  { sku: "FN0001", quantity: 3 }, // Fone de ouvido P2
+  { sku: "FN0002", quantity: 1 }, // Fone de ouvido TC
+  { sku: "FN0003", quantity: 1 }, // Fone de ouvido iOS
+  { sku: "FN0004", quantity: 1 }, // Fone Bluetooth Blue One
+  { sku: "FN0005", quantity: 1 }, // Fone Bluetooth Blue Pro
+];
+
+function buildDefaultItems(products: any[]): InitialItem[] {
+  const items = DEFAULT_INITIAL_MIX.flatMap(({ sku, quantity }) => {
+    const product = products.find(
+      (p: any) => String(p.sku ?? "").toUpperCase() === sku
+    );
+    return product ? [{ productId: product.id, quantity }] : [];
+  });
+
+  return items.length > 0 ? items : [{ productId: "", quantity: 1 }];
+}
+
 async function readJsonSafe(res: Response) {
   const text = await res.text();
   if (!text) return null;
@@ -23,6 +51,139 @@ async function readJsonSafe(res: Response) {
   } catch {
     return { raw: text };
   }
+}
+
+function normalizeSearch(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function ProductSearchSelect({
+  products,
+  value,
+  onChange,
+  inputStyle,
+  theme,
+  dropdownBg,
+}: {
+  products: any[];
+  value: string;
+  onChange: (productId: string) => void;
+  inputStyle: React.CSSProperties;
+  theme: ReturnType<typeof getThemeColors>;
+  dropdownBg: string;
+}) {
+  const selected = products.find((p: any) => p.id === value) ?? null;
+  const selectedLabel = selected
+    ? `${selected.sku ? `${selected.sku} - ` : ""}${selected.name}`
+    : "";
+
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return products;
+
+    return products.filter((p: any) => {
+      const haystack = normalizeSearch(
+        [p.name, p.sku, p.category, p.barcode].filter(Boolean).join(" ")
+      );
+      return terms.every((term) => haystack.includes(term));
+    });
+  }, [products, query]);
+
+  return (
+    <div style={{ position: "relative", minWidth: 0 }}>
+      <input
+        type="text"
+        style={inputStyle}
+        value={open ? query : selectedLabel}
+        placeholder="Buscar produto por nome ou código..."
+        onFocus={() => {
+          setQuery("");
+          setOpen(true);
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (open && filtered.length > 0) {
+              onChange(filtered[0].id);
+              setOpen(false);
+              (e.target as HTMLInputElement).blur();
+            }
+          } else if (e.key === "Escape") {
+            setOpen(false);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            zIndex: 20,
+            maxHeight: 280,
+            overflowY: "auto",
+            background: dropdownBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 10,
+            boxShadow: theme.isDark
+              ? "0 10px 30px rgba(2,6,23,0.5)"
+              : "0 8px 24px rgba(15,23,42,0.12)",
+          }}
+        >
+          {filtered.length === 0 ? (
+            <div style={{ padding: "10px 12px", fontSize: 13, color: theme.subtext }}>
+              Nenhum produto encontrado.
+            </div>
+          ) : (
+            filtered.map((p: any) => (
+              <div
+                key={p.id}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(p.id);
+                  setOpen(false);
+                  (document.activeElement as HTMLElement | null)?.blur();
+                }}
+                style={{
+                  padding: "8px 12px",
+                  fontSize: 13,
+                  cursor: "pointer",
+                  color: theme.text,
+                  borderBottom: `1px solid ${theme.border}`,
+                  background:
+                    p.id === value
+                      ? theme.isDark
+                        ? "rgba(59,130,246,0.18)"
+                        : "#eff6ff"
+                      : "transparent",
+                }}
+              >
+                <div style={{ fontWeight: 600 }}>{p.name}</div>
+                <div style={{ fontSize: 12, color: theme.subtext }}>
+                  {[p.sku, p.category].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function NewExhibitorPage() {
@@ -124,6 +285,7 @@ export default function NewExhibitorPage() {
 
         setClients(clientList);
         setProducts(productList);
+        setItems(buildDefaultItems(productList));
 
         const now = new Date();
         const pad = (n: number) => String(n).padStart(2, "0");
@@ -629,35 +791,75 @@ export default function NewExhibitorPage() {
                   key={index}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) 90px auto",
+                    gridTemplateColumns: "minmax(0, 1fr) 140px auto",
                     gap: 10,
                     alignItems: "center",
                   }}
                 >
-                  <select
+                  <ProductSearchSelect
+                    products={products}
                     value={item.productId}
-                    onChange={(e) =>
-                      updateItem(index, "productId", e.target.value)
+                    onChange={(productId) =>
+                      updateItem(index, "productId", productId)
                     }
-                    style={input}
-                  >
-                    <option value="">Selecione produto</option>
-                    {products.map((p: any) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <input
-                    type="number"
-                    min="1"
-                    value={item.quantity}
-                    onChange={(e) =>
-                      updateItem(index, "quantity", Number(e.target.value))
-                    }
-                    style={input}
+                    inputStyle={input}
+                    theme={theme}
+                    dropdownBg={inputBg}
                   />
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "36px minmax(0, 1fr) 36px",
+                      gap: 4,
+                      alignItems: "center",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      aria-label="Diminuir quantidade"
+                      onClick={() =>
+                        updateItem(
+                          index,
+                          "quantity",
+                          Math.max(1, (Number(item.quantity) || 0) - 1)
+                        )
+                      }
+                      style={{ ...btnSecondary, padding: "8px 0", fontSize: 16 }}
+                    >
+                      −
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={item.quantity ? String(item.quantity) : ""}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, "");
+                        updateItem(index, "quantity", digits ? Number(digits) : 0);
+                      }}
+                      onBlur={() => {
+                        if (!(Number(item.quantity) > 0)) {
+                          updateItem(index, "quantity", 1);
+                        }
+                      }}
+                      style={{ ...input, textAlign: "center", padding: "10px 4px" }}
+                    />
+                    <button
+                      type="button"
+                      aria-label="Aumentar quantidade"
+                      onClick={() =>
+                        updateItem(
+                          index,
+                          "quantity",
+                          (Number(item.quantity) || 0) + 1
+                        )
+                      }
+                      style={{ ...btnSecondary, padding: "8px 0", fontSize: 16 }}
+                    >
+                      +
+                    </button>
+                  </div>
 
                   <button
                     type="button"

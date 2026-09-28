@@ -3,9 +3,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { prisma } from "@/lib/prisma";
-import { sendDocument, ZApiConfigError } from "@/lib/zapi";
+import { sendDocument, sendImage, sendText, ZApiConfigError } from "@/lib/zapi";
 import { ReceiptPdfDocument, ReceiptPdfData } from "@/lib/pdf/receipt-pdf";
-import { ProductHighlightsPdfDocument, ProductHighlightsPdfData } from "@/lib/pdf/product-highlights-pdf";
 
 const STORE_URL = "https://v2distribuidora.com/loja";
 
@@ -18,10 +17,9 @@ function buildProductPageUrl(sku: string) {
 }
 
 /**
- * Busca a foto do produto no site e converte pra data URL - @react-pdf
- * as vezes recusa imagem remota (formato nao reconhecido, 404, etc), entao
- * baixamos e validamos antes de colocar no PDF. Retorna null se a foto nao
- * existir ou nao for uma imagem valida, pra esse produto ser pulado.
+ * Busca a foto do produto no site e converte pra data URL, validando antes
+ * de mandar pro WhatsApp. Retorna null se a foto nao existir ou nao for uma
+ * imagem valida, pra esse produto ser pulado.
  */
 async function fetchProductImageAsDataUrl(sku: string): Promise<string | null> {
   try {
@@ -40,12 +38,17 @@ async function fetchProductImageAsDataUrl(sku: string): Promise<string | null> {
   }
 }
 
+function formatMoneyFromCents(value: number) {
+  return (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 /**
- * Manda um PDF com 3 produtos aleatorios do catalogo do site e o link da
- * loja - disparado depois do recibo, como um empurrãozinho pra proxima
- * compra. Nunca lanca erro pra fora.
+ * Manda 3 produtos aleatorios do catalogo do site, cada um como uma imagem
+ * separada com nome, preco e link do produto na legenda (embaixo da foto) -
+ * disparado depois do recibo, como um empurrãozinho pra proxima compra.
+ * Nunca lanca erro pra fora.
  */
-async function sendProductHighlights(params: { whatsapp: string; logoDataUrl: string | null }) {
+async function sendProductHighlights(params: { whatsapp: string }) {
   try {
     const products = await prisma.product.findMany({
       where: { active: true, sitePriceCents: { not: null } },
@@ -58,40 +61,35 @@ async function sendProductHighlights(params: { whatsapp: string; logoDataUrl: st
     // site - alguns produtos ainda nao tem foto cadastrada.
     const shuffled = [...products].sort(() => Math.random() - 0.5).slice(0, 10);
 
-    const items: ProductHighlightsPdfData["items"] = [];
+    const items: Array<{ name: string; priceCents: number; imageDataUrl: string; productUrl: string }> = [];
     for (const product of shuffled) {
       if (items.length >= 3) break;
 
-      const imageUrl = await fetchProductImageAsDataUrl(product.sku);
-      if (!imageUrl) continue;
+      const imageDataUrl = await fetchProductImageAsDataUrl(product.sku);
+      if (!imageDataUrl) continue;
 
       items.push({
-        sku: product.sku,
         name: product.name,
         priceCents: product.sitePriceCents ?? 0,
-        imageUrl,
+        imageDataUrl,
         productUrl: buildProductPageUrl(product.sku),
       });
     }
 
     if (items.length < 3) return;
 
-    const data: ProductHighlightsPdfData = {
-      logoDataUrl: params.logoDataUrl,
-      storeUrl: STORE_URL,
-      items,
-    };
-
-    const pdfElement = React.createElement(ProductHighlightsPdfDocument as React.ComponentType<any>, { data });
-    const pdfBuffer = await renderToBuffer(pdfElement);
-
-    await sendDocument({
+    await sendText({
       phone: params.whatsapp,
-      document: pdfBuffer,
-      fileName: "ofertas-v2-distribuidora.pdf",
-      extension: "pdf",
-      caption: `🛍️ Separamos algumas novidades pra você! Confira mais na nossa loja: ${STORE_URL}`,
+      message: `🛍️ Separamos algumas novidades pra você! Confira mais na nossa loja: ${STORE_URL}`,
     });
+
+    for (const item of items) {
+      await sendImage({
+        phone: params.whatsapp,
+        image: item.imageDataUrl,
+        caption: `*${item.name}*\n${formatMoneyFromCents(item.priceCents)}\n👉 ${item.productUrl}`,
+      });
+    }
   } catch (error) {
     if (error instanceof ZApiConfigError) {
       console.warn("WhatsApp nao configurado - destaques de produtos nao enviados.");
@@ -200,7 +198,7 @@ export async function sendPaymentReceipt(receiptId: string) {
         `Recebemos seu pagamento, obrigado pela parceria e pela preferência! 🙏`,
     });
 
-    await sendProductHighlights({ whatsapp, logoDataUrl });
+    await sendProductHighlights({ whatsapp });
   } catch (error) {
     if (error instanceof ZApiConfigError) {
       console.warn("WhatsApp nao configurado - recibo nao enviado.", { receiptId });

@@ -68,6 +68,14 @@ function formatCoord(value: number) {
   return value.toFixed(6);
 }
 
+function normalizeSearch(value?: string | null) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function pointKey(point: CommercialMapPoint) {
   return `${point.kind}-${point.id}`;
 }
@@ -232,6 +240,37 @@ export default function CommercialMapView({
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
+  // Pesquisa de ponto no mapa (nome, fantasia ou cidade)
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const markerRefs = useRef(new Map<string, L.Marker>());
+
+  const searchResults = useMemo(() => {
+    const term = normalizeSearch(search);
+    if (term.length < 2) return [];
+    return displayPoints
+      .filter((p) =>
+        [p.tradeName, p.name, p.city].some((field) => normalizeSearch(field).includes(term))
+      )
+      .sort((a, b) => {
+        // Quem comeca com o termo vem primeiro
+        const aStarts = [a.tradeName, a.name].some((f) => normalizeSearch(f).startsWith(term)) ? 0 : 1;
+        const bStarts = [b.tradeName, b.name].some((f) => normalizeSearch(f).startsWith(term)) ? 0 : 1;
+        return aStarts - bStarts || (a.tradeName || a.name).localeCompare(b.tradeName || b.name, "pt-BR");
+      })
+      .slice(0, 8);
+  }, [search, displayPoints]);
+
+  function focusPoint(point: DisplayPoint) {
+    if (!map) return;
+    const key = pointKey(point);
+    setSearch("");
+    setSearchOpen(false);
+    map.closePopup();
+    map.flyTo([point.displayLatitude, point.displayLongitude], Math.max(map.getZoom(), 17), { duration: 0.8 });
+    map.once("moveend", () => markerRefs.current.get(key)?.openPopup());
+  }
+
   const center = useMemo<[number, number]>(() => {
     if (displayPoints.length > 0) {
       const avgLat =
@@ -375,6 +414,101 @@ export default function CommercialMapView({
         </span>
       </div>
 
+      <div style={{ position: "relative", marginBottom: 14 }}>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setSearchOpen(true);
+          }}
+          onFocus={() => setSearchOpen(true)}
+          onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && searchResults[0]) {
+              e.preventDefault();
+              focusPoint(searchResults[0]);
+            }
+            if (e.key === "Escape") setSearchOpen(false);
+          }}
+          placeholder="Pesquisar cliente, prospecto ou cidade no mapa..."
+          style={{
+            width: "100%",
+            height: 44,
+            padding: "0 14px",
+            borderRadius: 12,
+            border: `1px solid ${border}`,
+            background: theme.isDark ? "#0b1324" : "#ffffff",
+            color: theme.text,
+            fontSize: 15,
+            outline: "none",
+          }}
+        />
+
+        {searchOpen && normalizeSearch(search).length >= 2 ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 48,
+              left: 0,
+              right: 0,
+              zIndex: 1300,
+              background: theme.isDark ? "#0f172a" : "#ffffff",
+              border: `1px solid ${border}`,
+              borderRadius: 12,
+              boxShadow: "0 10px 30px rgba(2,6,23,0.25)",
+              overflow: "hidden",
+            }}
+          >
+            {searchResults.length === 0 ? (
+              <div style={{ padding: 12, fontSize: 13, color: theme.subtext }}>
+                Nenhum ponto encontrado. Se estiver com filtro de cidade, região ou tipo, confira os filtros acima.
+              </div>
+            ) : (
+              searchResults.map((point) => (
+                <button
+                  key={pointKey(point)}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => focusPoint(point)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 12px",
+                    border: "none",
+                    borderBottom: `1px solid ${border}`,
+                    background: "transparent",
+                    color: theme.text,
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: 999,
+                      background: KIND_COLORS[point.kind],
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ display: "grid", minWidth: 0 }}>
+                    <span style={{ fontWeight: 800, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {point.tradeName || point.name}
+                    </span>
+                    <span style={{ fontSize: 12, color: theme.subtext }}>
+                      {KIND_LABELS[point.kind]} · {point.city || "-"}{point.state ? ` / ${point.state}` : ""}
+                    </span>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
+
       <div
         style={{
           position: "relative",
@@ -406,6 +540,10 @@ export default function CommercialMapView({
             return (
               <Marker
                 key={key}
+                ref={(marker) => {
+                  if (marker) markerRefs.current.set(key, marker);
+                  else markerRefs.current.delete(key);
+                }}
                 position={position}
                 icon={createMarkerIcon(color, isMoving)}
                 draggable={isMoving}

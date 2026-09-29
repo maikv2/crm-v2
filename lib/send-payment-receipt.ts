@@ -6,14 +6,36 @@ import { prisma } from "@/lib/prisma";
 import { sendDocument, sendImage, sendText, ZApiConfigError } from "@/lib/zapi";
 import { ReceiptPdfDocument, ReceiptPdfData } from "@/lib/pdf/receipt-pdf";
 
-const STORE_URL = "https://v2distribuidora.com/loja";
+const SITE_URL = "https://v2distribuidora.com";
+const STORE_URL = `${SITE_URL}/loja`;
 
-function buildSiteImageUrl(sku: string) {
-  return `https://v2distribuidora.com/produtos/${sku.toLowerCase()}/1.jpg`;
+type SiteCatalogEntry = { slug: string; thumbnail: string };
+
+/**
+ * Busca no site a foto de capa de cada produto (a mesma da grade da loja,
+ * com selo/especificacoes) e o slug da pagina, indexados por SKU. Retorna
+ * um mapa vazio se o site nao responder - ai cai no padrao antigo.
+ */
+async function fetchSiteCatalog(): Promise<Map<string, SiteCatalogEntry>> {
+  try {
+    const res = await fetch(`${SITE_URL}/api/catalogo-imagens`, { cache: "no-store" });
+    if (!res.ok) return new Map();
+    const items = (await res.json()) as Array<{ sku: string; slug: string; thumbnail: string }>;
+    return new Map(items.map((i) => [i.sku.toUpperCase(), { slug: i.slug, thumbnail: i.thumbnail }]));
+  } catch {
+    return new Map();
+  }
 }
 
-function buildProductPageUrl(sku: string) {
-  return `https://v2distribuidora.com/loja/produto/${sku.toLowerCase()}`;
+function buildSiteImageUrl(sku: string, catalog: Map<string, SiteCatalogEntry>) {
+  const entry = catalog.get(sku.toUpperCase());
+  if (entry) return `${SITE_URL}${entry.thumbnail}`;
+  return `${SITE_URL}/produtos/${sku.toLowerCase()}/1.jpg`;
+}
+
+function buildProductPageUrl(sku: string, catalog: Map<string, SiteCatalogEntry>) {
+  const slug = catalog.get(sku.toUpperCase())?.slug ?? sku.toLowerCase();
+  return `${STORE_URL}/produto/${slug}`;
 }
 
 /**
@@ -21,9 +43,9 @@ function buildProductPageUrl(sku: string) {
  * de mandar pro WhatsApp. Retorna null se a foto nao existir ou nao for uma
  * imagem valida, pra esse produto ser pulado.
  */
-async function fetchProductImageAsDataUrl(sku: string): Promise<string | null> {
+async function fetchProductImageAsDataUrl(imageUrl: string): Promise<string | null> {
   try {
-    const res = await fetch(buildSiteImageUrl(sku), { cache: "no-store" });
+    const res = await fetch(imageUrl, { cache: "no-store" });
     if (!res.ok) return null;
 
     const contentType = res.headers.get("content-type") ?? "";
@@ -48,7 +70,7 @@ function formatMoneyFromCents(value: number) {
  * disparado depois do recibo, como um empurrãozinho pra proxima compra.
  * Nunca lanca erro pra fora.
  */
-async function sendProductHighlights(params: { whatsapp: string }) {
+export async function sendProductHighlights(params: { whatsapp: string }) {
   try {
     const products = await prisma.product.findMany({
       where: { active: true, sitePriceCents: { not: null } },
@@ -60,19 +82,20 @@ async function sendProductHighlights(params: { whatsapp: string }) {
     // Tenta ate 10 candidatos aleatorios pra achar 3 com foto valida no
     // site - alguns produtos ainda nao tem foto cadastrada.
     const shuffled = [...products].sort(() => Math.random() - 0.5).slice(0, 10);
+    const catalog = await fetchSiteCatalog();
 
     const items: Array<{ name: string; priceCents: number; imageDataUrl: string; productUrl: string }> = [];
     for (const product of shuffled) {
       if (items.length >= 3) break;
 
-      const imageDataUrl = await fetchProductImageAsDataUrl(product.sku);
+      const imageDataUrl = await fetchProductImageAsDataUrl(buildSiteImageUrl(product.sku, catalog));
       if (!imageDataUrl) continue;
 
       items.push({
         name: product.name,
         priceCents: product.sitePriceCents ?? 0,
         imageDataUrl,
-        productUrl: buildProductPageUrl(product.sku),
+        productUrl: buildProductPageUrl(product.sku, catalog),
       });
     }
 

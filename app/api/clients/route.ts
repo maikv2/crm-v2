@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { buildAddress, geocodeAddress } from "@/lib/geocoding";
+import { buildAddress, geocodeAddress, reverseGeocode } from "@/lib/geocoding";
 import { cookies } from "next/headers";
 
 function onlyDigits(value?: string | null) {
@@ -189,13 +189,23 @@ export async function POST(request: Request) {
     const suframaRegistration = normalizeText(body.suframaRegistration);
 
     const country = normalizeText(body.country) ?? "Brasil";
-    const cep = onlyDigits(body.cep);
-    const street = normalizeText(body.street);
-    const number = normalizeText(body.number);
-    const district = normalizeText(body.district);
-    const city = normalizeText(body.city);
-    const state = normalizeText(body.state)?.toUpperCase() ?? null;
+    let cep = onlyDigits(body.cep);
+    let street = normalizeText(body.street);
+    let number = normalizeText(body.number);
+    let district = normalizeText(body.district);
+    let city = normalizeText(body.city);
+    let state = normalizeText(body.state)?.toUpperCase() ?? null;
     const complement = normalizeText(body.complement);
+
+    // Cliente marcado direto no mapa comercial: usa a coordenada informada
+    // em vez de geocodificar o endereco.
+    const manualLatitude = body.latitude == null ? NaN : Number(body.latitude);
+    const manualLongitude = body.longitude == null ? NaN : Number(body.longitude);
+    const hasManualCoords =
+      Number.isFinite(manualLatitude) &&
+      Number.isFinite(manualLongitude) &&
+      Math.abs(manualLatitude) <= 90 &&
+      Math.abs(manualLongitude) <= 180;
 
     const requestedRegionId = normalizeText(body.regionId);
     const notes = normalizeText(body.notes);
@@ -316,7 +326,22 @@ export async function POST(request: Request) {
     let geocoded: { latitude?: number | null; longitude?: number | null } | null =
       null;
 
-    if (hasMinimumAddressForGeocoding) {
+    if (hasManualCoords) {
+      geocoded = { latitude: manualLatitude, longitude: manualLongitude };
+
+      // Sem endereco digitado: descobre cidade/UF pela coordenada.
+      if (!city) {
+        const address = await reverseGeocode(manualLatitude, manualLongitude);
+        if (address) {
+          street = street ?? address.street;
+          number = number ?? address.number;
+          district = district ?? address.district;
+          city = address.city;
+          state = state ?? address.state;
+          cep = cep || address.cep || "";
+        }
+      }
+    } else if (hasMinimumAddressForGeocoding) {
       const fullAddress = buildAddress([
         street,
         number,

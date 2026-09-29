@@ -825,6 +825,8 @@ model Prospect {
   state            String?
   notes            String?
   status           ProspectStatus @default(PENDING)
+  /// PROSPECT = prospecto normal (amarelo no mapa); EXHIBITOR = "levar expositor" (verde no mapa)
+  kind             String         @default("PROSPECT")
   latitude         Float?
   longitude        Float?
   createdAt        DateTime       @default(now())

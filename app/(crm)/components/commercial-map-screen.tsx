@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import type { CommercialMapPoint } from "./commercial-map-view";
+import type { CommercialMapPoint, NewMapPointInput } from "./commercial-map-view";
 import { useTheme } from "../../providers/theme-provider";
 import { getThemeColors } from "../../../lib/theme";
 
@@ -139,6 +139,36 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
   const [cityFilter, setCityFilter] = useState("ALL");
   const [regionFilter, setRegionFilter] = useState("ALL");
   const [kindFilter, setKindFilter] = useState("ALL");
+  const [allRegions, setAllRegions] = useState<{ id: string; name: string }[]>([]);
+
+  const fetchPoints = useCallback(async (regionId?: string | null) => {
+    const query = new URLSearchParams();
+    if (regionId) query.set("regionId", regionId);
+    const res = await fetch(
+      `/api/commercial-map${query.toString() ? `?${query.toString()}` : ""}`,
+      { cache: "no-store" }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Erro ao carregar mapa comercial");
+    return Array.isArray(data) ? (data as CommercialMapPoint[]) : [];
+  }, []);
+
+  // Lista de regioes pro cadastro rapido no mapa (admin escolhe a regiao).
+  useEffect(() => {
+    if (mode !== "admin") return;
+    fetch("/api/regions", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAllRegions(
+            data
+              .filter((r: any) => r?.id && r?.name && r.active !== false)
+              .map((r: any) => ({ id: r.id, name: r.name }))
+          );
+        }
+      })
+      .catch(() => setAllRegions([]));
+  }, [mode]);
 
   useEffect(() => {
     let active = true;
@@ -162,19 +192,11 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
           }
         }
 
-        const query = new URLSearchParams();
-        if (mode === "representative" && currentUser?.regionId) {
-          query.set("regionId", currentUser.regionId);
-        }
-
-        const res = await fetch(
-          `/api/commercial-map${query.toString() ? `?${query.toString()}` : ""}`,
-          { cache: "no-store" }
+        const data = await fetchPoints(
+          mode === "representative" ? currentUser?.regionId : null
         );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "Erro ao carregar mapa comercial");
 
-        if (active) setPoints(Array.isArray(data) ? data : []);
+        if (active) setPoints(data);
       } catch (err: any) {
         console.error(err);
         if (active) { setPoints([]); setError(err?.message || "Erro ao carregar mapa comercial"); }
@@ -184,7 +206,66 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
     }
     loadData();
     return () => { active = false; };
-  }, [mode]);
+  }, [mode, fetchPoints]);
+
+  // Mover ponto: cliente usa PUT /api/clients/[id]; prospecto e "levar
+  // expositor" usam PATCH /api/prospects/[id] (so latitude/longitude).
+  async function handleMovePoint(point: CommercialMapPoint, position: { lat: number; lng: number }) {
+    const url = point.kind === "CLIENT" ? `/api/clients/${point.id}` : `/api/prospects/${point.id}`;
+    const res = await fetch(url, {
+      method: point.kind === "CLIENT" ? "PUT" : "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ latitude: position.lat, longitude: position.lng }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Não foi possível salvar a posição.");
+
+    setPoints((current) =>
+      current.map((p) =>
+        p.kind === point.kind && p.id === point.id
+          ? { ...p, latitude: position.lat, longitude: position.lng }
+          : p
+      )
+    );
+  }
+
+  // Cadastro rapido pelo mapa: so nome/telefone/observacao; cidade e
+  // endereco sao descobertos pela coordenada no servidor.
+  async function handleCreatePoint(input: NewMapPointInput) {
+    const isClient = input.kind === "CLIENT";
+    const res = await fetch(isClient ? "/api/clients" : "/api/prospects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        isClient
+          ? {
+              name: input.name,
+              personType: "JURIDICA",
+              roleClient: true,
+              whatsapp: input.phone,
+              notes: input.notes,
+              regionId: input.regionId,
+              latitude: input.latitude,
+              longitude: input.longitude,
+            }
+          : {
+              name: input.name,
+              phone: input.phone,
+              notes: input.notes,
+              regionId: input.regionId,
+              representativeId: mode === "representative" ? user?.id : undefined,
+              kind: input.kind,
+              latitude: input.latitude,
+              longitude: input.longitude,
+            }
+      ),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Não foi possível salvar.");
+
+    const refreshed = await fetchPoints(mode === "representative" ? user?.regionId : null);
+    setPoints(refreshed);
+  }
 
   const cities = useMemo(() => {
     return Array.from(new Set(
@@ -210,7 +291,7 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
   const filteredPoints = useMemo(() => {
     return points.filter((point) => {
       // Prospectos convertidos não aparecem no mapa
-      if (point.kind === "PROSPECT" && point.status === "CONVERTED") return false;
+      if (point.kind !== "CLIENT" && point.status === "CONVERTED") return false;
 
       const cityOk = cityFilter === "ALL" || (point.city || "") === cityFilter;
       const pointRegionId = point.region?.id || "";
@@ -227,6 +308,7 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
     total: filteredPoints.length,
     clients: filteredPoints.filter((p) => p.kind === "CLIENT").length,
     prospects: filteredPoints.filter((p) => p.kind === "PROSPECT").length,
+    exhibitors: filteredPoints.filter((p) => p.kind === "EXHIBITOR").length,
   }), [filteredPoints]);
 
   if (loading) {
@@ -291,12 +373,13 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
       {/* Contadores — sem card "Voltar" */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
         gap: 16, marginBottom: 24,
       }}>
         <StatCard title="Pontos no mapa" value={counters.total} theme={theme} />
         <StatCard title="Clientes" value={counters.clients} theme={theme} />
         <StatCard title="Prospectos" value={counters.prospects} theme={theme} />
+        <StatCard title="Levar expositor" value={counters.exhibitors} theme={theme} />
       </div>
 
       {/* Filtros */}
@@ -335,6 +418,7 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
               <option value="ALL">Todos os tipos</option>
               <option value="CLIENT">Clientes</option>
               <option value="PROSPECT">Prospectos</option>
+              <option value="EXHIBITOR">Levar expositor</option>
             </FilterSelect>
           </div>
         </Block>
@@ -350,7 +434,16 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
           </div>
         }
       >
-        <CommercialMapView points={filteredPoints} themeMode={modeTheme} />
+        <CommercialMapView
+          points={filteredPoints}
+          themeMode={modeTheme}
+          mode={mode}
+          regions={allRegions}
+          fixedRegionId={mode === "representative" ? user?.regionId : null}
+          recenterKey={`${cityFilter}|${regionFilter}|${kindFilter}`}
+          onMovePoint={handleMovePoint}
+          onCreatePoint={handleCreatePoint}
+        />
       </Block>
     </div>
   );

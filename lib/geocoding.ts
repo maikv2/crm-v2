@@ -81,6 +81,73 @@ async function fetchNominatim(query: string): Promise<GeocodedPoint | null> {
   }
 }
 
+export type ReverseGeocodedAddress = {
+  street: string | null;
+  number: string | null;
+  district: string | null;
+  city: string | null;
+  state: string | null;
+  cep: string | null;
+};
+
+const BR_STATE_CODES: Record<string, string> = {
+  acre: "AC", alagoas: "AL", amapá: "AP", amazonas: "AM", bahia: "BA",
+  ceará: "CE", "distrito federal": "DF", "espírito santo": "ES", goiás: "GO",
+  maranhão: "MA", "mato grosso": "MT", "mato grosso do sul": "MS",
+  "minas gerais": "MG", pará: "PA", paraíba: "PB", paraná: "PR",
+  pernambuco: "PE", piauí: "PI", "rio de janeiro": "RJ",
+  "rio grande do norte": "RN", "rio grande do sul": "RS", rondônia: "RO",
+  roraima: "RR", "santa catarina": "SC", "são paulo": "SP", sergipe: "SE",
+  tocantins: "TO",
+};
+
+/**
+ * Descobre o endereco aproximado de uma coordenada (usado quando o ponto e
+ * marcado direto no mapa, pra preencher cidade/UF e os filtros funcionarem).
+ * Retorna null se o Nominatim nao responder.
+ */
+export async function reverseGeocode(
+  latitude: number,
+  longitude: number
+): Promise<ReverseGeocodedAddress | null> {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  try {
+    const url =
+      `https://nominatim.openstreetmap.org/reverse` +
+      `?lat=${latitude}&lon=${longitude}` +
+      `&format=json&addressdetails=1&zoom=18&accept-language=pt-BR`;
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "v2-crm/1.0",
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const address = data?.address;
+    if (!address) return null;
+
+    const stateName = normalizeText(address.state);
+    const isoState = normalizeText(address["ISO3166-2-lvl4"])?.replace(/^BR-/, "") ?? null;
+
+    return {
+      street: normalizeText(address.road),
+      number: normalizeText(address.house_number),
+      district: normalizeText(address.suburb || address.neighbourhood || address.quarter),
+      city: normalizeText(address.city || address.town || address.village || address.municipality),
+      state: isoState || (stateName ? BR_STATE_CODES[stateName.toLowerCase()] ?? null : null),
+      cep: onlyDigits(address.postcode) || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function uniqueQueries(queries: Array<string | null | undefined>) {
   const seen = new Set<string>();
   const result: string[] = [];

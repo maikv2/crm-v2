@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { buildAddress, geocodeAddress } from "@/lib/geocoding";
+import { buildAddress, geocodeAddress, reverseGeocode } from "@/lib/geocoding";
 
 function normalizeText(value?: string | null) {
   const text = String(value ?? "").trim();
@@ -68,16 +68,34 @@ export async function POST(request: Request) {
     const phone = onlyDigits(body.phone) || null;
     const email = normalizeText(body.email)?.toLowerCase() ?? null;
     const contactName = normalizeText(body.contactName);
-    const cep = onlyDigits(body.cep) || null;
-    const street = normalizeText(body.street);
-    const number = normalizeText(body.number);
-    const district = normalizeText(body.district);
-    const city = normalizeText(body.city);
-    const state = normalizeText(body.state)?.toUpperCase() ?? null;
+    let cep = onlyDigits(body.cep) || null;
+    let street = normalizeText(body.street);
+    let number = normalizeText(body.number);
+    let district = normalizeText(body.district);
+    let city = normalizeText(body.city);
+    let state = normalizeText(body.state)?.toUpperCase() ?? null;
     const notes = normalizeText(body.notes);
     const status = normalizeText(body.status) ?? "PENDING";
     const regionId = normalizeText(body.regionId);
     const representativeId = normalizeText(body.representativeId);
+    const kind = normalizeText(body.kind) ?? "PROSPECT";
+
+    // Ponto marcado direto no mapa comercial: usa a coordenada informada
+    // em vez de geocodificar o endereco.
+    const manualLatitude = body.latitude == null ? NaN : Number(body.latitude);
+    const manualLongitude = body.longitude == null ? NaN : Number(body.longitude);
+    const hasManualCoords =
+      Number.isFinite(manualLatitude) &&
+      Number.isFinite(manualLongitude) &&
+      Math.abs(manualLatitude) <= 90 &&
+      Math.abs(manualLongitude) <= 180;
+
+    if (!["PROSPECT", "EXHIBITOR"].includes(kind)) {
+      return NextResponse.json(
+        { error: "Tipo de prospecto inválido" },
+        { status: 400 }
+      );
+    }
 
     if (!name) {
       return NextResponse.json(
@@ -139,17 +157,37 @@ export async function POST(request: Request) {
       );
     }
 
-    const fullAddress = buildAddress([
-      street,
-      number,
-      district,
-      city,
-      state,
-      cep,
-      "Brasil",
-    ]);
+    let geocoded: { latitude: number; longitude: number } | null = null;
 
-    const geocoded = await geocodeAddress(fullAddress);
+    if (hasManualCoords) {
+      geocoded = { latitude: manualLatitude, longitude: manualLongitude };
+
+      // Sem endereco digitado: descobre cidade/UF pela coordenada pra os
+      // filtros do mapa e da lista funcionarem.
+      if (!city) {
+        const address = await reverseGeocode(manualLatitude, manualLongitude);
+        if (address) {
+          street = street ?? address.street;
+          number = number ?? address.number;
+          district = district ?? address.district;
+          city = address.city;
+          state = state ?? address.state;
+          cep = cep ?? address.cep;
+        }
+      }
+    } else {
+      const fullAddress = buildAddress([
+        street,
+        number,
+        district,
+        city,
+        state,
+        cep,
+        "Brasil",
+      ]);
+
+      geocoded = await geocodeAddress(fullAddress);
+    }
 
     const prospect = await prisma.prospect.create({
       data: {
@@ -167,6 +205,7 @@ export async function POST(request: Request) {
         state,
         notes,
         status: status as any,
+        kind,
         regionId,
         representativeId,
         latitude: geocoded?.latitude ?? null,

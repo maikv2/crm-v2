@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
           latitude: true,
           longitude: true,
           status: true,
+          kind: true,
           notes: true,
           region: {
             select: { id: true, name: true },
@@ -82,7 +83,11 @@ export async function GET(request: NextRequest) {
       })),
       ...prospects.map((prospect) => ({
         id: prospect.id,
-        kind: "PROSPECT" as const,
+        // "Levar expositor" e salvo como prospecto com kind EXHIBITOR
+        kind:
+          prospect.kind === "EXHIBITOR"
+            ? ("EXHIBITOR" as const)
+            : ("PROSPECT" as const),
         name: prospect.name,
         tradeName: prospect.tradeName,
         city: prospect.city,

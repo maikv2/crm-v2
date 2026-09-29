@@ -411,11 +411,20 @@ export default function NewClientPage() {
     }));
   }
 
-  async function fetchCNPJData(rawValue?: string) {
+  // force = clique no botao "Buscar dados": consulta de novo mesmo que ja
+  // tenha buscado, avisa quando falta digito e sobrescreve os dados da
+  // empresa (WhatsApp e e-mail so preenche se estiverem vazios).
+  async function fetchCNPJData(rawValue?: string, force = false) {
     const cnpj = onlyDigits(rawValue ?? form.cnpj);
 
     if (form.personType !== "JURIDICA") return;
-    if (cnpj.length !== 14) return;
+    if (cnpj.length !== 14) {
+      if (force) {
+        setCnpjError("Digite o CNPJ completo (14 números).");
+        setCnpjSuccess(null);
+      }
+      return;
+    }
 
     if (!isValidCNPJ(cnpj)) {
       setCnpjError("CNPJ inválido");
@@ -424,7 +433,7 @@ export default function NewClientPage() {
     }
 
     if (cnpjLoading) return;
-    if (cnpj === lastFetchedCnpj) return;
+    if (!force && cnpj === lastFetchedCnpj) return;
 
     try {
       setCnpjLoading(true);
@@ -442,28 +451,35 @@ export default function NewClientPage() {
         throw new Error(data?.error || "Não foi possível consultar o CNPJ");
       }
 
+      // Automatico: so preenche o que esta vazio. Botao: usa o que veio da
+      // Receita (quando veio algo).
+      const pick = (current: string, found?: string) =>
+        force ? found || current : current || found || "";
+
       setForm((prev) => ({
         ...prev,
         cnpj: formatCNPJ(data.cnpj || cnpj),
-        legalName: prev.legalName || data.razaoSocial || "",
-        tradeName: prev.tradeName || data.nomeFantasia || "",
+        legalName: pick(prev.legalName, data.razaoSocial),
+        tradeName: pick(prev.tradeName, data.nomeFantasia),
         billingEmail: prev.billingEmail || data.email || "",
         whatsapp: prev.whatsapp
           ? prev.whatsapp
           : data.telefone
             ? formatPhoneBR(data.telefone)
             : "",
-        cep: prev.cep ? prev.cep : data.cep ? formatCEP(data.cep) : "",
-        street: prev.street || data.logradouro || "",
-        number: prev.number || data.numero || "",
-        complement: prev.complement || data.complemento || "",
-        district: prev.district || data.bairro || "",
-        city: prev.city || data.municipio || "",
-        state: prev.state || data.uf || "",
+        cep: pick(prev.cep, data.cep ? formatCEP(data.cep) : ""),
+        street: pick(prev.street, data.logradouro),
+        number: pick(prev.number, data.numero),
+        complement: pick(prev.complement, data.complemento),
+        district: pick(prev.district, data.bairro),
+        city: pick(prev.city, data.municipio),
+        state: pick(prev.state, data.uf),
       }));
 
       setLastFetchedCnpj(cnpj);
-      setCnpjSuccess("Dados preenchidos automaticamente pelo CNPJ.");
+      setCnpjSuccess(
+        `Dados preenchidos pelo CNPJ${data.situacao ? ` · Situação: ${data.situacao}` : ""}.`
+      );
     } catch (err: any) {
       setCnpjError(err?.message || "Não foi possível consultar o CNPJ");
       setCnpjSuccess(null);
@@ -768,9 +784,10 @@ export default function NewClientPage() {
                   <button
                     type="button"
                     style={primaryButtonStyle}
-                    onClick={() => fetchCNPJData(form.cnpj)}
+                    onClick={() => fetchCNPJData(form.cnpj, true)}
+                    disabled={cnpjLoading}
                   >
-                    Buscar dados
+                    {cnpjLoading ? "Buscando..." : "Buscar dados"}
                   </button>
                 </div>
               </>

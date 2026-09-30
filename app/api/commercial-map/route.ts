@@ -35,6 +35,12 @@ export async function GET(request: NextRequest) {
           region: {
             select: { id: true, name: true },
           },
+          // Tem expositor instalado (retirado/inativo nao conta)
+          exhibitors: {
+            where: { status: { notIn: ["REMOVED", "INACTIVE"] }, removedAt: null },
+            select: { id: true },
+            take: 1,
+          },
         },
         orderBy: [{ city: "asc" }, { name: "asc" }],
       }),
@@ -75,6 +81,9 @@ export async function GET(request: NextRequest) {
         latitude: client.latitude as number,
         longitude: client.longitude as number,
         status: "CLIENT",
+        // Perfil do cliente: com expositor (azul) ou so compra (roxo)
+        clientProfile:
+          client.exhibitors.length > 0 ? ("EXHIBITOR" as const) : ("BUYER" as const),
         // Posicao so de bairro/cidade/CEP - mostrar como "aproximada"
         approximate: client.locationSource === "APPROXIMATE",
         notes: client.notes,

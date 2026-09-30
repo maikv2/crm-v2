@@ -175,13 +175,13 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
     fetch("/api/regions", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setAllRegions(
-            data
-              .filter((r: any) => r?.id && r?.name && r.active !== false)
-              .map((r: any) => ({ id: r.id, name: r.name }))
-          );
-        }
+        // /api/regions devolve { items: [...] }
+        const list = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+        setAllRegions(
+          list
+            .filter((r: any) => r?.id && r?.name && r.active !== false)
+            .map((r: any) => ({ id: r.id, name: r.name }))
+        );
       })
       .catch(() => setAllRegions([]));
   }, [mode]);
@@ -344,7 +344,13 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
       const regionOk = mode === "representative"
         ? pointRegionId === (user?.regionId || "")
         : regionFilter === "ALL" || pointRegionId === regionFilter;
-      const kindOk = kindFilter === "ALL" || point.kind === kindFilter;
+      const kindOk =
+        kindFilter === "ALL" ||
+        (kindFilter === "CLIENT_EXHIBITOR"
+          ? point.kind === "CLIENT" && point.clientProfile !== "BUYER"
+          : kindFilter === "CLIENT_BUYER"
+            ? point.kind === "CLIENT" && point.clientProfile === "BUYER"
+            : point.kind === kindFilter);
 
       return cityOk && regionOk && kindOk;
     });
@@ -352,7 +358,8 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
 
   const counters = useMemo(() => ({
     total: filteredPoints.length,
-    clients: filteredPoints.filter((p) => p.kind === "CLIENT").length,
+    clientsWithExhibitor: filteredPoints.filter((p) => p.kind === "CLIENT" && p.clientProfile !== "BUYER").length,
+    clientsBuyers: filteredPoints.filter((p) => p.kind === "CLIENT" && p.clientProfile === "BUYER").length,
     prospects: filteredPoints.filter((p) => p.kind === "PROSPECT").length,
     exhibitors: filteredPoints.filter((p) => p.kind === "EXHIBITOR").length,
   }), [filteredPoints]);
@@ -423,7 +430,8 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
         gap: 16, marginBottom: 24,
       }}>
         <StatCard title="Pontos no mapa" value={counters.total} theme={theme} />
-        <StatCard title="Clientes" value={counters.clients} theme={theme} />
+        <StatCard title="Clientes com expositor" value={counters.clientsWithExhibitor} theme={theme} />
+        <StatCard title="Clientes que compram" value={counters.clientsBuyers} theme={theme} />
         <StatCard title="Prospectos" value={counters.prospects} theme={theme} />
         <StatCard title="Levar expositor" value={counters.exhibitors} theme={theme} />
       </div>
@@ -462,7 +470,9 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
 
             <FilterSelect value={kindFilter} onChange={setKindFilter} theme={theme}>
               <option value="ALL">Todos os tipos</option>
-              <option value="CLIENT">Clientes</option>
+              <option value="CLIENT">Todos os clientes</option>
+              <option value="CLIENT_EXHIBITOR">Clientes com expositor</option>
+              <option value="CLIENT_BUYER">Clientes que compram</option>
               <option value="PROSPECT">Prospectos</option>
               <option value="EXHIBITOR">Levar expositor</option>
             </FilterSelect>

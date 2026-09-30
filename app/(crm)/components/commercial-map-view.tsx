@@ -29,6 +29,8 @@ export type CommercialMapPoint = {
   status: string;
   /** Cliente posicionado so pelo bairro/cidade/CEP - precisa conferir */
   approximate?: boolean;
+  /** Cliente com expositor instalado ou que so compra */
+  clientProfile?: "EXHIBITOR" | "BUYER";
   notes?: string | null;
   lastVisitAt?: string | Date | null;
   region?: {
@@ -111,6 +113,21 @@ export const KIND_LABELS: Record<CommercialMapPointKind, string> = {
 };
 
 const KIND_ORDER: CommercialMapPointKind[] = ["PROSPECT", "EXHIBITOR", "CLIENT"];
+
+// Cliente que so compra (sem expositor instalado) - roxo; com expositor - azul.
+export const BUYER_COLOR = "#7c3aed";
+
+function pointColor(point: CommercialMapPoint) {
+  if (point.kind === "CLIENT" && point.clientProfile === "BUYER") return BUYER_COLOR;
+  return KIND_COLORS[point.kind];
+}
+
+function pointLabel(point: CommercialMapPoint) {
+  if (point.kind === "CLIENT") {
+    return point.clientProfile === "BUYER" ? "Cliente que compra" : "Cliente com expositor";
+  }
+  return KIND_LABELS[point.kind];
+}
 
 function formatDateBR(value?: string | Date | null) {
   if (!value) return "-";
@@ -723,7 +740,8 @@ export default function CommercialMapView({
           alignItems: "center",
         }}
       >
-        <Legend color={KIND_COLORS.CLIENT} label="Cliente" />
+        <Legend color={KIND_COLORS.CLIENT} label="Cliente com expositor" />
+        <Legend color={BUYER_COLOR} label="Cliente que compra" />
         <Legend color={KIND_COLORS.PROSPECT} label="Prospecto" />
         <Legend color={KIND_COLORS.EXHIBITOR} label="Levar expositor" />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -928,7 +946,7 @@ export default function CommercialMapView({
                       width: 12,
                       height: 12,
                       borderRadius: 999,
-                      background: KIND_COLORS[point.kind],
+                      background: pointColor(point),
                       flexShrink: 0,
                     }}
                   />
@@ -937,7 +955,7 @@ export default function CommercialMapView({
                       {point.tradeName || point.name}
                     </span>
                     <span style={{ fontSize: 12, color: theme.subtext }}>
-                      {KIND_LABELS[point.kind]} · {point.city || "-"}{point.state ? ` / ${point.state}` : ""}
+                      {pointLabel(point)} · {point.city || "-"}{point.state ? ` / ${point.state}` : ""}
                     </span>
                   </span>
                 </button>
@@ -1085,7 +1103,7 @@ export default function CommercialMapView({
           {displayPoints.map((point) => {
             const key = pointKey(point);
             const isMoving = moving ? pointKey(moving.point) === key : false;
-            const color = KIND_COLORS[point.kind];
+            const color = pointColor(point);
             const position: [number, number] = isMoving
               ? [moving!.position.lat, moving!.position.lng]
               : [point.displayLatitude, point.displayLongitude];
@@ -1124,7 +1142,7 @@ export default function CommercialMapView({
                         {point.tradeName || point.name}
                       </div>
                       <Info label="Tipo">
-                        <span style={{ color, fontWeight: 800 }}>{KIND_LABELS[point.kind]}</span>
+                        <span style={{ color, fontWeight: 800 }}>{pointLabel(point)}</span>
                       </Info>
                       {point.approximate ? (
                         <div
@@ -1312,7 +1330,7 @@ export default function CommercialMapView({
               {formatCoord(moving.position.lat)}, {formatCoord(moving.position.lng)}
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <BannerButton color={KIND_COLORS[moving.point.kind]} onClick={saveMove} disabled={busy}>
+              <BannerButton color={pointColor(moving.point)} onClick={saveMove} disabled={busy}>
                 {busy ? "Salvando..." : "Salvar posição"}
               </BannerButton>
               <BannerButton outline onClick={() => setMoving(null)} theme={theme} disabled={busy}>

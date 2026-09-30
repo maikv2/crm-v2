@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, CircleMarker, Circle, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getThemeColors } from "../../../lib/theme";
@@ -285,6 +285,38 @@ function MapInteractions({
   return null;
 }
 
+type GpsPosition = { lat: number; lng: number; accuracy: number };
+
+function gpsErrorMessage(error: GeolocationPositionError | Error) {
+  if ("code" in error) {
+    if (error.code === 1) {
+      return "Localização bloqueada. Permita o acesso à localização para este site (ícone de cadeado na barra de endereço) e tente de novo.";
+    }
+    if (error.code === 3) return "O GPS demorou para responder. Tente de novo, de preferência em local aberto.";
+    return "Não foi possível obter sua localização. Confira se o GPS do celular está ligado.";
+  }
+  return error.message;
+}
+
+/** Localizacao atual pelo GPS do aparelho (API do navegador, gratuita). */
+function getGpsPosition(): Promise<GpsPosition> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("Este aparelho/navegador não tem localização disponível."));
+      return;
+    }
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      reject(new Error("A localização só funciona no endereço seguro (https) do CRM."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+      reject,
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
+    );
+  });
+}
+
 function readSavedCategories(): MapPlaceCategory[] {
   try {
     const raw = window.localStorage.getItem(PLACES_STORAGE_KEY);
@@ -545,6 +577,49 @@ export default function CommercialMapView({
         cep: place.cep,
       },
     });
+  }
+
+  // GPS do aparelho: ponto azul "voce esta aqui" + "usar meu GPS" nos modos
+  // de mover/colocar/adicionar.
+  const [myPosition, setMyPosition] = useState<GpsPosition | null>(null);
+  const [locating, setLocating] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+    };
+  }, []);
+
+  async function locateMe() {
+    try {
+      setLocating(true);
+      setFeedback(null);
+      const pos = await getGpsPosition();
+      setMyPosition(pos);
+      map?.flyTo([pos.lat, pos.lng], Math.max(map.getZoom(), 17), { duration: 0.8 });
+
+      // Continua acompanhando enquanto a pessoa anda.
+      if (watchIdRef.current == null && navigator.geolocation) {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (p) => setMyPosition({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+          () => undefined,
+          { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
+        );
+      }
+      return pos;
+    } catch (error: any) {
+      setFeedback({ type: "error", text: gpsErrorMessage(error) });
+      return null;
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  // Leva o ponto sendo movido pra onde a pessoa esta.
+  async function moveToMyPosition() {
+    const pos = await locateMe();
+    if (pos) setMoving((current) => (current ? { ...current, position: { lat: pos.lat, lng: pos.lng } } : current));
   }
 
   // Clientes para ajustar: colocar no mapa (sem localizacao) ou mover
@@ -1039,6 +1114,31 @@ export default function CommercialMapView({
           <MapRecenter recenterKey={recenterKey} center={center} />
           <MapInteractions onLongPress={handleLongPress} onTap={handleTap} onViewChange={schedulePlacesLoad} />
 
+          {/* Voce esta aqui (GPS do aparelho) */}
+          {myPosition ? (
+            <>
+              <Circle
+                center={[myPosition.lat, myPosition.lng]}
+                radius={Math.min(myPosition.accuracy, 500)}
+                interactive={false}
+                pathOptions={{ color: "#0ea5e9", weight: 1, fillColor: "#0ea5e9", fillOpacity: 0.12 }}
+              />
+              <CircleMarker
+                center={[myPosition.lat, myPosition.lng]}
+                radius={8}
+                bubblingMouseEvents={false}
+                pathOptions={{ color: "#ffffff", weight: 3, fillColor: "#0ea5e9", fillOpacity: 1 }}
+              >
+                <Popup>
+                  <div style={{ fontWeight: 800 }}>Você está aqui</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>
+                    Precisão de ~{Math.round(myPosition.accuracy)} m
+                  </div>
+                </Popup>
+              </CircleMarker>
+            </>
+          ) : null}
+
           {/* Pontinhos vermelhos discretos: estabelecimentos do OpenStreetMap */}
           {visiblePlaces.map((place) => (
             <CircleMarker
@@ -1270,6 +1370,41 @@ export default function CommercialMapView({
           ) : null}
         </MapContainer>
 
+        {/* Botao "minha localizacao" (GPS) */}
+        <button
+          type="button"
+          onClick={locateMe}
+          disabled={locating}
+          title="Minha localização"
+          aria-label="Minha localização"
+          style={{
+            position: "absolute",
+            right: 12,
+            bottom: 28,
+            zIndex: 1000,
+            height: 44,
+            padding: "0 14px",
+            borderRadius: 999,
+            border: "none",
+            background: "#ffffff",
+            color: "#0369a1",
+            fontWeight: 800,
+            fontSize: 13,
+            boxShadow: "0 4px 14px rgba(15,23,42,0.25)",
+            cursor: locating ? "wait" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" fill="#0ea5e9" />
+            <circle cx="12" cy="12" r="8" fill="none" stroke="#0ea5e9" strokeWidth="2" />
+            <path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="#0ea5e9" strokeWidth="2" />
+          </svg>
+          {locating ? "Localizando..." : "Minha localização"}
+        </button>
+
         {/* Mira fixa no centro: arrasta o mapa por baixo e confirma */}
         {aiming ? (
           <>
@@ -1281,9 +1416,12 @@ export default function CommercialMapView({
               <div style={{ fontSize: 13, color: theme.subtext }}>
                 Arraste o mapa até a mira ficar em cima do local.
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
                 <BannerButton color={KIND_COLORS[aiming]} onClick={confirmAim}>
                   Adicionar aqui
+                </BannerButton>
+                <BannerButton outline onClick={locateMe} theme={theme} disabled={locating}>
+                  {locating ? "GPS..." : "Usar meu GPS"}
                 </BannerButton>
                 <BannerButton outline onClick={() => setAiming(null)} theme={theme}>
                   Cancelar
@@ -1305,9 +1443,12 @@ export default function CommercialMapView({
               <div style={{ fontSize: 13, color: theme.subtext }}>
                 Arraste o mapa até a mira ficar em cima do cliente.
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
                 <BannerButton color={KIND_COLORS.CLIENT} onClick={confirmPlacing} disabled={busy}>
                   {busy ? "Salvando..." : "Salvar aqui"}
+                </BannerButton>
+                <BannerButton outline onClick={locateMe} theme={theme} disabled={locating || busy}>
+                  {locating ? "GPS..." : "Usar meu GPS"}
                 </BannerButton>
                 <BannerButton outline onClick={() => setPlacing(null)} theme={theme} disabled={busy}>
                   Cancelar
@@ -1329,9 +1470,12 @@ export default function CommercialMapView({
             <div style={{ fontSize: 12, color: theme.subtext }}>
               {formatCoord(moving.position.lat)}, {formatCoord(moving.position.lng)}
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
               <BannerButton color={pointColor(moving.point)} onClick={saveMove} disabled={busy}>
                 {busy ? "Salvando..." : "Salvar posição"}
+              </BannerButton>
+              <BannerButton outline onClick={moveToMyPosition} theme={theme} disabled={locating || busy}>
+                {locating ? "GPS..." : "Usar meu GPS"}
               </BannerButton>
               <BannerButton outline onClick={() => setMoving(null)} theme={theme} disabled={busy}>
                 Cancelar
@@ -1712,8 +1856,9 @@ function BannerButton({
       onClick={onClick}
       disabled={disabled}
       style={{
-        flex: 1,
+        flex: "1 1 110px",
         height: 42,
+        padding: "0 10px",
         borderRadius: 10,
         border: outline ? `1px solid ${theme?.isDark ? "#334155" : theme?.border ?? "#cbd5e1"}` : "none",
         background: outline ? "transparent" : color,

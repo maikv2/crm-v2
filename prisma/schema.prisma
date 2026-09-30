@@ -809,6 +809,28 @@ model PaymentWebhookEvent {
   @@index([externalPaymentId])
 }
 
+/// Estabelecimentos para prospeccao no mapa comercial (pontinhos vermelhos),
+/// importados da base aberta Overture Maps por scripts/import-map-places.py.
+/// So cache de dados publicos - pode ser reimportado a qualquer momento.
+model MapPlace {
+  id         String   @id
+  category   String
+  name       String?
+  latitude   Float
+  longitude  Float
+  phone      String?
+  street     String?
+  city       String?
+  state      String?
+  cep        String?
+  source     String   @default("overture")
+  importedAt DateTime @default(now())
+
+  @@index([latitude, longitude])
+  @@index([category, latitude, longitude])
+  @@index([state])
+}
+
 model Prospect {
   id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name             String

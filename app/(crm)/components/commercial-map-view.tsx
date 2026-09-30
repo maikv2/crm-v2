@@ -69,6 +69,7 @@ const PLACE_CATEGORIES: { key: MapPlaceCategory; label: string }[] = [
   { key: "PHONE", label: "Lojas de celular" },
   { key: "COMPUTER", label: "Informática" },
   { key: "BOOKS", label: "Livrarias" },
+  { key: "RESTAURANT", label: "Restaurantes" },
 ];
 
 const PLACE_LABELS = Object.fromEntries(
@@ -376,44 +377,48 @@ export default function CommercialMapView({
       return;
     }
 
+    // O que falta carregar: cada quadrado visivel x cada tipo ligado (so os
+    // tipos ligados vem do servidor - capital tem milhares de restaurantes).
     const bounds = map.getBounds();
-    const tiles: { x: number; y: number }[] = [];
+    const pending: { x: number; y: number; categories: MapPlaceCategory[] }[] = [];
     for (let x = Math.floor(bounds.getWest() / PLACES_TILE); x <= Math.floor(bounds.getEast() / PLACES_TILE); x++) {
       for (let y = Math.floor(bounds.getSouth() / PLACES_TILE); y <= Math.floor(bounds.getNorth() / PLACES_TILE); y++) {
-        if (!loadedTilesRef.current.has(`${x},${y}`)) tiles.push({ x, y });
+        const missing = placeCategories.filter((cat) => {
+          const key = `${x},${y}|${cat}`;
+          return !loadedTilesRef.current.has(key) && !loadingTilesRef.current.has(key);
+        });
+        if (missing.length) pending.push({ x, y, categories: missing });
       }
     }
-    if (tiles.length === 0) {
-      setPlacesStatus({ type: "idle" });
+    if (pending.length === 0) {
+      if (loadingTilesRef.current.size === 0) setPlacesStatus({ type: "idle" });
       return;
     }
-
-    // Quadrado por quadrado (capital densa estoura o tempo numa area grande),
-    // 2 de cada vez - o limite do Overpass por IP - mostrando conforme chega.
-    const pending = tiles.filter((t) => !loadingTilesRef.current.has(`${t.x},${t.y}`));
-    pending.forEach((t) => loadingTilesRef.current.add(`${t.x},${t.y}`));
-    if (pending.length === 0) return;
+    pending.forEach((t) => t.categories.forEach((cat) => loadingTilesRef.current.add(`${t.x},${t.y}|${cat}`)));
 
     setPlacesStatus({ type: "loading" });
     let failed = 0;
 
-    async function loadTile(tile: { x: number; y: number }) {
-      const key = `${tile.x},${tile.y}`;
+    // Quadrado por quadrado, 2 de cada vez, mostrando conforme chega.
+    async function loadTile(tile: { x: number; y: number; categories: MapPlaceCategory[] }) {
+      const keys = tile.categories.map((cat) => `${tile.x},${tile.y}|${cat}`);
       const params = new URLSearchParams({
         south: (tile.y * PLACES_TILE).toFixed(4),
         west: (tile.x * PLACES_TILE).toFixed(4),
         north: ((tile.y + 1) * PLACES_TILE).toFixed(4),
         east: ((tile.x + 1) * PLACES_TILE).toFixed(4),
+        categories: tile.categories.join(","),
       });
       try {
-        // O Overpass publico as vezes fica sobrecarregado: tenta ate 3 vezes.
+        // Onde cai no OpenStreetMap (publico), as vezes ele fica
+        // sobrecarregado: tenta ate 3 vezes.
         for (let attempt = 0; attempt < 3; attempt++) {
           if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 4000 * attempt));
           try {
             const res = await fetch(`/api/map-places?${params.toString()}`, { cache: "no-store" });
             const data = await res.json().catch(() => null);
             if (!res.ok || !Array.isArray(data)) continue;
-            loadedTilesRef.current.add(key);
+            keys.forEach((key) => loadedTilesRef.current.add(key));
             setPlaces((current) => {
               const next = new Map(current);
               for (const place of data as MapPlace[]) next.set(place.id, place);
@@ -426,7 +431,7 @@ export default function CommercialMapView({
         }
         failed++;
       } finally {
-        loadingTilesRef.current.delete(key);
+        keys.forEach((key) => loadingTilesRef.current.delete(key));
       }
     }
 
@@ -443,7 +448,7 @@ export default function CommercialMapView({
             type: "error",
             text:
               failed === pending.length
-                ? "O OpenStreetMap não respondeu. Mexa no mapa para tentar de novo."
+                ? "Os estabelecimentos não carregaram. Mexa no mapa para tentar de novo."
                 : "Parte da área não carregou. Mexa no mapa para tentar de novo.",
           }
         : { type: "idle" }
@@ -458,11 +463,11 @@ export default function CommercialMapView({
     }, 500);
   }
 
-  // Ligou algum tipo (ou o mapa acabou de abrir): busca a area atual.
+  // Ligou/desligou algum tipo (ou o mapa acabou de abrir): busca o que falta.
   useEffect(() => {
     schedulePlacesLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placeCategories.length > 0, map]);
+  }, [placeCategories.join(","), map]);
 
   // Esconde o que ja e cliente/prospecto (a ~35 m) ou acabou de ser cadastrado.
   const visiblePlaces = useMemo(() => {

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 /**
- * Estabelecimentos do OpenStreetMap (API Overpass, gratuita) dentro de uma
- * area do mapa comercial, ja classificados nos tipos de comercio que a V2
- * procura. Usado pra mostrar os pontinhos vermelhos e virar cliente,
- * prospecto ou "levar expositor".
+ * Estabelecimentos dentro de uma area do mapa comercial, ja classificados
+ * nos tipos de comercio que a V2 procura. Usado pra mostrar os pontinhos
+ * vermelhos e virar cliente, prospecto ou "levar expositor".
+ *
+ * Fonte principal: tabela MapPlace (base aberta Overture Maps, importada por
+ * scripts/import-map-places.py) - rapida e bem mais completa. Onde nada foi
+ * importado, cai no OpenStreetMap (API Overpass, gratuita, consulta na hora).
  *
  * GET /api/map-places?south=..&west=..&north=..&east=..
  */
@@ -20,7 +24,8 @@ export type MapPlaceCategory =
   | "WAREHOUSE"
   | "PHONE"
   | "COMPUTER"
-  | "BOOKS";
+  | "BOOKS"
+  | "RESTAURANT";
 
 export type MapPlace = {
   id: string;
@@ -81,6 +86,7 @@ function classify(tags: Record<string, string>): MapPlaceCategory | null {
 
   if (amenity === "pharmacy" || shop === "chemist") return "PHARMACY";
   if (amenity === "fuel") return "FUEL";
+  if (amenity === "restaurant" || amenity === "fast_food") return "RESTAURANT";
   if (shop === "bakery" || shop === "pastry") return "BAKERY";
   if (shop === "mobile_phone") return "PHONE";
   if (shop === "computer" || shop === "electronics") return "COMPUTER";
@@ -179,17 +185,70 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Tipos pedidos (so os ligados no mapa); sem o parametro, todos.
+  const categories = (searchParams.get("categories") ?? "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean) as MapPlaceCategory[];
+  const wanted = (place: { category: string }) =>
+    categories.length === 0 || categories.includes(place.category as MapPlaceCategory);
+
+  // 1) Base importada (Overture) no banco do CRM
+  try {
+    const stored = await prisma.mapPlace.findMany({
+      where: {
+        latitude: { gte: south, lte: north },
+        longitude: { gte: west, lte: east },
+        ...(categories.length ? { category: { in: categories } } : {}),
+      },
+      take: 10000,
+    });
+
+    if (stored.length > 0) {
+      return NextResponse.json(
+        stored.map<MapPlace>((p) => ({
+          id: p.id,
+          category: p.category as MapPlaceCategory,
+          name: p.name,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          street: p.street,
+          number: null,
+          district: null,
+          city: p.city,
+          state: p.state,
+          cep: p.cep,
+          phone: p.phone,
+        }))
+      );
+    }
+
+    // Area vazia (zona rural) numa regiao ja importada: nao precisa do OSM.
+    const importedNearby = await prisma.mapPlace.findFirst({
+      where: {
+        latitude: { gte: south - 0.5, lte: north + 0.5 },
+        longitude: { gte: west - 0.5, lte: east + 0.5 },
+      },
+      select: { id: true },
+    });
+    if (importedNearby) return NextResponse.json([]);
+  } catch (error) {
+    console.error("GET /api/map-places MapPlace error:", error);
+    // segue pro OpenStreetMap
+  }
+
+  // 2) OpenStreetMap na hora (regiao ainda nao importada)
   const bbox = [south, west, north, east].map((v) => v.toFixed(4)).join(",");
   const cached = cache.get(bbox);
   if (cached && Date.now() - cached.at < CACHE_MS) {
-    return NextResponse.json(cached.places);
+    return NextResponse.json(cached.places.filter(wanted));
   }
 
   const query = `
     [out:json][timeout:25];
     (
       nwr["shop"~"^(${SHOP_TAGS.join("|")})$"](${bbox});
-      nwr["amenity"~"^(pharmacy|fuel)$"](${bbox});
+      nwr["amenity"~"^(pharmacy|fuel|restaurant|fast_food)$"](${bbox});
     );
     out center tags 6000;
   `;
@@ -207,5 +266,5 @@ export async function GET(request: NextRequest) {
   if (cache.size > 200) cache.clear();
   cache.set(bbox, { at: Date.now(), places });
 
-  return NextResponse.json(places);
+  return NextResponse.json(places.filter(wanted));
 }

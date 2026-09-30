@@ -233,12 +233,23 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
   // endereco sao descobertos pela coordenada no servidor.
   async function handleCreatePoint(input: NewMapPointInput) {
     const isClient = input.kind === "CLIENT";
+    // Endereco do estabelecimento do OpenStreetMap, quando veio de um
+    // pontinho vermelho (sem cidade, o servidor descobre pela coordenada).
+    const address = {
+      street: input.street ?? undefined,
+      number: input.number ?? undefined,
+      district: input.district ?? undefined,
+      city: input.city ?? undefined,
+      state: input.state ?? undefined,
+      cep: input.cep ?? undefined,
+    };
     const res = await fetch(isClient ? "/api/clients" : "/api/prospects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
         isClient
           ? {
+              ...address,
               name: input.name,
               personType: "JURIDICA",
               roleClient: true,
@@ -249,6 +260,7 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
               longitude: input.longitude,
             }
           : {
+              ...address,
               name: input.name,
               phone: input.phone,
               notes: input.notes,

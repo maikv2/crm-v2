@@ -330,13 +330,13 @@ export async function POST(request: Request) {
       geocoded = { latitude: manualLatitude, longitude: manualLongitude };
 
       // Sem endereco digitado: descobre cidade/UF pela coordenada.
-      if (!city) {
+      if (!city || !state) {
         const address = await reverseGeocode(manualLatitude, manualLongitude);
         if (address) {
           street = street ?? address.street;
           number = number ?? address.number;
           district = district ?? address.district;
-          city = address.city;
+          city = city ?? address.city;
           state = state ?? address.state;
           cep = cep || address.cep || "";
         }

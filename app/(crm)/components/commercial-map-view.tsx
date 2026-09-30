@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getThemeColors } from "../../../lib/theme";
+import type { MapPlace, MapPlaceCategory } from "@/app/api/map-places/route";
 
 export type CommercialMapPointKind = "CLIENT" | "PROSPECT" | "EXHIBITOR";
 
@@ -34,7 +35,50 @@ export type NewMapPointInput = {
   regionId: string;
   latitude: number;
   longitude: number;
+  // Endereco vindo do estabelecimento do OpenStreetMap (quando tiver)
+  street?: string | null;
+  number?: string | null;
+  district?: string | null;
+  city?: string | null;
+  state?: string | null;
+  cep?: string | null;
 };
+
+type DraftPrefill = {
+  placeId: string;
+  name: string;
+  phone: string;
+  street: string | null;
+  number: string | null;
+  district: string | null;
+  city: string | null;
+  state: string | null;
+  cep: string | null;
+};
+
+// Tipos de comercio que a V2 procura (pontinhos vermelhos do OpenStreetMap)
+const PLACE_CATEGORIES: { key: MapPlaceCategory; label: string }[] = [
+  { key: "SUPERMARKET", label: "Supermercados" },
+  { key: "MARKET", label: "Mercados" },
+  { key: "CONVENIENCE", label: "Conveniência" },
+  { key: "TELEBIER", label: "Tele Bier" },
+  { key: "BAKERY", label: "Padaria" },
+  { key: "PHARMACY", label: "Farmácia" },
+  { key: "FUEL", label: "Posto de gasolina" },
+  { key: "WAREHOUSE", label: "Armazém" },
+  { key: "PHONE", label: "Lojas de celular" },
+  { key: "COMPUTER", label: "Informática" },
+  { key: "BOOKS", label: "Livrarias" },
+];
+
+const PLACE_LABELS = Object.fromEntries(
+  PLACE_CATEGORIES.map((c) => [c.key, c.label])
+) as Record<MapPlaceCategory, string>;
+
+const PLACE_COLOR = "#dc2626";
+const PLACES_MIN_ZOOM = 13;
+const PLACES_TILE = 0.1; // graus - a area e carregada em quadrados desse tamanho
+const PLACES_STORAGE_KEY = "v2crm.map.placeCategories";
 
 type DisplayPoint = CommercialMapPoint & {
   displayLatitude: number;
@@ -186,9 +230,11 @@ function MapRecenter({ recenterKey, center }: { recenterKey: string; center: [nu
 function MapInteractions({
   onLongPress,
   onTap,
+  onViewChange,
 }: {
   onLongPress: (latlng: LatLng) => void;
   onTap: (latlng: LatLng) => void;
+  onViewChange: () => void;
 }) {
   useMapEvents({
     contextmenu(event) {
@@ -197,8 +243,26 @@ function MapInteractions({
     click(event) {
       onTap({ lat: event.latlng.lat, lng: event.latlng.lng });
     },
+    moveend() {
+      onViewChange();
+    },
   });
   return null;
+}
+
+function readSavedCategories(): MapPlaceCategory[] {
+  try {
+    const raw = window.localStorage.getItem(PLACES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((k) => k in PLACE_LABELS) : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatPlaceAddress(place: MapPlace) {
+  const street = [place.street, place.number].filter(Boolean).join(", ");
+  return [street, place.district, place.city].filter(Boolean).join(" - ");
 }
 
 export default function CommercialMapView({
@@ -233,7 +297,12 @@ export default function CommercialMapView({
   // Mira no centro do mapa pra escolher onde adicionar
   const [aiming, setAiming] = useState<CommercialMapPointKind | null>(null);
   // Cadastro rapido aberto
-  const [draft, setDraft] = useState<{ position: LatLng; kind: CommercialMapPointKind } | null>(null);
+  const [draft, setDraft] = useState<{
+    id: number;
+    position: LatLng;
+    kind: CommercialMapPointKind;
+    prefill?: DraftPrefill;
+  } | null>(null);
   // Edicao de coordenadas dentro do painel do ponto
   const [coordEdit, setCoordEdit] = useState<{ key: string; lat: string; lng: string } | null>(null);
 
@@ -260,6 +329,145 @@ export default function CommercialMapView({
       })
       .slice(0, 8);
   }, [search, displayPoints]);
+
+  // Estabelecimentos do OpenStreetMap (pontinhos vermelhos)
+  const [placeCategories, setPlaceCategories] = useState<MapPlaceCategory[]>([]);
+  const [places, setPlaces] = useState<Map<string, MapPlace>>(new Map());
+  const [placesStatus, setPlacesStatus] = useState<
+    { type: "idle" | "loading" | "zoom" | "error"; text?: string }
+  >({ type: "idle" });
+  const [convertedPlaceIds, setConvertedPlaceIds] = useState<Set<string>>(new Set());
+  const loadedTilesRef = useRef(new Set<string>());
+  const placesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const placesRenderer = useMemo(() => L.canvas({ padding: 0.5, tolerance: 10 }), []);
+
+  useEffect(() => {
+    setPlaceCategories(readSavedCategories());
+  }, []);
+
+  function togglePlaceCategory(key: MapPlaceCategory) {
+    setPlaceCategories((current) => {
+      const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+      try {
+        window.localStorage.setItem(PLACES_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // sem localStorage: so nao lembra a escolha
+      }
+      return next;
+    });
+  }
+
+  function setAllPlaceCategories(on: boolean) {
+    const next = on ? PLACE_CATEGORIES.map((c) => c.key) : [];
+    setPlaceCategories(next);
+    try {
+      window.localStorage.setItem(PLACES_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // ignora
+    }
+  }
+
+  // Carrega os quadrados da area visivel que ainda nao foram buscados.
+  async function loadPlacesForView() {
+    if (!map) return;
+    if (map.getZoom() < PLACES_MIN_ZOOM) {
+      setPlacesStatus({ type: "zoom" });
+      return;
+    }
+
+    const bounds = map.getBounds();
+    const tiles: { x: number; y: number }[] = [];
+    for (let x = Math.floor(bounds.getWest() / PLACES_TILE); x <= Math.floor(bounds.getEast() / PLACES_TILE); x++) {
+      for (let y = Math.floor(bounds.getSouth() / PLACES_TILE); y <= Math.floor(bounds.getNorth() / PLACES_TILE); y++) {
+        if (!loadedTilesRef.current.has(`${x},${y}`)) tiles.push({ x, y });
+      }
+    }
+    if (tiles.length === 0) {
+      setPlacesStatus({ type: "idle" });
+      return;
+    }
+
+    const west = Math.min(...tiles.map((t) => t.x)) * PLACES_TILE;
+    const east = (Math.max(...tiles.map((t) => t.x)) + 1) * PLACES_TILE;
+    const south = Math.min(...tiles.map((t) => t.y)) * PLACES_TILE;
+    const north = (Math.max(...tiles.map((t) => t.y)) + 1) * PLACES_TILE;
+
+    try {
+      setPlacesStatus({ type: "loading" });
+      const params = new URLSearchParams({
+        south: south.toFixed(4),
+        west: west.toFixed(4),
+        north: north.toFixed(4),
+        east: east.toFixed(4),
+      });
+      const res = await fetch(`/api/map-places?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(data)) {
+        throw new Error(data?.error || "Não foi possível carregar os estabelecimentos.");
+      }
+      tiles.forEach((t) => loadedTilesRef.current.add(`${t.x},${t.y}`));
+      setPlaces((current) => {
+        const next = new Map(current);
+        for (const place of data as MapPlace[]) next.set(place.id, place);
+        return next;
+      });
+      setPlacesStatus({ type: "idle" });
+    } catch (error: any) {
+      setPlacesStatus({ type: "error", text: error?.message || "Não foi possível carregar os estabelecimentos." });
+    }
+  }
+
+  function schedulePlacesLoad() {
+    if (placeCategories.length === 0) return;
+    if (placesTimerRef.current) clearTimeout(placesTimerRef.current);
+    placesTimerRef.current = setTimeout(() => {
+      loadPlacesForView();
+    }, 500);
+  }
+
+  // Ligou algum tipo (ou o mapa acabou de abrir): busca a area atual.
+  useEffect(() => {
+    schedulePlacesLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeCategories.length > 0, map]);
+
+  // Esconde o que ja e cliente/prospecto (a ~35 m) ou acabou de ser cadastrado.
+  const visiblePlaces = useMemo(() => {
+    if (placeCategories.length === 0) return [];
+    const enabled = new Set(placeCategories);
+    const near = 0.00035;
+    return Array.from(places.values()).filter(
+      (place) =>
+        enabled.has(place.category) &&
+        !convertedPlaceIds.has(place.id) &&
+        !safePoints.some(
+          (p) => Math.abs(p.latitude - place.latitude) < near && Math.abs(p.longitude - place.longitude) < near
+        )
+    );
+  }, [places, placeCategories, convertedPlaceIds, safePoints]);
+
+  function startFromPlace(place: MapPlace, kind: CommercialMapPointKind) {
+    map?.closePopup();
+    setMoving(null);
+    setAiming(null);
+    setFeedback(null);
+    setDraft({
+      id: Date.now(),
+      position: { lat: place.latitude, lng: place.longitude },
+      kind,
+      prefill: {
+        placeId: place.id,
+        name: place.name ?? "",
+        phone: place.phone ?? "",
+        street: place.street,
+        number: place.number,
+        district: place.district,
+        city: place.city,
+        state: place.state,
+        cep: place.cep,
+      },
+    });
+  }
 
   function focusPoint(point: DisplayPoint) {
     if (!map) return;
@@ -353,7 +561,7 @@ export default function CommercialMapView({
   function confirmAim() {
     if (!map || !aiming) return;
     const c = map.getCenter();
-    setDraft({ position: { lat: c.lat, lng: c.lng }, kind: aiming });
+    setDraft({ id: Date.now(), position: { lat: c.lat, lng: c.lng }, kind: aiming });
     setAiming(null);
   }
 
@@ -362,7 +570,7 @@ export default function CommercialMapView({
     map?.closePopup();
     setAiming(null);
     setFeedback(null);
-    setDraft({ position, kind: "PROSPECT" });
+    setDraft({ id: Date.now(), position, kind: "PROSPECT" });
   }
 
   function handleTap(position: LatLng) {
@@ -509,6 +717,61 @@ export default function CommercialMapView({
         ) : null}
       </div>
 
+      {/* Estabelecimentos do OpenStreetMap: um botao por tipo pra mostrar/ocultar */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: theme.text }}>
+            Estabelecimentos no mapa
+            <span style={{ fontWeight: 600, color: theme.subtext }}>
+              {" "}
+              {placesStatus.type === "loading"
+                ? "· carregando..."
+                : placesStatus.type === "zoom" && placeCategories.length > 0
+                  ? "· aproxime o mapa (nível de bairro) para ver"
+                  : placesStatus.type === "error"
+                    ? `· ${placesStatus.text}`
+                    : placeCategories.length > 0
+                      ? `· ${visiblePlaces.length} na área carregada`
+                      : "· escolha os tipos para mostrar"}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" onClick={() => setAllPlaceCategories(true)} style={chipStyle(false, theme)}>
+              Mostrar todos
+            </button>
+            <button type="button" onClick={() => setAllPlaceCategories(false)} style={chipStyle(false, theme)}>
+              Ocultar todos
+            </button>
+          </div>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {PLACE_CATEGORIES.map((category) => {
+            const active = placeCategories.includes(category.key);
+            return (
+              <button
+                key={category.key}
+                type="button"
+                onClick={() => togglePlaceCategory(category.key)}
+                aria-pressed={active}
+                style={chipStyle(active, theme)}
+              >
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: 999,
+                    background: active ? PLACE_COLOR : "transparent",
+                    border: `2px solid ${PLACE_COLOR}`,
+                    opacity: active ? 0.8 : 0.5,
+                  }}
+                />
+                {category.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div
         style={{
           position: "relative",
@@ -526,7 +789,68 @@ export default function CommercialMapView({
 
           {/* Reposiciona o mapa quando os filtros mudam os pontos */}
           <MapRecenter recenterKey={recenterKey} center={center} />
-          <MapInteractions onLongPress={handleLongPress} onTap={handleTap} />
+          <MapInteractions onLongPress={handleLongPress} onTap={handleTap} onViewChange={schedulePlacesLoad} />
+
+          {/* Pontinhos vermelhos discretos: estabelecimentos do OpenStreetMap */}
+          {visiblePlaces.map((place) => (
+            <CircleMarker
+              key={place.id}
+              center={[place.latitude, place.longitude]}
+              radius={5}
+              renderer={placesRenderer}
+              bubblingMouseEvents={false}
+              pathOptions={{
+                color: PLACE_COLOR,
+                weight: 1,
+                opacity: 0.7,
+                fillColor: PLACE_COLOR,
+                fillOpacity: 0.35,
+              }}
+            >
+              <Popup>
+                <div style={{ minWidth: 220, maxWidth: 270 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>
+                    {place.name || "Sem nome no mapa"}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: PLACE_COLOR, marginBottom: 6 }}>
+                    {PLACE_LABELS[place.category]}
+                  </div>
+                  {formatPlaceAddress(place) ? (
+                    <Info label="Endereço">{formatPlaceAddress(place)}</Info>
+                  ) : null}
+                  {place.phone ? <Info label="Telefone">{place.phone}</Info> : null}
+                  <div style={{ fontSize: 11, color: "#64748b", margin: "6px 0 8px" }}>
+                    Dados do OpenStreetMap, podem estar desatualizados.
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {KIND_ORDER.map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => startFromPlace(place, kind)}
+                        style={{
+                          height: 32,
+                          borderRadius: 8,
+                          border: "none",
+                          background: KIND_COLORS[kind],
+                          color: kind === "PROSPECT" ? "#1f2937" : "#ffffff",
+                          fontWeight: 800,
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {kind === "EXHIBITOR"
+                          ? "Levar expositor"
+                          : kind === "CLIENT"
+                            ? "Transformar em cliente"
+                            : "Transformar em prospecto"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Popup>
+            </CircleMarker>
+          ))}
 
           {displayPoints.map((point) => {
             const key = pointKey(point);
@@ -749,7 +1073,7 @@ export default function CommercialMapView({
         {/* Cadastro rapido */}
         {draft ? (
           <QuickAddForm
-            key={`${draft.position.lat}-${draft.position.lng}`}
+            key={draft.id}
             draft={draft}
             theme={theme}
             cardStyle={overlayCard}
@@ -759,13 +1083,23 @@ export default function CommercialMapView({
             onKindChange={(kind) => setDraft({ ...draft, kind })}
             onCancel={() => setDraft(null)}
             onSave={async (values) => {
+              const prefill = draft.prefill;
               await onCreatePoint({
                 ...values,
                 kind: draft.kind,
                 regionId: fixedRegionId || values.regionId,
                 latitude: draft.position.lat,
                 longitude: draft.position.lng,
+                street: prefill?.street,
+                number: prefill?.number,
+                district: prefill?.district,
+                city: prefill?.city,
+                state: prefill?.state,
+                cep: prefill?.cep,
               });
+              if (prefill?.placeId) {
+                setConvertedPlaceIds((current) => new Set(current).add(prefill.placeId));
+              }
               setDraft(null);
               setFeedback({ type: "success", text: `${KIND_LABELS[draft.kind]} "${values.name}" adicionado no mapa.` });
             }}
@@ -852,7 +1186,7 @@ function QuickAddForm({
   onCancel,
   onSave,
 }: {
-  draft: { position: LatLng; kind: CommercialMapPointKind };
+  draft: { position: LatLng; kind: CommercialMapPointKind; prefill?: DraftPrefill };
   theme: ReturnType<typeof getThemeColors>;
   cardStyle: React.CSSProperties;
   regions: { id: string; name: string }[];
@@ -862,8 +1196,8 @@ function QuickAddForm({
   onCancel: () => void;
   onSave: (values: { name: string; phone: string; notes: string; regionId: string }) => Promise<void>;
 }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [name, setName] = useState(draft.prefill?.name ?? "");
+  const [phone, setPhone] = useState(draft.prefill?.phone ?? "");
   const [notes, setNotes] = useState("");
   const [regionId, setRegionId] = useState(initialRegionId);
   const [saving, setSaving] = useState(false);
@@ -1018,6 +1352,24 @@ function QuickAddForm({
       </div>
     </form>
   );
+}
+
+function chipStyle(active: boolean, theme: ReturnType<typeof getThemeColors>): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: `1px solid ${active ? "rgba(220,38,38,0.55)" : theme.isDark ? "#1e293b" : theme.border}`,
+    background: active ? (theme.isDark ? "rgba(220,38,38,0.16)" : "#fef2f2") : "transparent",
+    color: theme.text,
+    fontWeight: 700,
+    fontSize: 12,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
 }
 
 function MapBanner({ children, style }: { children: React.ReactNode; style: React.CSSProperties }) {

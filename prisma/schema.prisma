@@ -152,6 +152,8 @@ model Client {
   lastVisitAt                DateTime?
   latitude                   Float?
   longitude                  Float?
+  /// De onde veio a localizacao: MANUAL (marcada por pessoa), ADDRESS (endereco exato) ou APPROXIMATE (bairro/cidade/CEP - conferir)
+  locationSource             String?
   mapStatus                  String?              @default("CLIENT")
   needsReturn                Boolean              @default(false)
   portalEnabled              Boolean              @default(false)

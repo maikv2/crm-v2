@@ -6,6 +6,14 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getThemeColors } from "../../../lib/theme";
 import type { MapPlace, MapPlaceCategory } from "@/app/api/map-places/route";
+import type { PendingClient, PendingReason } from "@/app/api/commercial-map/pending/route";
+
+const PENDING_LABELS: Record<PendingReason, { label: string; color: string; bg: string }> = {
+  NOT_FOUND: { label: "Fora do mapa · endereço não encontrado", color: "#b91c1c", bg: "#fef2f2" },
+  NO_ADDRESS: { label: "Fora do mapa · sem endereço", color: "#b91c1c", bg: "#fef2f2" },
+  APPROXIMATE: { label: "Localização aproximada", color: "#c2410c", bg: "#fff7ed" },
+  SHARED_POINT: { label: "Mesmo ponto de outro cliente", color: "#a16207", bg: "#fefce8" },
+};
 
 export type CommercialMapPointKind = "CLIENT" | "PROSPECT" | "EXHIBITOR";
 
@@ -19,6 +27,8 @@ export type CommercialMapPoint = {
   latitude: number;
   longitude: number;
   status: string;
+  /** Cliente posicionado so pelo bairro/cidade/CEP - precisa conferir */
+  approximate?: boolean;
   notes?: string | null;
   lastVisitAt?: string | Date | null;
   region?: {
@@ -140,12 +150,18 @@ function parseCoordinateInputs(latText: string, lngText: string): LatLng | null 
 
 const iconCache = new Map<string, L.DivIcon>();
 
-function createMarkerIcon(color: string, highlighted = false) {
-  const cacheKey = `${color}-${highlighted}`;
+const APPROXIMATE_COLOR = "#f97316";
+
+function createMarkerIcon(color: string, highlighted = false, approximate = false) {
+  const cacheKey = `${color}-${highlighted}-${approximate}`;
   const cached = iconCache.get(cacheKey);
   if (cached) return cached;
 
   const size = highlighted ? 26 : 18;
+  // Localizacao aproximada: anel laranja tracejado em volta do pino.
+  const ring = approximate
+    ? `outline: 2px dashed ${APPROXIMATE_COLOR}; outline-offset: 2px;`
+    : "";
   const icon = L.divIcon({
     className: "",
     html: `
@@ -155,6 +171,7 @@ function createMarkerIcon(color: string, highlighted = false) {
         border-radius: 999px;
         background: ${color};
         border: 3px solid white;
+        ${ring}
         box-shadow: ${highlighted ? `0 0 0 6px ${color}55, 0 4px 12px rgba(0,0,0,0.35)` : "0 0 0 3px rgba(0,0,0,0.18)"};
       "></div>
     `,
@@ -275,6 +292,8 @@ export default function CommercialMapView({
   recenterKey,
   onMovePoint,
   onCreatePoint,
+  pendingClients,
+  onPlaceClient,
 }: {
   points: CommercialMapPoint[];
   themeMode: "light" | "dark";
@@ -285,6 +304,10 @@ export default function CommercialMapView({
   recenterKey: string;
   onMovePoint: (point: CommercialMapPoint, position: LatLng) => Promise<void>;
   onCreatePoint: (input: NewMapPointInput) => Promise<void>;
+  /** Clientes sem localizacao ou com localizacao aproximada */
+  pendingClients: PendingClient[];
+  /** Grava a posicao escolhida pra um cliente que estava fora do mapa */
+  onPlaceClient: (client: PendingClient, position: LatLng) => Promise<void>;
 }) {
   const safePoints = Array.isArray(points) ? points : [];
   const displayPoints = useMemo(() => spreadPoints(safePoints), [safePoints]);
@@ -507,6 +530,52 @@ export default function CommercialMapView({
     });
   }
 
+  // Clientes para ajustar: colocar no mapa (sem localizacao) ou mover
+  // (aproximado / mesmo ponto de outro).
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [placing, setPlacing] = useState<PendingClient | null>(null);
+
+  function startPlacing(client: PendingClient) {
+    map?.closePopup();
+    setMoving(null);
+    setAiming(null);
+    setDraft(null);
+    setFeedback(null);
+
+    // Ja esta no mapa (aproximado): vai ate ele e libera pra arrastar.
+    if (client.latitude != null && client.longitude != null) {
+      const point = safePoints.find((p) => p.kind === "CLIENT" && p.id === client.id);
+      if (point) {
+        map?.flyTo([point.latitude, point.longitude], Math.max(map.getZoom(), 16), { duration: 0.8 });
+        setMoving({ point, position: { lat: point.latitude, lng: point.longitude } });
+        return;
+      }
+    }
+
+    // Fora do mapa: mira no centro; comeca perto de um cliente da mesma cidade.
+    const sameCity = client.city
+      ? safePoints.find((p) => normalizeSearch(p.city) === normalizeSearch(client.city))
+      : undefined;
+    if (sameCity) map?.flyTo([sameCity.latitude, sameCity.longitude], 15, { duration: 0.8 });
+    setPlacing(client);
+  }
+
+  async function confirmPlacing() {
+    if (!map || !placing) return;
+    const c = map.getCenter();
+    try {
+      setBusy(true);
+      setFeedback(null);
+      await onPlaceClient(placing, { lat: c.lat, lng: c.lng });
+      setFeedback({ type: "success", text: `${placing.name} agora está no mapa.` });
+      setPlacing(null);
+    } catch (error: any) {
+      setFeedback({ type: "error", text: error?.message || "Não foi possível salvar a posição." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function focusPoint(point: DisplayPoint) {
     if (!map) return;
     const key = pointKey(point);
@@ -546,6 +615,7 @@ export default function CommercialMapView({
     map?.closePopup();
     setCoordEdit(null);
     setAiming(null);
+    setPlacing(null);
     setDraft(null);
     setFeedback(null);
     setMoving({ point, position: { lat: point.latitude, lng: point.longitude } });
@@ -591,6 +661,7 @@ export default function CommercialMapView({
   function startAiming(kind: CommercialMapPointKind) {
     map?.closePopup();
     setMoving(null);
+    setPlacing(null);
     setDraft(null);
     setFeedback(null);
     setAiming(kind);
@@ -604,7 +675,7 @@ export default function CommercialMapView({
   }
 
   function handleLongPress(position: LatLng) {
-    if (moving || busy) return;
+    if (moving || placing || busy) return;
     map?.closePopup();
     setAiming(null);
     setFeedback(null);
@@ -655,10 +726,131 @@ export default function CommercialMapView({
         <Legend color={KIND_COLORS.CLIENT} label="Cliente" />
         <Legend color={KIND_COLORS.PROSPECT} label="Prospecto" />
         <Legend color={KIND_COLORS.EXHIBITOR} label="Levar expositor" />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 999,
+              background: KIND_COLORS.CLIENT,
+              outline: `2px dashed ${APPROXIMATE_COLOR}`,
+              outlineOffset: 2,
+              display: "inline-block",
+            }}
+          />
+          Localização aproximada
+        </div>
         <span style={{ color: theme.subtext, fontSize: 12 }}>
           Dica: toque longo (ou botão direito) no mapa para adicionar um ponto ali.
         </span>
       </div>
+
+      {/* Clientes fora do mapa ou com localizacao aproximada */}
+      {pendingClients.length > 0 ? (
+        <div
+          style={{
+            marginBottom: 14,
+            border: "1px solid #fed7aa",
+            background: theme.isDark ? "rgba(249,115,22,0.10)" : "#fff7ed",
+            borderRadius: 14,
+            overflow: "hidden",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setPendingOpen((open) => !open)}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              padding: "12px 14px",
+              border: "none",
+              background: "transparent",
+              color: theme.text,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 800 }}>
+              ⚠ {pendingClients.length} cliente(s) para ajustar no mapa
+              <span style={{ fontWeight: 600, color: theme.subtext, fontSize: 13 }}>
+                {" "}
+                · {pendingClients.filter((c) => c.latitude == null).length} fora do mapa,{" "}
+                {pendingClients.filter((c) => c.latitude != null).length} com posição a conferir
+              </span>
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#c2410c", whiteSpace: "nowrap" }}>
+              {pendingOpen ? "Fechar ▲" : "Ver lista ▼"}
+            </span>
+          </button>
+
+          {pendingOpen ? (
+            <div style={{ maxHeight: 360, overflowY: "auto", borderTop: "1px solid #fed7aa" }}>
+              {pendingClients.map((client) => {
+                const badge = PENDING_LABELS[client.reason];
+                return (
+                  <div
+                    key={client.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      padding: "10px 14px",
+                      borderBottom: `1px solid ${theme.isDark ? "#1e293b" : "#fde6cf"}`,
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: theme.text }}>
+                        {client.code ? `${client.code} · ` : ""}
+                        {client.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: theme.subtext }}>
+                        {client.address || "Sem endereço cadastrado"}
+                      </div>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          marginTop: 4,
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color: badge.color,
+                          background: badge.bg,
+                          borderRadius: 999,
+                          padding: "2px 8px",
+                        }}
+                      >
+                        {badge.label}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          map?.getContainer().scrollIntoView({ behavior: "smooth", block: "center" });
+                          startPlacing(client);
+                        }}
+                        style={{ ...popupButtonStyle(true), height: 36 }}
+                      >
+                        {client.latitude == null ? "Colocar no mapa" : "Ajustar no mapa"}
+                      </button>
+                      <a
+                        href={mode === "representative" ? `/rep/clients/${client.id}` : `/clients/${client.id}/edit`}
+                        style={{ ...popupButtonStyle(false), height: 36 }}
+                      >
+                        Editar cadastro
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div style={{ position: "relative", marginBottom: 14 }}>
         <input
@@ -907,7 +1099,7 @@ export default function CommercialMapView({
                   else markerRefs.current.delete(key);
                 }}
                 position={position}
-                icon={createMarkerIcon(color, isMoving)}
+                icon={createMarkerIcon(color, isMoving, Boolean(point.approximate) && !isMoving)}
                 draggable={isMoving}
                 zIndexOffset={isMoving ? 1000 : 0}
                 eventHandlers={{
@@ -934,6 +1126,23 @@ export default function CommercialMapView({
                       <Info label="Tipo">
                         <span style={{ color, fontWeight: 800 }}>{KIND_LABELS[point.kind]}</span>
                       </Info>
+                      {point.approximate ? (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: "#c2410c",
+                            background: "#fff7ed",
+                            border: "1px solid #fed7aa",
+                            borderRadius: 8,
+                            padding: "6px 8px",
+                            margin: "6px 0",
+                          }}
+                        >
+                          Localização aproximada (bairro/cidade). Use "Mover no mapa" para
+                          colocar no lugar certo.
+                        </div>
+                      ) : null}
                       <Info label="Cidade">
                         {point.city || "-"} / {point.state || "-"}
                       </Info>
@@ -1046,26 +1255,7 @@ export default function CommercialMapView({
         {/* Mira fixa no centro: arrasta o mapa por baixo e confirma */}
         {aiming ? (
           <>
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-                zIndex: 1000,
-                pointerEvents: "none",
-              }}
-            >
-              <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
-                <circle cx="28" cy="28" r="18" fill="none" stroke="#ffffff" strokeWidth="6" />
-                <circle cx="28" cy="28" r="18" fill="none" stroke={KIND_COLORS[aiming]} strokeWidth="3" />
-                <line x1="28" y1="0" x2="28" y2="18" stroke={KIND_COLORS[aiming]} strokeWidth="3" />
-                <line x1="28" y1="38" x2="28" y2="56" stroke={KIND_COLORS[aiming]} strokeWidth="3" />
-                <line x1="0" y1="28" x2="18" y2="28" stroke={KIND_COLORS[aiming]} strokeWidth="3" />
-                <line x1="38" y1="28" x2="56" y2="28" stroke={KIND_COLORS[aiming]} strokeWidth="3" />
-                <circle cx="28" cy="28" r="4" fill={KIND_COLORS[aiming]} stroke="#ffffff" strokeWidth="2" />
-              </svg>
-            </div>
+            <Crosshair color={KIND_COLORS[aiming]} />
             <MapBanner style={overlayCard}>
               <div style={{ fontWeight: 800, fontSize: 14 }}>
                 Adicionar {KIND_LABELS[aiming].toLowerCase()}
@@ -1078,6 +1268,30 @@ export default function CommercialMapView({
                   Adicionar aqui
                 </BannerButton>
                 <BannerButton outline onClick={() => setAiming(null)} theme={theme}>
+                  Cancelar
+                </BannerButton>
+              </div>
+            </MapBanner>
+          </>
+        ) : null}
+
+        {/* Colocar no mapa um cliente que estava sem localizacao */}
+        {placing ? (
+          <>
+            <Crosshair color={KIND_COLORS.CLIENT} />
+            <MapBanner style={overlayCard}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>Colocando: {placing.name}</div>
+              <div style={{ fontSize: 13, color: theme.subtext }}>
+                {placing.address || "Sem endereço cadastrado"}
+              </div>
+              <div style={{ fontSize: 13, color: theme.subtext }}>
+                Arraste o mapa até a mira ficar em cima do cliente.
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <BannerButton color={KIND_COLORS.CLIENT} onClick={confirmPlacing} disabled={busy}>
+                  {busy ? "Salvando..." : "Salvar aqui"}
+                </BannerButton>
+                <BannerButton outline onClick={() => setPlacing(null)} theme={theme} disabled={busy}>
                   Cancelar
                 </BannerButton>
               </div>
@@ -1389,6 +1603,31 @@ function QuickAddForm({
         </BannerButton>
       </div>
     </form>
+  );
+}
+
+function Crosshair({ color }: { color: string }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 1000,
+        pointerEvents: "none",
+      }}
+    >
+      <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
+        <circle cx="28" cy="28" r="18" fill="none" stroke="#ffffff" strokeWidth="6" />
+        <circle cx="28" cy="28" r="18" fill="none" stroke={color} strokeWidth="3" />
+        <line x1="28" y1="0" x2="28" y2="18" stroke={color} strokeWidth="3" />
+        <line x1="28" y1="38" x2="28" y2="56" stroke={color} strokeWidth="3" />
+        <line x1="0" y1="28" x2="18" y2="28" stroke={color} strokeWidth="3" />
+        <line x1="38" y1="28" x2="56" y2="28" stroke={color} strokeWidth="3" />
+        <circle cx="28" cy="28" r="4" fill={color} stroke="#ffffff" strokeWidth="2" />
+      </svg>
+    </div>
   );
 }
 

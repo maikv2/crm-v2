@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { CommercialMapPoint, NewMapPointInput } from "./commercial-map-view";
+import type { PendingClient } from "@/app/api/commercial-map/pending/route";
 import { useTheme } from "../../providers/theme-provider";
 import { getThemeColors } from "../../../lib/theme";
 
@@ -140,6 +141,21 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
   const [regionFilter, setRegionFilter] = useState("ALL");
   const [kindFilter, setKindFilter] = useState("ALL");
   const [allRegions, setAllRegions] = useState<{ id: string; name: string }[]>([]);
+  const [pendingClients, setPendingClients] = useState<PendingClient[]>([]);
+
+  // Clientes sem localizacao / aproximados (painel "para ajustar")
+  const loadPending = useCallback(async (regionId?: string | null) => {
+    try {
+      const res = await fetch(
+        `/api/commercial-map/pending${regionId ? `?regionId=${encodeURIComponent(regionId)}` : ""}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      setPendingClients(res.ok && Array.isArray(data) ? data : []);
+    } catch {
+      setPendingClients([]);
+    }
+  }, []);
 
   const fetchPoints = useCallback(async (regionId?: string | null) => {
     const query = new URLSearchParams();
@@ -192,11 +208,11 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
           }
         }
 
-        const data = await fetchPoints(
-          mode === "representative" ? currentUser?.regionId : null
-        );
+        const regionScope = mode === "representative" ? currentUser?.regionId : null;
+        const data = await fetchPoints(regionScope);
 
         if (active) setPoints(data);
+        loadPending(regionScope);
       } catch (err: any) {
         console.error(err);
         if (active) { setPoints([]); setError(err?.message || "Erro ao carregar mapa comercial"); }
@@ -206,7 +222,7 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
     }
     loadData();
     return () => { active = false; };
-  }, [mode, fetchPoints]);
+  }, [mode, fetchPoints, loadPending]);
 
   // Mover ponto: cliente usa PUT /api/clients/[id]; prospecto e "levar
   // expositor" usam PATCH /api/prospects/[id] (so latitude/longitude).
@@ -223,10 +239,28 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
     setPoints((current) =>
       current.map((p) =>
         p.kind === point.kind && p.id === point.id
-          ? { ...p, latitude: position.lat, longitude: position.lng }
+          ? { ...p, latitude: position.lat, longitude: position.lng, approximate: false }
           : p
       )
     );
+
+    // Cliente acertado a mao sai da lista "para ajustar"
+    if (point.kind === "CLIENT") loadPending(mode === "representative" ? user?.regionId : null);
+  }
+
+  // Cliente que estava fora do mapa: grava a posicao escolhida e recarrega.
+  async function handlePlaceClient(client: PendingClient, position: { lat: number; lng: number }) {
+    const res = await fetch(`/api/clients/${client.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ latitude: position.lat, longitude: position.lng }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Não foi possível salvar a posição.");
+
+    const regionScope = mode === "representative" ? user?.regionId : null;
+    setPoints(await fetchPoints(regionScope));
+    await loadPending(regionScope);
   }
 
   // Cadastro rapido pelo mapa: so nome/telefone/observacao; cidade e
@@ -455,6 +489,8 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
           recenterKey={`${cityFilter}|${regionFilter}|${kindFilter}`}
           onMovePoint={handleMovePoint}
           onCreatePoint={handleCreatePoint}
+          pendingClients={pendingClients}
+          onPlaceClient={handlePlaceClient}
         />
       </Block>
     </div>

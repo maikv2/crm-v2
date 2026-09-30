@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { buildAddress, geocodeAddress, reverseGeocode } from "@/lib/geocoding";
+import { locateAddress, reverseGeocode, type LocationSource } from "@/lib/geocoding";
 import { cookies } from "next/headers";
 
 function onlyDigits(value?: string | null) {
@@ -325,9 +325,11 @@ export async function POST(request: Request) {
 
     let geocoded: { latitude?: number | null; longitude?: number | null } | null =
       null;
+    let locationSource: LocationSource | null = null;
 
     if (hasManualCoords) {
       geocoded = { latitude: manualLatitude, longitude: manualLongitude };
+      locationSource = "MANUAL";
 
       // Sem endereco digitado: descobre cidade/UF pela coordenada.
       if (!city || !state) {
@@ -342,18 +344,14 @@ export async function POST(request: Request) {
         }
       }
     } else if (hasMinimumAddressForGeocoding) {
-      const fullAddress = buildAddress([
-        street,
-        number,
-        district,
-        city,
-        state,
-        cep,
-        country,
-      ]);
-
+      // Endereco -> OpenStreetMap; sem rua exata, CEP; marca se ficou
+      // aproximado (aparece em "Clientes para ajustar" no mapa).
       try {
-        geocoded = await geocodeAddress(fullAddress);
+        const located = await locateAddress({ street, number, district, city, state, cep, country });
+        if (located) {
+          geocoded = located;
+          locationSource = located.source;
+        }
       } catch (error) {
         console.error("POST /api/clients geocoding error:", error);
         geocoded = null;
@@ -426,6 +424,7 @@ export async function POST(request: Request) {
 
             latitude,
             longitude,
+            locationSource: latitude != null && longitude != null ? locationSource : null,
             mapStatus: "CLIENT",
             needsReturn: false,
 

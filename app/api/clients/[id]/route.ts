@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { buildAddress, geocodeAddress } from "@/lib/geocoding";
+import { locateAddress } from "@/lib/geocoding";
 
 function getIdFromRequest(request: Request) {
   const url = new URL(request.url);
@@ -421,10 +421,12 @@ export async function PUT(request: Request) {
 
     let nextLatitude: number | null = existingClient.latitude;
     let nextLongitude: number | null = existingClient.longitude;
+    let nextLocationSource: string | null = existingClient.locationSource;
 
     if (clearCoordinates) {
       nextLatitude = null;
       nextLongitude = null;
+      nextLocationSource = null;
     } else if (hasLatitude || hasLongitude) {
       const parsedLatitude = parseCoordinate(body.latitude);
       const parsedLongitude = parseCoordinate(body.longitude);
@@ -436,8 +438,17 @@ export async function PUT(request: Request) {
         );
       }
 
+      if (Math.abs(parsedLatitude) > 90 || Math.abs(parsedLongitude) > 180) {
+        return NextResponse.json(
+          { error: "Latitude ou longitude fora do intervalo válido." },
+          { status: 400 }
+        );
+      }
+
       nextLatitude = parsedLatitude;
       nextLongitude = parsedLongitude;
+      // Posicao marcada por uma pessoa (mapa, coordenadas digitadas).
+      nextLocationSource = "MANUAL";
     } else {
       const addressChanged =
         hasOwn(body, "country") ||
@@ -453,37 +464,35 @@ export async function PUT(request: Request) {
         const hasMinimumAddressForGeocoding =
           (Boolean(city) && Boolean(state)) || Boolean(cep);
 
-        if (hasMinimumAddressForGeocoding) {
-          const fullAddress = buildAddress([
-            street,
-            number,
-            district,
-            city,
-            state,
-            cep,
-            country,
-          ]);
+        // So muda a posicao se o endereco realmente mudou - salvar o
+        // cadastro sem mexer no endereco nao pode tirar um ponto que a
+        // pessoa ja acertou no mapa.
+        const addressReallyChanged =
+          onlyDigits(existingClient.cep) !== cep ||
+          (existingClient.street ?? null) !== street ||
+          (existingClient.number ?? null) !== number ||
+          (existingClient.district ?? null) !== district ||
+          (existingClient.city ?? null) !== city ||
+          (existingClient.state ?? null) !== state;
 
-          let geocoded:
-            | { latitude?: number | null; longitude?: number | null }
-            | null = null;
+        const missingLocation = existingClient.latitude == null || existingClient.longitude == null;
+
+        if (hasMinimumAddressForGeocoding && (addressReallyChanged || missingLocation)) {
+          let located: Awaited<ReturnType<typeof locateAddress>> = null;
 
           try {
-            geocoded = await geocodeAddress(fullAddress);
+            located = await locateAddress({ street, number, district, city, state, cep, country });
           } catch (error) {
             console.error("Geocoding error on client update:", error);
-            geocoded = null;
+            located = null;
           }
 
           // Só atualiza coordenadas se o geocoding teve sucesso.
           // Se falhar, mantém as coordenadas existentes (não zera).
-          if (
-            geocoded &&
-            typeof geocoded.latitude === "number" &&
-            typeof geocoded.longitude === "number"
-          ) {
-            nextLatitude = geocoded.latitude;
-            nextLongitude = geocoded.longitude;
+          if (located) {
+            nextLatitude = located.latitude;
+            nextLongitude = located.longitude;
+            nextLocationSource = located.source;
           }
         }
       }
@@ -537,6 +546,7 @@ export async function PUT(request: Request) {
 
         latitude: nextLatitude,
         longitude: nextLongitude,
+        locationSource: nextLocationSource,
 
         regionId,
         notes,

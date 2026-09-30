@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
           latitude: true,
           longitude: true,
           mapStatus: true,
+          locationSource: true,
           lastVisitAt: true,
           needsReturn: true,
           notes: true,
@@ -74,6 +75,8 @@ export async function GET(request: NextRequest) {
         latitude: client.latitude as number,
         longitude: client.longitude as number,
         status: "CLIENT",
+        // Posicao so de bairro/cidade/CEP - mostrar como "aproximada"
+        approximate: client.locationSource === "APPROXIMATE",
         notes: client.notes,
         // Serializa Date → string ISO para evitar discrepâncias de tipo no cliente
         lastVisitAt: client.lastVisitAt

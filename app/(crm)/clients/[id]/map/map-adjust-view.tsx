@@ -1,6 +1,7 @@
 "use client";
 
-import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import { useEffect } from "react";
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -54,16 +55,35 @@ function ClickHandler({
   return null;
 }
 
+/**
+ * Leva o mapa ate o pino quando focusKey muda (coordenadas digitadas) - o
+ * MapContainer ignora mudancas no `center` depois de montado, e sem isso o
+ * pino ia pra fora da tela e parecia que nao tinha funcionado.
+ */
+function FlyToMarker({ marker, focusKey }: { marker: Point | null; focusKey: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!marker || focusKey === 0) return;
+    map.flyTo([marker.lat, marker.lng], Math.max(map.getZoom(), 17), { duration: 0.8 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusKey, map]);
+
+  return null;
+}
+
 export default function MapAdjustView({
   center,
   marker,
   onSelect,
   theme,
+  focusKey = 0,
 }: {
   center: Point;
   marker: Point | null;
   onSelect: (point: Point) => void;
   theme: ThemeShape;
+  focusKey?: number;
 }) {
   const icon = createMarkerIcon();
 
@@ -90,6 +110,7 @@ export default function MapAdjustView({
         />
 
         <ClickHandler onSelect={onSelect} />
+        <FlyToMarker marker={marker} focusKey={focusKey} />
 
         {marker ? (
           <Marker

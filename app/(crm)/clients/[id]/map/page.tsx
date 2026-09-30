@@ -192,6 +192,8 @@ export default function ClientMapAdjustPage() {
   const [point, setPoint] = useState<Point | null>(null);
   const [latitudeInput, setLatitudeInput] = useState("");
   const [longitudeInput, setLongitudeInput] = useState("");
+  const [focusKey, setFocusKey] = useState(0);
+  const [unsaved, setUnsaved] = useState(false);
 
   useEffect(() => {
     async function loadClient() {
@@ -250,19 +252,27 @@ export default function ClientMapAdjustPage() {
     setPoint(next);
     setLatitudeInput(String(next.lat));
     setLongitudeInput(String(next.lng));
+    setUnsaved(true);
   }
 
   function applyManualCoordinates() {
-    const lat = Number(latitudeInput.replace(",", "."));
-    const lng = Number(longitudeInput.replace(",", "."));
+    // Aceita tambem o par colado do Google Maps no campo latitude
+    // ("-26.95971, -52.53521").
+    const pair = latitudeInput.trim().match(/^(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)$/);
+    const lat = pair ? Number(pair[1]) : Number(latitudeInput.trim().replace(",", "."));
+    const lng = pair ? Number(pair[2]) : Number(longitudeInput.trim().replace(",", "."));
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setPageError("Latitude ou longitude inválida.");
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      setPageError("Latitude ou longitude inválida. Ex.: -26.95971 e -52.53521");
       return;
     }
 
     setPageError(null);
+    setLatitudeInput(String(lat));
+    setLongitudeInput(String(lng));
     setPoint({ lat, lng });
+    setUnsaved(true);
+    setFocusKey((key) => key + 1);
   }
 
   async function handleSave() {
@@ -474,12 +484,41 @@ export default function ClientMapAdjustPage() {
               }}
             >
               <ActionButton
-                label="Aplicar coordenadas"
+                label="Mostrar no mapa"
                 theme={theme}
                 onClick={applyManualCoordinates}
               />
             </div>
           </div>
+
+          {unsaved ? (
+            <div
+              style={{
+                marginTop: 14,
+                borderRadius: 12,
+                padding: 12,
+                fontSize: 14,
+                fontWeight: 700,
+                background: theme.isDark ? "rgba(234,179,8,0.15)" : "#fefce8",
+                border: "1px solid #fde68a",
+                color: theme.isDark ? "#fde68a" : "#854d0e",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <span>Posição marcada no mapa, mas ainda não foi gravada.</span>
+              <ActionButton
+                label={saving ? "Salvando..." : "Salvar posição"}
+                theme={theme}
+                primary
+                disabled={saving || !point}
+                onClick={handleSave}
+              />
+            </div>
+          ) : null}
 
           <div
             style={{
@@ -493,7 +532,8 @@ export default function ClientMapAdjustPage() {
               lineHeight: 1.5,
             }}
           >
-            Clique no mapa para marcar a posição exata ou arraste o pin azul.
+            Clique no mapa para marcar a posição exata ou arraste o pin azul. Também dá
+            para colar no campo latitude as coordenadas copiadas do Google Maps.
           </div>
         </Block>
 
@@ -503,6 +543,7 @@ export default function ClientMapAdjustPage() {
             marker={point}
             onSelect={updatePoint}
             theme={theme}
+            focusKey={focusKey}
           />
         </Block>
       </div>

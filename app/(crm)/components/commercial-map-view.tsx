@@ -338,6 +338,7 @@ export default function CommercialMapView({
   >({ type: "idle" });
   const [convertedPlaceIds, setConvertedPlaceIds] = useState<Set<string>>(new Set());
   const loadedTilesRef = useRef(new Set<string>());
+  const loadingTilesRef = useRef(new Set<string>());
   const placesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const placesRenderer = useMemo(() => L.canvas({ padding: 0.5, tolerance: 10 }), []);
 
@@ -387,34 +388,66 @@ export default function CommercialMapView({
       return;
     }
 
-    const west = Math.min(...tiles.map((t) => t.x)) * PLACES_TILE;
-    const east = (Math.max(...tiles.map((t) => t.x)) + 1) * PLACES_TILE;
-    const south = Math.min(...tiles.map((t) => t.y)) * PLACES_TILE;
-    const north = (Math.max(...tiles.map((t) => t.y)) + 1) * PLACES_TILE;
+    // Quadrado por quadrado (capital densa estoura o tempo numa area grande),
+    // 2 de cada vez - o limite do Overpass por IP - mostrando conforme chega.
+    const pending = tiles.filter((t) => !loadingTilesRef.current.has(`${t.x},${t.y}`));
+    pending.forEach((t) => loadingTilesRef.current.add(`${t.x},${t.y}`));
+    if (pending.length === 0) return;
 
-    try {
-      setPlacesStatus({ type: "loading" });
+    setPlacesStatus({ type: "loading" });
+    let failed = 0;
+
+    async function loadTile(tile: { x: number; y: number }) {
+      const key = `${tile.x},${tile.y}`;
       const params = new URLSearchParams({
-        south: south.toFixed(4),
-        west: west.toFixed(4),
-        north: north.toFixed(4),
-        east: east.toFixed(4),
+        south: (tile.y * PLACES_TILE).toFixed(4),
+        west: (tile.x * PLACES_TILE).toFixed(4),
+        north: ((tile.y + 1) * PLACES_TILE).toFixed(4),
+        east: ((tile.x + 1) * PLACES_TILE).toFixed(4),
       });
-      const res = await fetch(`/api/map-places?${params.toString()}`, { cache: "no-store" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !Array.isArray(data)) {
-        throw new Error(data?.error || "Não foi possível carregar os estabelecimentos.");
+      try {
+        // O Overpass publico as vezes fica sobrecarregado: tenta ate 3 vezes.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 4000 * attempt));
+          try {
+            const res = await fetch(`/api/map-places?${params.toString()}`, { cache: "no-store" });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !Array.isArray(data)) continue;
+            loadedTilesRef.current.add(key);
+            setPlaces((current) => {
+              const next = new Map(current);
+              for (const place of data as MapPlace[]) next.set(place.id, place);
+              return next;
+            });
+            return;
+          } catch {
+            // tenta de novo
+          }
+        }
+        failed++;
+      } finally {
+        loadingTilesRef.current.delete(key);
       }
-      tiles.forEach((t) => loadedTilesRef.current.add(`${t.x},${t.y}`));
-      setPlaces((current) => {
-        const next = new Map(current);
-        for (const place of data as MapPlace[]) next.set(place.id, place);
-        return next;
-      });
-      setPlacesStatus({ type: "idle" });
-    } catch (error: any) {
-      setPlacesStatus({ type: "error", text: error?.message || "Não foi possível carregar os estabelecimentos." });
     }
+
+    const queue = [...pending];
+    await Promise.all(
+      [0, 1].map(async () => {
+        while (queue.length) await loadTile(queue.shift()!);
+      })
+    );
+
+    setPlacesStatus(
+      failed > 0
+        ? {
+            type: "error",
+            text:
+              failed === pending.length
+                ? "O OpenStreetMap não respondeu. Mexa no mapa para tentar de novo."
+                : "Parte da área não carregou. Mexa no mapa para tentar de novo.",
+          }
+        : { type: "idle" }
+    );
   }
 
   function schedulePlacesLoad() {

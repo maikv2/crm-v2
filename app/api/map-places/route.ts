@@ -49,8 +49,10 @@ const SHOP_TAGS = [
   "mobile_phone", "computer", "electronics", "books",
 ];
 
-// Area maxima por consulta (graus) - o mapa so pede com zoom de rua.
-const MAX_SPAN = 0.6;
+// Area maxima por consulta (graus). O mapa pede em quadrados de 0.1 grau -
+// area maior que isso em capital (ex.: centro de SP) estoura o tempo do
+// Overpass.
+const MAX_SPAN = 0.25;
 
 // Cache simples por area (vale enquanto a funcao estiver quente).
 const cache = new Map<string, { at: number; places: MapPlace[] }>();
@@ -127,10 +129,15 @@ function toPlace(element: any): MapPlace | null {
   };
 }
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function queryOverpass(query: string) {
-  for (const endpoint of OVERPASS_ENDPOINTS) {
+  // Principal, principal de novo (504/429 = sobrecarga momentanea) e espelho.
+  const attempts = [OVERPASS_ENDPOINTS[0], OVERPASS_ENDPOINTS[0], ...OVERPASS_ENDPOINTS.slice(1)];
+
+  for (let i = 0; i < attempts.length; i++) {
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch(attempts[i], {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -141,11 +148,14 @@ async function queryOverpass(query: string) {
         cache: "no-store",
         signal: AbortSignal.timeout(30000),
       });
-      if (!response.ok) continue;
+      if (!response.ok) {
+        if (response.status === 429 || response.status === 504) await wait(2000);
+        continue;
+      }
       const data = await response.json();
       if (Array.isArray(data?.elements)) return data.elements as any[];
     } catch {
-      // tenta o proximo servidor
+      // tenta de novo / proximo servidor
     }
   }
   return null;
@@ -181,7 +191,7 @@ export async function GET(request: NextRequest) {
       nwr["shop"~"^(${SHOP_TAGS.join("|")})$"](${bbox});
       nwr["amenity"~"^(pharmacy|fuel)$"](${bbox});
     );
-    out center tags 3000;
+    out center tags 6000;
   `;
 
   const elements = await queryOverpass(query);

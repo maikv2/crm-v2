@@ -72,8 +72,15 @@ function formatMoneyFromCents(value: number) {
  */
 export async function sendProductHighlights(params: { whatsapp: string }) {
   try {
+    // Grupos "... ATACADO" (cabos, fones, fontes, carregadores) ficam de
+    // fora: o cliente do expositor compra o mesmo item por um preco maior,
+    // entao mandar a versao de atacado como novidade fica esquisito.
     const products = await prisma.product.findMany({
-      where: { active: true, sitePriceCents: { not: null } },
+      where: {
+        active: true,
+        sitePriceCents: { not: null },
+        NOT: { category: { contains: "ATACADO", mode: "insensitive" } },
+      },
       select: { sku: true, name: true, sitePriceCents: true },
     });
 

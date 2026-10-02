@@ -13,9 +13,16 @@ type EcommerceCustomer = {
   companyName?: string;
   contactName?: string;
   document?: string;
+  personType?: string; // "PF" (CPF) | "PJ" (CNPJ)
+  stateRegistration?: string;
+  stateRegistrationExempt?: boolean;
   whatsapp?: string;
   email?: string;
   cep?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  district?: string;
   city?: string;
   state?: string;
   paymentMethod?: string; // "CASH" | "PIX" | "BOLETO" | "CARD_CREDIT" | "CARD_DEBIT" | "CASH_ON_DELIVERY"
@@ -180,6 +187,18 @@ function buildNotes(params: {
   plan: PaymentPlan;
 }) {
   const { body, customer, items, plan } = params;
+  const document = onlyDigits(customer.document);
+  const isPf = document.length === 11;
+  const street = normalizeText(customer.street);
+  const addressLine = street
+    ? [
+        `${street}, ${normalizeText(customer.number) || "s/n"}`,
+        normalizeText(customer.complement),
+        normalizeText(customer.district),
+      ]
+        .filter(Boolean)
+        .join(" - ")
+    : "";
   const lines = [
     `Origem: ${normalizeText(body.source) || "site"}`,
     body.marketplaceOrderId
@@ -190,9 +209,14 @@ function buildNotes(params: {
       ? "*** ATENCAO: plano de pagamento customizado, precisa aprovacao financeira antes de liberar. ***"
       : null,
     `Frete/entrega: ${normalizeText(customer.shippingMode) || "a combinar"}`,
+    document ? `${isPf ? "CPF (pessoa fisica)" : "CNPJ"}: ${document}` : null,
+    !isPf && (customer.stateRegistration || customer.stateRegistrationExempt)
+      ? `Inscricao Estadual: ${customer.stateRegistrationExempt ? "isento" : normalizeText(customer.stateRegistration)}`
+      : null,
     customer.contactName ? `Contato: ${normalizeText(customer.contactName)}` : null,
     customer.whatsapp ? `WhatsApp: ${normalizeText(customer.whatsapp)}` : null,
     customer.email ? `Email: ${normalizeText(customer.email)}` : null,
+    addressLine ? `Endereco: ${addressLine}` : null,
     customer.cep ? `CEP: ${normalizeText(customer.cep)}` : null,
     customer.city || customer.state
       ? `Cidade/UF: ${normalizeText(customer.city)} ${normalizeText(customer.state)}`
@@ -318,6 +342,9 @@ export async function POST(request: Request) {
           email: normalizeText(customer.email) || null,
           contactName: normalizeText(customer.contactName) || null,
           cep: normalizeText(customer.cep) || null,
+          street: normalizeText(customer.street) || null,
+          number: normalizeText(customer.number) || null,
+          district: normalizeText(customer.district) || null,
           city: normalizeText(customer.city) || null,
           state: normalizeText(customer.state).toUpperCase() || null,
           status: ProspectStatus.PENDING,
@@ -383,6 +410,9 @@ export async function POST(request: Request) {
           email: normalizeText(customer.email) || null,
           contactName: normalizeText(customer.contactName) || null,
           cep: normalizeText(customer.cep) || null,
+          street: normalizeText(customer.street) || null,
+          number: normalizeText(customer.number) || null,
+          district: normalizeText(customer.district) || null,
           city: normalizeText(customer.city) || null,
           state: normalizeText(customer.state).toUpperCase() || null,
           regionId: client.regionId,

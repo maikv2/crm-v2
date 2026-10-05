@@ -307,6 +307,35 @@ export async function POST(
 
     const ref = getNfeRef(order.id);
 
+    // Reforma Tributaria (LC 214/2025 + NT 2025.002): regime normal precisa
+    // informar o grupo IBS/CBS por item. Em 2026 valem as aliquotas-teste
+    // (CBS 0,9% e IBS UF 0,1%, IBS municipal 0%). A base exclui ICMS, PIS e
+    // COFINS e o desconto do item.
+    const informarIbsCbs = String(company.taxRegime) !== "1";
+    const CBS_ALIQUOTA = 0.9;
+    const IBS_UF_ALIQUOTA = 0.1;
+    const IBS_MUN_ALIQUOTA = 0;
+
+    // Rateia o desconto do pedido entre os itens (o ultimo fica com a sobra)
+    // para que a base do IBS/CBS de cada item bata com o desconto informado.
+    const itemGrossCents = order.items.map((item) => item.qty * item.unitCents);
+    const grossSumCents = itemGrossCents.reduce((s, v) => s + v, 0);
+    const discountCents = Math.max(0, order.discountCents ?? 0);
+    let discountLeftCents = discountCents;
+    const itemDiscountCents = itemGrossCents.map((gross, index) => {
+      if (index === itemGrossCents.length - 1) return discountLeftCents;
+      const share = grossSumCents
+        ? Math.round((discountCents * gross) / grossSumCents)
+        : 0;
+      discountLeftCents -= share;
+      return share;
+    });
+
+    let ibsCbsBaseTotal = 0;
+    let cbsValorTotal = 0;
+    let ibsUfValorTotal = 0;
+    let ibsMunValorTotal = 0;
+
     const payload = {
       natureza_operacao: "Venda de Mercadorias / Produtos",
       numero: company.nfeNextNumber || 1,
@@ -371,6 +400,50 @@ export async function POST(
             ? item.cst || item.product?.cst || "200"
             : "00";
 
+        const icmsValor = Number(((totalValue * icmsRate) / 100).toFixed(2));
+        const pisValor = Number((totalValue * 0.0065).toFixed(2));
+        const cofinsValor = Number((totalValue * 0.03).toFixed(2));
+        const itemDesconto = moneyFromCents(itemDiscountCents[index]);
+
+        let ibsCbsFields: Record<string, string | number> = {};
+        if (informarIbsCbs) {
+          const base = Math.max(
+            0,
+            Number(
+              (
+                totalValue -
+                itemDesconto -
+                icmsValor -
+                pisValor -
+                cofinsValor
+              ).toFixed(2),
+            ),
+          );
+          const cbsValor = Number(((base * CBS_ALIQUOTA) / 100).toFixed(2));
+          const ibsUfValor = Number(((base * IBS_UF_ALIQUOTA) / 100).toFixed(2));
+          const ibsMunValor = Number(
+            ((base * IBS_MUN_ALIQUOTA) / 100).toFixed(2),
+          );
+
+          ibsCbsBaseTotal += base;
+          cbsValorTotal += cbsValor;
+          ibsUfValorTotal += ibsUfValor;
+          ibsMunValorTotal += ibsMunValor;
+
+          ibsCbsFields = {
+            ibs_cbs_situacao_tributaria: "000",
+            ibs_cbs_classificacao_tributaria: "000001",
+            ibs_cbs_base_calculo: base,
+            ibs_uf_aliquota: IBS_UF_ALIQUOTA,
+            ibs_uf_valor: ibsUfValor,
+            ibs_mun_aliquota: IBS_MUN_ALIQUOTA,
+            ibs_mun_valor: ibsMunValor,
+            ibs_valor_total: Number((ibsUfValor + ibsMunValor).toFixed(2)),
+            cbs_aliquota: CBS_ALIQUOTA,
+            cbs_valor: cbsValor,
+          };
+        }
+
         return {
           numero_item: index + 1,
           codigo_produto: item.product?.sku || item.productId,
@@ -385,23 +458,35 @@ export async function POST(
           unidade_tributavel: item.unit || item.product?.commercialUnit || "QU",
           quantidade_tributavel: item.qty,
           valor_bruto: totalValue,
+          ...(itemDesconto > 0 ? { valor_desconto: itemDesconto } : {}),
           icms_situacao_tributaria: icmsCst,
           icms_origem: origem,
           icms_modalidade_base_calculo: 3,
           icms_base_calculo: totalValue,
           icms_aliquota: icmsRate,
-          icms_valor: Number(((totalValue * icmsRate) / 100).toFixed(2)),
+          icms_valor: icmsValor,
           pis_situacao_tributaria: "01",
           pis_base_calculo: totalValue,
           pis_aliquota: 0.65,
-          pis_valor: Number((totalValue * 0.0065).toFixed(2)),
+          pis_valor: pisValor,
           cofins_situacao_tributaria: "01",
           cofins_base_calculo: totalValue,
           cofins_aliquota: 3,
-          cofins_valor: Number((totalValue * 0.03).toFixed(2)),
+          cofins_valor: cofinsValor,
+          ...ibsCbsFields,
         };
       }),
     };
+
+    if (informarIbsCbs) {
+      Object.assign(payload, {
+        ibs_cbs_base_calculo: Number(ibsCbsBaseTotal.toFixed(2)),
+        cbs_valor_total: Number(cbsValorTotal.toFixed(2)),
+        ibs_uf_valor_total: Number(ibsUfValorTotal.toFixed(2)),
+        ibs_mun_valor_total: Number(ibsMunValorTotal.toFixed(2)),
+        ibs_valor_total: Number((ibsUfValorTotal + ibsMunValorTotal).toFixed(2)),
+      });
+    }
 
     const focusBaseUrl = getFocusBaseUrl(company.nfeEnvironment);
 

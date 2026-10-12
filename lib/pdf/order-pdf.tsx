@@ -88,6 +88,72 @@ function formatDateTimeShort(value: string) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  CASH: "Dinheiro",
+  PIX: "Pix",
+  BOLETO: "Boleto",
+  CARD_DEBIT: "Cartão de débito",
+  CARD_CREDIT: "Cartão de crédito",
+};
+
+function formatPaymentMethod(value: string) {
+  return PAYMENT_METHOD_LABEL[value] || value || "-";
+}
+
+// Pedidos vindos do site trazem nas observacoes um bloco tecnico (origem,
+// pedido externo, dados do cliente, lista de SKUs) que ja aparece em outras
+// partes do PDF. Aqui ele e removido so na impressao - a observacao do
+// cliente e o resto das anotacoes continuam.
+const SITE_TECHNICAL_PREFIXES = [
+  "Origem:",
+  "Pedido externo:",
+  "Forma de pagamento desejada:",
+  "*** ATENCAO:",
+  "Frete/entrega:",
+  "CNPJ:",
+  "CPF (pessoa fisica):",
+  "Inscricao Estadual:",
+  "Contato:",
+  "WhatsApp:",
+  "Email:",
+  "Endereco:",
+  "CEP:",
+  "Cidade/UF:",
+];
+
+function cleanOrderNotes(notes: string) {
+  const lines = notes.split(/\r?\n/);
+  const isSiteOrder =
+    lines.some((line) => line.trim().startsWith("Origem:")) &&
+    lines.some((line) => line.trim() === "Itens solicitados:");
+  if (!isSiteOrder) return notes;
+
+  const kept: string[] = [];
+  let inItemsList = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (line === "Itens solicitados:") {
+      inItemsList = true;
+      continue;
+    }
+    if (inItemsList) {
+      if (/^- .+: \d+ un\.$/.test(line)) continue;
+      inItemsList = false;
+    }
+    if (SITE_TECHNICAL_PREFIXES.some((prefix) => line.startsWith(prefix))) continue;
+
+    kept.push(
+      line.startsWith("Observacoes do cliente:")
+        ? line.replace("Observacoes do cliente:", "Observações do cliente:")
+        : rawLine
+    );
+  }
+
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function buildClientAddress(data: OrderPdfData["client"]) {
   const parts = [
     data.street,
@@ -407,7 +473,7 @@ const styles = StyleSheet.create({
 export function OrderPdfDocument({ data }: { data: OrderPdfData }) {
   const clientAddress = buildClientAddress(data.client);
   const observationLines = [
-    data.notes?.trim() ? data.notes.trim() : null,
+    data.notes?.trim() ? cleanOrderNotes(data.notes.trim()) || null : null,
     ...data.defectReturnItems.map((item) => {
       const details = [
         `Troca: ${item.quantity}x ${item.productName}${
@@ -524,7 +590,7 @@ export function OrderPdfDocument({ data }: { data: OrderPdfData }) {
           <View style={styles.paymentCard}>
             <Text style={styles.sectionTitle}>Condição de pagamento</Text>
             <Text style={styles.sectionText}>
-              Forma de pagamento: {data.paymentMethod}
+              Forma de pagamento: {formatPaymentMethod(data.paymentMethod)}
             </Text>
 
             <View style={styles.paymentTableHeader}>

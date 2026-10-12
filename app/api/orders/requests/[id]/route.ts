@@ -125,7 +125,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         : portalRequest.requestedPaymentMethod ?? PaymentMethod.CASH;
 
       const originLabel =
-        portalRequest.source === "site" ? "loja online (site)" : "portal do cliente";
+        portalRequest.source === "site" ? "da loja online (site)" : "do portal do cliente";
 
       // Numera igual a criacao normal de pedido (maior numero + 1). O
       // autoincrement do banco fica defasado porque o POST /api/orders grava
@@ -151,7 +151,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             paymentMethod,
             financialMovement: false,
             notes: [
-              `Pedido criado a partir do ${originLabel}, aprovado pelo financeiro.`,
+              `Pedido criado a partir ${originLabel}, aprovado pelo financeiro.`,
               portalRequest.isCashOnDelivery ? "Combinado: dinheiro na entrega." : null,
               portalRequest.customPlanRequested
                 ? "Plano de pagamento customizado (entrada + parcelas) - conferir condicoes combinadas com o cliente."

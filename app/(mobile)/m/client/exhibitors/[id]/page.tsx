@@ -20,8 +20,16 @@ type ExhibitorProduct = {
     id: string;
     name: string;
     sku?: string | null;
+    priceCents?: number | null;
   };
 };
+
+function moneyBR(cents?: number | null) {
+  return (Number(cents || 0) / 100).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
 
 type ExhibitorMaintenance = {
   id: string;
@@ -146,6 +154,11 @@ export default function MobileClientExhibitorDetailsPage() {
         0
       ),
       maintenancesCount: maintenances.length,
+      totalCents: products.reduce(
+        (sum, item) =>
+          sum + Number(item.product.priceCents || 0) * Number(item.quantity || 0),
+        0
+      ),
     };
   }, [exhibitor]);
 
@@ -214,14 +227,40 @@ export default function MobileClientExhibitorDetailsPage() {
               </div>
             ) : (
               <div style={{ display: "grid", gap: 0 }}>
-                {exhibitor.products.map((item) => (
-                  <MobileInfoRow
-                    key={item.id}
-                    title={item.product.name}
-                    subtitle={item.product.sku || "Sem SKU"}
-                    right={`${item.quantity} un`}
-                  />
-                ))}
+                {exhibitor.products.map((item) => {
+                  const unitCents = Number(item.product.priceCents || 0);
+                  const lineCents = unitCents * Number(item.quantity || 0);
+
+                  return (
+                    <MobileInfoRow
+                      key={item.id}
+                      title={item.product.name}
+                      subtitle={`${item.product.sku || "Sem SKU"} • ${item.quantity} un × ${moneyBR(unitCents)}`}
+                      right={
+                        <span style={{ fontWeight: 800, whiteSpace: "nowrap" }}>
+                          {moneyBR(lineCents)}
+                        </span>
+                      }
+                    />
+                  );
+                })}
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    paddingTop: 14,
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 800, color: colors.text }}>
+                    Total ({summary.totalUnits} un)
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 900, color: colors.text }}>
+                    {moneyBR(summary.totalCents)}
+                  </div>
+                </div>
               </div>
             )}
           </MobileCard>

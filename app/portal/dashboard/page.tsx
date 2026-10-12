@@ -13,6 +13,7 @@ type ExhibitorProduct = {
     id: string;
     name: string;
     sku?: string | null;
+    priceCents?: number | null;
   };
 };
 
@@ -53,6 +54,13 @@ function dateBR(date?: string | null) {
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("pt-BR");
+}
+
+function moneyBR(cents?: number | null) {
+  return (Number(cents || 0) / 100).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 function exhibitorTypeLabel(value?: string | null) {
@@ -766,62 +774,141 @@ export default function PortalDashboardPage() {
                         </div>
                       ) : (
                         <div style={{ display: "grid" }}>
-                          {exhibitor.products.map((item) => (
-                            <div
-                              key={item.id}
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "minmax(0, 1fr) 110px",
-                                gap: 12,
-                                padding: 14,
-                                borderTop: `1px solid ${theme.isDark ? "#1f2937" : "#f1f5f9"}`,
-                                alignItems: "center",
-                              }}
-                            >
-                              <div>
-                                <div
-                                  style={{
-                                    fontSize: 14,
-                                    fontWeight: 800,
-                                    color: theme.text,
-                                  }}
-                                >
-                                  {item.product.name}
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns:
+                                "minmax(0, 1fr) 56px 96px 104px",
+                              gap: 12,
+                              padding: "10px 14px",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: muted,
+                            }}
+                          >
+                            <div>Produto</div>
+                            <div style={{ textAlign: "right" }}>Qtd.</div>
+                            <div style={{ textAlign: "right" }}>Custo unit.</div>
+                            <div style={{ textAlign: "right" }}>Total</div>
+                          </div>
+
+                          {exhibitor.products.map((item) => {
+                            const unitCents = Number(item.product.priceCents || 0);
+                            const lineCents = unitCents * Number(item.quantity || 0);
+
+                            return (
+                              <div
+                                key={item.id}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns:
+                                    "minmax(0, 1fr) 56px 96px 104px",
+                                  gap: 12,
+                                  padding: 14,
+                                  borderTop: `1px solid ${theme.isDark ? "#1f2937" : "#f1f5f9"}`,
+                                  alignItems: "center",
+                                }}
+                              >
+                                <div style={{ minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      fontSize: 14,
+                                      fontWeight: 800,
+                                      color: theme.text,
+                                    }}
+                                  >
+                                    {item.product.name}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      marginTop: 4,
+                                      fontSize: 12,
+                                      color: muted,
+                                    }}
+                                  >
+                                    SKU: {item.product.sku || "-"}
+                                  </div>
                                 </div>
 
-                                <div
-                                  style={{
-                                    marginTop: 4,
-                                    fontSize: 12,
-                                    color: muted,
-                                  }}
-                                >
-                                  SKU: {item.product.sku || "-"}
-                                </div>
-                              </div>
-
-                              <div>
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    color: muted,
-                                    marginBottom: 4,
-                                  }}
-                                >
-                                  Quantidade
-                                </div>
                                 <div
                                   style={{
                                     fontSize: 14,
                                     fontWeight: 700,
                                     color: theme.text,
+                                    textAlign: "right",
                                   }}
                                 >
                                   {item.quantity}
                                 </div>
+
+                                <div
+                                  style={{
+                                    fontSize: 14,
+                                    color: theme.text,
+                                    textAlign: "right",
+                                  }}
+                                >
+                                  {moneyBR(unitCents)}
+                                </div>
+
+                                <div
+                                  style={{
+                                    fontSize: 14,
+                                    fontWeight: 800,
+                                    color: theme.text,
+                                    textAlign: "right",
+                                  }}
+                                >
+                                  {moneyBR(lineCents)}
+                                </div>
                               </div>
+                            );
+                          })}
+
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: 14,
+                              borderTop: `1px solid ${theme.border}`,
+                              background: theme.isDark ? "#111827" : "#f8fafc",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 14,
+                                fontWeight: 800,
+                                color: theme.text,
+                              }}
+                            >
+                              Total do expositor (
+                              {exhibitor.products.reduce(
+                                (sum, item) => sum + Number(item.quantity || 0),
+                                0
+                              )}{" "}
+                              un)
                             </div>
-                          ))}
+                            <div
+                              style={{
+                                fontSize: 16,
+                                fontWeight: 900,
+                                color: theme.primary,
+                              }}
+                            >
+                              {moneyBR(
+                                exhibitor.products.reduce(
+                                  (sum, item) =>
+                                    sum +
+                                    Number(item.product.priceCents || 0) *
+                                      Number(item.quantity || 0),
+                                  0
+                                )
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>

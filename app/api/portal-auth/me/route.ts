@@ -78,6 +78,9 @@ export async function GET() {
                     id: true,
                     name: true,
                     sku: true,
+                    // Preco de venda ao cliente (consignacao). Nunca expor
+                    // purchaseCostCents/custos internos no portal.
+                    priceCents: true,
                   },
                 },
               },
@@ -91,6 +94,7 @@ export async function GET() {
                     id: true,
                     name: true,
                     sku: true,
+                    priceCents: true,
                   },
                 },
               },

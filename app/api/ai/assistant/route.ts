@@ -181,6 +181,12 @@ export async function POST(request: Request) {
     if (err instanceof Anthropic.AuthenticationError) {
       return NextResponse.json({ error: "Chave da IA inválida. Verifique a ANTHROPIC_API_KEY." }, { status: 503 });
     }
+    if (err instanceof Anthropic.BadRequestError && /credit balance/i.test(err.message)) {
+      return NextResponse.json(
+        { error: "IA sem créditos na conta da Anthropic. Adicione créditos em console.anthropic.com (Billing)." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Erro ao falar com a IA. Tente novamente." }, { status: 500 });
   }
 }

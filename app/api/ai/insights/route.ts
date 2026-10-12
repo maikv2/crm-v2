@@ -186,6 +186,12 @@ Cada um: "titulo" (até 60 caracteres), "mensagem" (1 a 2 frases com os números
     if (err instanceof Anthropic.AuthenticationError) {
       return NextResponse.json({ error: "Chave da IA inválida. Verifique a ANTHROPIC_API_KEY." }, { status: 503 });
     }
+    if (err instanceof Anthropic.BadRequestError && /credit balance/i.test(err.message)) {
+      return NextResponse.json(
+        { error: "IA sem créditos na conta da Anthropic. Adicione créditos em console.anthropic.com (Billing)." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Não foi possível gerar os insights." }, { status: 500 });
   }
 }

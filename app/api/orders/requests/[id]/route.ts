@@ -127,39 +127,54 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       const originLabel =
         portalRequest.source === "site" ? "loja online (site)" : "portal do cliente";
 
-      const order = await prisma.order.create({
-        data: {
-          clientId: portalRequest.clientId,
-          regionId: portalRequest.regionId!,
-          sellerId: seller.id,
-          type: OrderType.SALE,
-          subtotalCents: subtotal,
-          totalCents: subtotal,
-          commissionTotalCents: calculateSellerCommissionCents(subtotal),
-          paymentMethod,
-          financialMovement: false,
-          notes: [
-            `Pedido criado a partir do ${originLabel}, aprovado pelo financeiro.`,
-            portalRequest.isCashOnDelivery ? "Combinado: pagamento na entrega (cliente com expositor ativo)." : null,
-            portalRequest.customPlanRequested
-              ? "Plano de pagamento customizado (entrada + parcelas) - conferir condicoes combinadas com o cliente."
-              : null,
-            portalRequest.notes ? `\n${portalRequest.notes}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-          items: {
-            create: orderItems,
-          },
-        },
-      });
+      // Numera igual a criacao normal de pedido (maior numero + 1). O
+      // autoincrement do banco fica defasado porque o POST /api/orders grava
+      // o numero manualmente, e usar ele aqui dava "Unique constraint failed
+      // on the fields: (number)".
+      const order = await prisma.$transaction(async (tx) => {
+        const lastOrderForNumber = await tx.order.findFirst({
+          orderBy: { number: "desc" },
+          select: { number: true },
+        });
+        const nextOrderNumber = (lastOrderForNumber?.number ?? 0) + 1;
 
-      await prisma.portalOrderRequest.update({
-        where: { id },
-        data: {
-          status: PortalOrderRequestStatus.CONVERTED_TO_ORDER,
-          convertedOrderId: order.id,
-        },
+        const created = await tx.order.create({
+          data: {
+            number: nextOrderNumber,
+            clientId: portalRequest.clientId,
+            regionId: portalRequest.regionId!,
+            sellerId: seller.id,
+            type: OrderType.SALE,
+            subtotalCents: subtotal,
+            totalCents: subtotal,
+            commissionTotalCents: calculateSellerCommissionCents(subtotal),
+            paymentMethod,
+            financialMovement: false,
+            notes: [
+              `Pedido criado a partir do ${originLabel}, aprovado pelo financeiro.`,
+              portalRequest.isCashOnDelivery ? "Combinado: pagamento na entrega (cliente com expositor ativo)." : null,
+              portalRequest.customPlanRequested
+                ? "Plano de pagamento customizado (entrada + parcelas) - conferir condicoes combinadas com o cliente."
+                : null,
+              portalRequest.notes ? `\n${portalRequest.notes}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            items: {
+              create: orderItems,
+            },
+          },
+        });
+
+        await tx.portalOrderRequest.update({
+          where: { id },
+          data: {
+            status: PortalOrderRequestStatus.CONVERTED_TO_ORDER,
+            convertedOrderId: created.id,
+          },
+        });
+
+        return created;
       });
 
       return NextResponse.json({

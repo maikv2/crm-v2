@@ -486,6 +486,7 @@ export function OrderPdfDocument({ data }: { data: OrderPdfData }) {
             return (
               <View
                 key={item.id}
+                wrap={false}
                 style={[styles.row, ...(isLast ? [styles.lastRow] : [])]}
               >
                 <View style={styles.colImage}>
@@ -517,7 +518,9 @@ export function OrderPdfDocument({ data }: { data: OrderPdfData }) {
           })}
         </View>
 
-        <View style={styles.bottomGrid}>
+        {/* wrap={false}: pagamento/totais e observacoes nao podem ser
+            cortados ao meio na virada de pagina - vao inteiros pra proxima. */}
+        <View style={styles.bottomGrid} wrap={false}>
           <View style={styles.paymentCard}>
             <Text style={styles.sectionTitle}>Condição de pagamento</Text>
             <Text style={styles.sectionText}>
@@ -579,7 +582,7 @@ export function OrderPdfDocument({ data }: { data: OrderPdfData }) {
           </View>
         </View>
 
-        <View style={styles.observations}>
+        <View style={styles.observations} wrap={observationLines.length > 6}>
           <Text style={styles.sectionTitle}>Observações</Text>
           {observationLines.length > 0 ? (
             observationLines.map((line, index) => (
@@ -592,7 +595,7 @@ export function OrderPdfDocument({ data }: { data: OrderPdfData }) {
           )}
         </View>
 
-        <Text style={styles.footer}>
+        <Text style={styles.footer} wrap={false}>
           Agradecemos pela preferência. Estamos à disposição para maiores
           informações e para continuar atendendo você com qualidade e confiança.
         </Text>

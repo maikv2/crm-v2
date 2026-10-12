@@ -24,6 +24,7 @@ import MobileShell, {
 import { adminMobileNavItems } from "@/app/components/mobile/mobile-admin-shared";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
+import AiInsightsCard from "@/app/components/ai-insights-card";
 
 type QuickCardProps = {
   href: string;
@@ -343,6 +344,8 @@ export default function AdminMobileHome() {
           </div>
         </div>
       </MobileCard>
+
+      <AiInsightsCard compact />
 
       <MobileCard>
         <MobileSectionTitle title="Atalhos principais" />

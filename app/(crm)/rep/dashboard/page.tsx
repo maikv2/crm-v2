@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
+import AiInsightsCard from "@/app/components/ai-insights-card";
 
 export default function RepHomePage() {
   const { theme: mode } = useTheme();
@@ -80,6 +81,8 @@ export default function RepHomePage() {
         <h1 style={{ fontSize: 30, fontWeight: 900, marginBottom: 20 }}>
           Painel do Representante
         </h1>
+
+        <AiInsightsCard />
 
         <div
           style={{

@@ -17,6 +17,29 @@ export type AssistantScope = {
   mobile: boolean;
 };
 
+export const ASSISTANT_ROLES: AssistantRole[] = ["ADMIN", "ADMINISTRATIVE", "REPRESENTATIVE"];
+
+export function buildScope(
+  user: {
+    id: string;
+    role: string;
+    regionId: string | null;
+    stockLocationId: string | null;
+    region: { stockLocationId: string | null } | null;
+  },
+  pathname: string
+): AssistantScope | null {
+  const role = user.role as AssistantRole;
+  if (!ASSISTANT_ROLES.includes(role)) return null;
+  return {
+    userId: user.id,
+    role,
+    regionId: user.regionId,
+    stockLocationId: user.stockLocationId ?? user.region?.stockLocationId ?? null,
+    mobile: pathname.startsWith("/m/"),
+  };
+}
+
 export type AssistantTable = {
   title: string;
   columns: { key: string; label: string; align?: "left" | "right" }[];
@@ -160,7 +183,9 @@ const NAV_DESTINATIONS = [
   "agenda",
 ] as const;
 
-type NavDestination = (typeof NAV_DESTINATIONS)[number];
+export type NavDestination = (typeof NAV_DESTINATIONS)[number];
+
+export { NAV_DESTINATIONS };
 
 export function getAssistantTools(scope: AssistantScope): Anthropic.Beta.BetaTool[] {
   const tools: Anthropic.Beta.BetaTool[] = [
@@ -911,7 +936,7 @@ async function stockLookup(input: Record<string, unknown>, scope: AssistantScope
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function resolvePath(dest: NavDestination, id: string | null, scope: AssistantScope): string | null {
+export function resolvePath(dest: NavDestination, id: string | null, scope: AssistantScope): string | null {
   const m = scope.mobile;
 
   if (scope.role === "REPRESENTATIVE") {

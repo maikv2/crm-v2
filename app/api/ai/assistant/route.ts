@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAuthUser } from "@/lib/auth-user";
 import {
+  buildScope,
   getAssistantTools,
   runAssistantTool,
   type AssistantRole,
-  type AssistantScope,
   type AssistantTable,
 } from "@/lib/ai/assistant-tools";
 
@@ -17,8 +17,6 @@ const MODEL = "claude-opus-5-5";
 const MAX_TOOL_ROUNDS = 8;
 const MAX_HISTORY = 12;
 const MAX_MESSAGE_CHARS = 2000;
-
-const ALLOWED_ROLES: AssistantRole[] = ["ADMIN", "ADMINISTRATIVE", "REPRESENTATIVE"];
 
 // Instrucoes fixas (ficam em cache entre as chamadas). Dados do usuario e a
 // data de hoje vao num bloco separado logo depois, pra nao quebrar o cache.
@@ -36,6 +34,7 @@ Regras:
 - Nunca invente números. Tudo que você afirmar sobre o negócio tem que vir das ferramentas. Se a ferramenta não traz algo, diga que não tem essa informação.
 - Você não altera nada no sistema: não cria, edita, aprova nem apaga registros. Se pedirem isso, explique que por enquanto só consulta e abre a tela certa para a pessoa fazer.
 - Quando uma ferramenta devolve uma tabela, ela já aparece na tela do usuário - não repita a tabela inteira. Comente os destaques em poucas linhas.
+- Toda resposta com tabela ganha um botão "Baixar relatório em PDF" (e o CSV da tabela). Se o usuário pedir o relatório em PDF, gere o relatório normalmente - o PDF é baixado automaticamente com a sua análise e as tabelas.
 - Respostas curtas e diretas, pensadas para serem lidas no celular ou ouvidas em voz alta: de 1 a 6 frases ou tópicos curtos. Use **negrito** só para os números principais. Sem tabelas em markdown.
 - Valores em reais no formato R$ 1.234,56. Datas no formato dd/mm/aaaa.
 - Se o usuário for representante, os dados já vêm limitados à região e aos clientes dele - fale como "seus clientes", "suas vendas".
@@ -77,10 +76,13 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
-  const role = user.role as AssistantRole;
-  if (!ALLOWED_ROLES.includes(role)) {
+  const body = (await request.json().catch(() => null)) as { messages?: unknown; pathname?: unknown } | null;
+  const pathname = String(body?.pathname ?? "").slice(0, 200);
+  const scope = buildScope(user, pathname);
+  if (!scope) {
     return NextResponse.json({ error: "O assistente não está disponível para o seu perfil." }, { status: 403 });
   }
+  const role = scope.role;
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
       { error: "Assistente de IA ainda não configurado (falta a chave ANTHROPIC_API_KEY)." },
@@ -88,20 +90,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json().catch(() => null)) as { messages?: unknown; pathname?: unknown } | null;
   const history = sanitizeHistory(body?.messages);
   if (!history) {
     return NextResponse.json({ error: "Mensagem inválida." }, { status: 400 });
   }
-  const pathname = String(body?.pathname ?? "").slice(0, 200);
-
-  const scope: AssistantScope = {
-    userId: user.id,
-    role,
-    regionId: user.regionId,
-    stockLocationId: user.stockLocationId ?? user.region?.stockLocationId ?? null,
-    mobile: pathname.startsWith("/m/"),
-  };
 
   const context = [
     `Hoje é ${todayInfo()}.`,

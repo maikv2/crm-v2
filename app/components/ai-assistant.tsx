@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Download, Mic, MicOff, Send, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { Download, FileText, Mic, MicOff, Send, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { useTheme } from "../providers/theme-provider";
 import { getThemeColors } from "../../lib/theme";
 
@@ -101,6 +101,8 @@ export default function AiAssistant() {
   const [listening, setListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState<number | null>(null);
+  const [pendingPdf, setPendingPdf] = useState<number | null>(null);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -183,6 +185,10 @@ export default function AiAssistant() {
 
         setMessages((cur) => [...cur, { role: "assistant", content: json.reply, tables: json.tables ?? [] }]);
         speak(json.reply);
+        // Pediu "em PDF" e veio tabela: baixa o PDF direto.
+        if (/\bpdf\b/i.test(text) && Array.isArray(json.tables) && json.tables.length) {
+          setPendingPdf(next.length);
+        }
         if (json.navigate && typeof json.navigate === "string" && json.navigate.startsWith("/")) {
           router.push(json.navigate);
         }
@@ -244,6 +250,45 @@ export default function AiAssistant() {
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
   }, []);
+
+  async function downloadPdf(index: number) {
+    const message = messages[index];
+    if (!message || pdfLoading !== null) return;
+    const question = [...messages.slice(0, index)].reverse().find((m) => m.role === "user")?.content ?? null;
+    setPdfLoading(index);
+    try {
+      const res = await fetch("/api/ai/report-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: message.tables?.[0]?.title ?? "Relatório",
+          question,
+          analysis: message.content,
+          tables: message.tables ?? [],
+        }),
+      });
+      if (!res.ok) throw new Error("pdf");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `relatorio-v2-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setMessages((cur) => [...cur, { role: "assistant", content: "Não foi possível gerar o PDF.", error: true }]);
+    } finally {
+      setPdfLoading(null);
+    }
+  }
+
+  useEffect(() => {
+    if (pendingPdf === null || !messages[pendingPdf]?.tables?.length) return;
+    const index = pendingPdf;
+    setPendingPdf(null);
+    downloadPdf(index);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPdf, messages]);
 
   function toggleSpeak() {
     setSpeakReplies((cur) => {
@@ -400,6 +445,31 @@ export default function AiAssistant() {
                 {m.tables?.map((t, ti) => (
                   <ReportTable key={ti} table={t} colors={colors} />
                 ))}
+                {m.role === "assistant" && m.tables?.length ? (
+                  <button
+                    type="button"
+                    onClick={() => downloadPdf(index)}
+                    disabled={pdfLoading !== null}
+                    style={{
+                      alignSelf: "flex-start",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${colors.border}`,
+                      background: colors.cardBg,
+                      color: colors.text,
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: pdfLoading !== null ? "wait" : "pointer",
+                    }}
+                  >
+                    <FileText size={14} color="#ef4444" />
+                    {pdfLoading === index ? "Gerando PDF…" : "Baixar relatório em PDF"}
+                  </button>
+                ) : null}
               </div>
             ))}
 

@@ -14,6 +14,7 @@ import MobileRepPageFrame from "@/app/components/mobile/mobile-rep-page-frame";
 import { MobileCard } from "@/app/components/mobile/mobile-shell";
 import { useTheme } from "@/app/providers/theme-provider";
 import { getThemeColors } from "@/lib/theme";
+import AiInsightsCard from "@/app/components/ai-insights-card";
 
 type RepAgendaResponse = {
   atrasados?: unknown[];
@@ -267,6 +268,8 @@ export default function RepMobileDashboardPage() {
       desktopHref="/rep"
     >
       <div style={{ display: "grid", gap: 12 }}>
+        <AiInsightsCard compact />
+
         <SummaryCard
           label="Vendas reais da semana"
           value={loading ? "..." : money(weekSalesCents)}

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "../../providers/theme-provider";
 import { getThemeColors } from "../../../lib/theme";
+import AiInsightsCard from "../../components/ai-insights-card";
 
 function money(value: number) {
   return value.toLocaleString("pt-BR", {
@@ -718,6 +719,8 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      <AiInsightsCard />
 
       <div
         style={{

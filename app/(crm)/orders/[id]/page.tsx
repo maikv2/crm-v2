@@ -156,6 +156,17 @@ function formatDateBR(value?: string | null) {
   return d.toLocaleDateString("pt-BR");
 }
 
+// Datas "só dia" (ex: vencimento) são salvas como meia-noite UTC — formatar
+// com o fuso do navegador (como formatDateBR faz) pode voltar pro dia
+// anterior pra quem está no Brasil (UTC-3). Aqui lemos o dia direto em UTC,
+// que é o mesmo dia que foi digitado no campo de data.
+function formatDateOnlyBR(value?: string | null) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+}
+
 function formatDateTimeBR(value?: string | null) {
   if (!value) return "-";
   const d = new Date(value);
@@ -413,19 +424,24 @@ function StatusBadge({
 }
 
 function ProductImage({
+  productId,
+  imageUrl,
   sku,
   name,
   alt,
   theme,
 }: {
+  productId?: string | null;
+  imageUrl?: string | null;
   sku?: string | null;
   name?: string | null;
   alt: string;
   theme: ThemeShape;
 }) {
+  const [useImageUrl, setUseImageUrl] = useState(Boolean(imageUrl?.trim()));
   const [failed, setFailed] = useState(false);
 
-  if ((!sku && !name) || failed) {
+  if ((!imageUrl && !productId && !sku && !name) || failed) {
     return (
       <div
         style={{
@@ -445,13 +461,20 @@ function ProductImage({
     );
   }
 
+  // Usa a imagem cadastrada no produto; se falhar, cai na busca por id/SKU/nome.
+  const fallbackParams = new URLSearchParams();
+  if (productId) fallbackParams.set("id", productId);
+  if (sku) fallbackParams.set("sku", sku);
+  if (name) fallbackParams.set("name", name);
+
+  const src =
+    useImageUrl && imageUrl ? imageUrl.trim() : `/api/product-image?${fallbackParams.toString()}`;
+
   return (
     <img
-      src={`/api/product-image?sku=${encodeURIComponent(
-        sku ?? ""
-      )}&name=${encodeURIComponent(name ?? "")}`}
+      src={src}
       alt={alt}
-      onError={() => setFailed(true)}
+      onError={() => (useImageUrl ? setUseImageUrl(false) : setFailed(true))}
       style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
     />
   );
@@ -1316,6 +1339,8 @@ export default function OrderDetailPage() {
                       }}
                     >
                       <ProductImage
+                        productId={item.product?.id}
+                        imageUrl={item.product?.imageUrl}
                         sku={item.product?.sku}
                         name={item.product?.name}
                         alt={item.product?.name || "Produto"}
@@ -1450,7 +1475,7 @@ export default function OrderDetailPage() {
                             value={`${item.installmentNumber}/${receivable.installmentCount || 1}`}
                             theme={theme}
                           />
-                          <MetricMini label="Vencimento" value={formatDateBR(item.dueDate)}             theme={theme} />
+                          <MetricMini label="Vencimento" value={formatDateOnlyBR(item.dueDate)}         theme={theme} />
                           <MetricMini label="Valor"       value={money(item.amountCents)}                theme={theme} />
                           <MetricMini label="Status"      value={paymentStatusLabel(item.status)}        theme={theme} valueColor={statusColor(item.status)} />
                           <MetricMini label="Pago em"     value={formatDateBR(item.paidAt)}              theme={theme} />

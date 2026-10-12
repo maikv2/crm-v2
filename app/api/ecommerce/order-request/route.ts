@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  ExhibitorStatus,
   PaymentMethod,
   PortalOrderRequestStatus,
   ProspectStatus,
@@ -73,9 +72,8 @@ function hasValidApiKey(request: Request) {
 }
 
 // --- Regras de pagamento do site (atacado) --------------------------------
-// Boleto so a vista (1x); parcelamento so no cartao de credito; "pagamento
-// na entrega" so pra quem tem expositor ativo (checado no banco, nao so no
-// site - o site so espelha essa regra pra UX). Combinacao fora do padrao
+// Boleto so a vista (1x); parcelamento so no cartao de credito; "dinheiro
+// na entrega" liberado pra todos os clientes. Combinacao fora do padrao
 // (ex: entrada + boletos parcelados) e aceita mas marcada pra atencao
 // redobrada do financeiro - toda solicitacao ja passa por aprovacao mesmo.
 const MAX_CARD_INSTALLMENTS = 6;
@@ -161,7 +159,7 @@ function buildPaymentPlan(customer: EcommerceCustomer): { plan: PaymentPlan; err
 }
 
 function paymentPlanLabel(plan: PaymentPlan) {
-  if (plan.isCashOnDelivery) return "Pagamento na entrega (expositor ativo)";
+  if (plan.isCashOnDelivery) return "Dinheiro na entrega";
   switch (plan.paymentMethod) {
     case PaymentMethod.PIX:
       return "Pix a vista";
@@ -361,24 +359,6 @@ export async function POST(request: Request) {
         },
         { status: 201 },
       );
-    }
-
-    // "Pagamento na entrega" so e valido pra cliente com expositor ativo -
-    // checagem no banco e a autoridade final, o site so espelha isso na UI.
-    if (plan.isCashOnDelivery) {
-      const activeExhibitor = await prisma.exhibitor.findFirst({
-        where: { clientId: client.id, status: ExhibitorStatus.ACTIVE },
-        select: { id: true },
-      });
-      if (!activeExhibitor) {
-        return NextResponse.json(
-          {
-            error:
-              "Pagamento na entrega disponivel apenas para clientes com expositor ativo. Escolha outra forma de pagamento.",
-          },
-          { status: 403 },
-        );
-      }
     }
 
     const notes = buildNotes({ body: body ?? {}, customer, items, plan });

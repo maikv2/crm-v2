@@ -51,7 +51,7 @@ function formatDateTimeBR(value?: string | null) {
 }
 
 function paymentLabel(req: OrderRequest) {
-  if (req.isCashOnDelivery) return "Pagamento na entrega";
+  if (req.isCashOnDelivery) return "Dinheiro na entrega";
   const method = req.requestedPaymentMethod;
   const installments = req.requestedInstallments ?? 1;
   switch (method) {

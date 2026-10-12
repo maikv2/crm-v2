@@ -152,7 +152,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             financialMovement: false,
             notes: [
               `Pedido criado a partir do ${originLabel}, aprovado pelo financeiro.`,
-              portalRequest.isCashOnDelivery ? "Combinado: pagamento na entrega (cliente com expositor ativo)." : null,
+              portalRequest.isCashOnDelivery ? "Combinado: dinheiro na entrega." : null,
               portalRequest.customPlanRequested
                 ? "Plano de pagamento customizado (entrada + parcelas) - conferir condicoes combinadas com o cliente."
                 : null,

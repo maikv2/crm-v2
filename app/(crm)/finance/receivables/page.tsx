@@ -59,6 +59,17 @@ function addDays(date: Date, days: number) {
   return d;
 }
 
+function paymentMethodLabel(value?: string | null) {
+  const map: Record<string, string> = {
+    CASH: "Dinheiro",
+    PIX: "Pix",
+    BOLETO: "Boleto",
+    CARD_DEBIT: "Cartão débito",
+    CARD_CREDIT: "Cartão crédito",
+  };
+  return map[value || ""] || value || "-";
+}
+
 function getStatusLabel(item: Installment) {
   if (item.status === "PAID") return "Pago";
 
@@ -256,6 +267,8 @@ export default function ReceivablesPage() {
   const [bucketFilter, setBucketFilter] = useState<
     "all" | "overdue" | "dueToday" | "dueThisWeek" | "future"
   >("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -303,6 +316,72 @@ export default function ReceivablesPage() {
     } catch (error) {
       console.error("Erro ao receber parcela:", error);
       alert("Erro ao receber parcela.");
+    }
+  }
+
+  async function handleReceiveSelected() {
+    const items = visibleData.filter((item) => selectedIds.includes(item.id));
+    if (!items.length) return;
+
+    const confirmed = window.confirm(
+      `Confirmar recebimento de ${items.length} parcela(s) • ${money(
+        items.reduce((sum, item) => sum + item.amountCents, 0)
+      )}?`
+    );
+
+    if (!confirmed) return;
+
+    const failures: string[] = [];
+
+    try {
+      setSaving(true);
+
+      // Uma parcela por vez, usando a mesma rota da baixa individual.
+      for (const item of items) {
+        try {
+          const res = await fetch("/api/finance/receivables/receive", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              installmentId: item.id,
+              paymentMethod: item.accountsReceivable.paymentMethod,
+            }),
+          });
+
+          if (!res.ok) {
+            const json = await res.json().catch(() => null);
+            failures.push(
+              `PED-${String(item.accountsReceivable.order.number).padStart(4, "0")} (${
+                item.installmentNumber
+              }/${item.accountsReceivable.installmentCount}): ${
+                json?.error || "erro ao receber"
+              }`
+            );
+          }
+        } catch (error) {
+          console.error("Erro ao receber parcela:", error);
+          failures.push(
+            `PED-${String(item.accountsReceivable.order.number).padStart(4, "0")} (${
+              item.installmentNumber
+            }/${item.accountsReceivable.installmentCount}): erro de conexão`
+          );
+        }
+      }
+
+      setSelectedIds([]);
+      await load();
+
+      if (failures.length) {
+        alert(
+          `${items.length - failures.length} parcela(s) recebida(s).\n\nNão foi possível receber:\n${failures.join("\n")}`
+        );
+      } else {
+        alert(`${items.length} parcela(s) recebida(s) com sucesso.`);
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -395,6 +474,42 @@ export default function ReceivablesPage() {
     if (bucketFilter === "all") return orderedOpenData;
     return grouped[bucketFilter];
   }, [bucketFilter, orderedOpenData, grouped]);
+
+  const selectableRows = useMemo(
+    () => visibleData.filter((item) => item.status !== "PAID"),
+    [visibleData]
+  );
+
+  // Mantém selecionado só o que continua visível (ao trocar filtro/região).
+  useEffect(() => {
+    setSelectedIds((current) =>
+      current.filter((id) => selectableRows.some((item) => item.id === id))
+    );
+  }, [selectableRows]);
+
+  const selectedTotalCents = useMemo(() => {
+    return selectableRows.reduce((sum, item) => {
+      return selectedIds.includes(item.id) ? sum + item.amountCents : sum;
+    }, 0);
+  }, [selectableRows, selectedIds]);
+
+  const allSelected =
+    selectableRows.length > 0 && selectedIds.length === selectableRows.length;
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds([]);
+      return;
+    }
+
+    setSelectedIds(selectableRows.map((item) => item.id));
+  }
 
   function toggleBucket(bucket: "overdue" | "dueToday" | "dueThisWeek" | "future") {
     setBucketFilter((prev) => (prev === bucket ? "all" : bucket));
@@ -542,6 +657,12 @@ export default function ReceivablesPage() {
               />
             )}
             <ActionButton
+              label={allSelected ? "Limpar seleção" : "Selecionar todos"}
+              theme={theme}
+              onClick={toggleAll}
+              disabled={!selectableRows.length}
+            />
+            <ActionButton
               label="Atualizar"
               theme={theme}
               onClick={load}
@@ -549,6 +670,37 @@ export default function ReceivablesPage() {
           </div>
         }
       >
+        {selectableRows.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 14,
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: `1px solid ${theme.border}`,
+              background: subtleCard,
+            }}
+          >
+            <div style={{ fontSize: 13, color: theme.subtext }}>
+              {selectedIds.length
+                ? `${selectedIds.length} parcela(s) selecionada(s) • ${money(selectedTotalCents)}`
+                : "Selecione uma ou mais parcelas pra receber em massa."}
+            </div>
+
+            <ActionButton
+              label={saving ? "Recebendo..." : "Receber selecionadas"}
+              theme={theme}
+              onClick={handleReceiveSelected}
+              disabled={saving || selectedIds.length === 0}
+              primary
+            />
+          </div>
+        )}
+
         <div
           style={{
             overflowX: "auto",
@@ -561,7 +713,7 @@ export default function ReceivablesPage() {
             style={{
               width: "100%",
               borderCollapse: "collapse",
-              minWidth: 980,
+              minWidth: 1120,
             }}
           >
             <thead>
@@ -570,12 +722,22 @@ export default function ReceivablesPage() {
                   background: theme.isDark ? "#0b1324" : "#f8fafc",
                 }}
               >
+                <th style={{ ...th(theme, "left"), width: 36 }}>
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    disabled={!selectableRows.length || saving}
+                    title="Selecionar todas"
+                  />
+                </th>
                 <th style={th(theme, "left")}>Pedido</th>
                 <th style={th(theme, "left")}>Cliente</th>
                 <th style={th(theme, "left")}>Região</th>
                 <th style={th(theme, "left")}>Parcela</th>
                 <th style={th(theme, "left")}>Vencimento</th>
                 <th style={th(theme, "left")}>Valor</th>
+                <th style={th(theme, "left")}>Forma de pagamento</th>
                 <th style={th(theme, "left")}>Situação</th>
                 <th style={th(theme, "left")}>Ação</th>
               </tr>
@@ -593,6 +755,17 @@ export default function ReceivablesPage() {
                       background: theme.cardBg,
                     }}
                   >
+                    <td style={td(theme)}>
+                      {item.status !== "PAID" && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(item.id)}
+                          onChange={() => toggleSelected(item.id)}
+                          disabled={saving}
+                        />
+                      )}
+                    </td>
+
                     <td style={td(theme)}>
                       {`PED-${String(
                         item.accountsReceivable.order.number
@@ -616,6 +789,10 @@ export default function ReceivablesPage() {
 
                     <td style={{ ...td(theme), fontWeight: 700 }}>
                       {money(item.amountCents)}
+                    </td>
+
+                    <td style={td(theme)}>
+                      {paymentMethodLabel(item.accountsReceivable.paymentMethod)}
                     </td>
 
                     <td
@@ -643,6 +820,7 @@ export default function ReceivablesPage() {
                           label="Receber"
                           theme={theme}
                           onClick={() => handleReceive(item)}
+                          disabled={saving}
                           primary
                         />
                       )}
@@ -654,7 +832,7 @@ export default function ReceivablesPage() {
               {visibleData.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={10}
                     style={{
                       padding: 24,
                       textAlign: "center",

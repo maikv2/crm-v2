@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "../components/sidebar";
 import Header from "../components/header";
+import AiAssistant from "../components/ai-assistant";
 import { useTheme } from "../providers/theme-provider";
 import { getThemeColors } from "../../lib/theme";
 
@@ -165,6 +166,7 @@ export default function CRMLayout({
           {children}
         </main>
       </div>
+      <AiAssistant />
     </div>
   );
 }

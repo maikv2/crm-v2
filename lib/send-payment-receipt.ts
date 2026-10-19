@@ -60,13 +60,9 @@ async function fetchProductImageAsDataUrl(imageUrl: string): Promise<string | nu
   }
 }
 
-function formatMoneyFromCents(value: number) {
-  return (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
 /**
  * Manda 3 produtos aleatorios do catalogo do site, cada um como uma imagem
- * separada com nome, preco e link do produto na legenda (embaixo da foto) -
+ * separada com nome e link do produto na legenda (embaixo da foto, sem preco) -
  * disparado depois do recibo, como um empurrãozinho pra proxima compra.
  * Nunca lanca erro pra fora.
  */
@@ -91,7 +87,7 @@ export async function sendProductHighlights(params: { whatsapp: string }) {
     const shuffled = [...products].sort(() => Math.random() - 0.5).slice(0, 10);
     const catalog = await fetchSiteCatalog();
 
-    const items: Array<{ name: string; priceCents: number; imageDataUrl: string; productUrl: string }> = [];
+    const items: Array<{ name: string; imageDataUrl: string; productUrl: string }> = [];
     for (const product of shuffled) {
       if (items.length >= 3) break;
 
@@ -100,7 +96,6 @@ export async function sendProductHighlights(params: { whatsapp: string }) {
 
       items.push({
         name: product.name,
-        priceCents: product.sitePriceCents ?? 0,
         imageDataUrl,
         productUrl: buildProductPageUrl(product.sku, catalog),
       });
@@ -117,7 +112,7 @@ export async function sendProductHighlights(params: { whatsapp: string }) {
       await sendImage({
         phone: params.whatsapp,
         image: item.imageDataUrl,
-        caption: `*${item.name}*\n${formatMoneyFromCents(item.priceCents)}\n👉 ${item.productUrl}`,
+        caption: `*${item.name}*\n👉 ${item.productUrl}`,
       });
     }
   } catch (error) {

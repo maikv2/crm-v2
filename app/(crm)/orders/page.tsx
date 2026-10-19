@@ -21,11 +21,14 @@ type Installment = {
   id: string;
   status: string;
   amountCents: number;
+  dueDate?: string | null;
 };
 
 type AccountsReceivable = {
   id: string;
   status: string;
+  paymentMethod?: string | null;
+  dueDate?: string | null;
   amountCents?: number | null;
   receivedCents?: number | null;
   installmentCount?: number | null;
@@ -102,13 +105,51 @@ function paymentMethodLabel(value?: string | null) {
   }
 }
 
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// Considera vencido quando há parcela (ou título sem parcelas) em aberto
+// com vencimento anterior a hoje, mesmo que o status ainda não tenha virado OVERDUE.
+function hasOverdueOpenAmount(order: Order) {
+  const today = startOfToday();
+  const isPast = (value?: string | null) => {
+    if (!value) return false;
+    const t = new Date(value).getTime();
+    return Number.isFinite(t) && t < today;
+  };
+
+  return (order.accountsReceivables ?? []).some((receivable) => {
+    if (receivable.status === "PAID" || receivable.status === "CANCELED") {
+      return false;
+    }
+
+    const installments = receivable.installments ?? [];
+
+    if (installments.length > 0) {
+      return installments.some(
+        (inst) =>
+          inst.status === "OVERDUE" ||
+          (inst.status !== "PAID" &&
+            inst.status !== "CANCELED" &&
+            isPast(inst.dueDate))
+      );
+    }
+
+    return isPast(receivable.dueDate);
+  });
+}
+
 function financialStatusLabel(order: Order) {
   const receivable = order.accountsReceivables?.[0];
 
   if (receivable?.status === "PAID") return "Recebido";
-  if (receivable?.status === "PARTIAL") return "Parcial";
   if (receivable?.status === "OVERDUE") return "Vencido";
   if (receivable?.status === "CANCELED") return "Cancelado";
+  if (hasOverdueOpenAmount(order)) return "Vencido";
+  if (receivable?.status === "PARTIAL") return "Parcial";
 
   if (order.paymentStatus === "PAID") return "Recebido";
   if (order.paymentStatus === "PARTIAL") return "Parcial";
@@ -125,6 +166,54 @@ function financialStatusColor(label: string) {
   if (label === "Cancelado") return "#6b7280";
   return "#2563eb";
 }
+
+function normalizeText(value?: string | number | null) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+// Data no formato YYYY-MM-DD no fuso local, para comparar com <input type="date">.
+function localDateKey(value?: string | null) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function orderPaymentMethods(order: Order) {
+  const methods = new Set<string>();
+  if (order.paymentMethod) methods.add(order.paymentMethod);
+  for (const receivable of order.accountsReceivables ?? []) {
+    if (receivable.paymentMethod) methods.add(receivable.paymentMethod);
+  }
+  return methods;
+}
+
+function orderRegionName(order: Order) {
+  return order.region?.name ?? order.client?.region?.name ?? "";
+}
+
+const PAYMENT_METHOD_OPTIONS = [
+  "CASH",
+  "PIX",
+  "BOLETO",
+  "CARD_DEBIT",
+  "CARD_CREDIT",
+] as const;
+
+const FINANCIAL_STATUS_OPTIONS = [
+  "Pendente",
+  "Parcial",
+  "Recebido",
+  "Vencido",
+  "Cancelado",
+] as const;
 
 function actionButtonStyle(theme: ThemeShape): React.CSSProperties {
   return {
@@ -197,6 +286,102 @@ export default function OrdersPage() {
     });
   }, [orders]);
 
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [clientFilter, setClientFilter] = useState("");
+  const [regionFilter, setRegionFilter] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState("");
+  const [financialFilter, setFinancialFilter] = useState("");
+
+  const clientOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const order of orders) {
+      if (order.client?.name) names.add(order.client.name);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [orders]);
+
+  const regionOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const order of orders) {
+      const name = orderRegionName(order);
+      if (name) names.add(name);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [orders]);
+
+  const hasActiveFilters = Boolean(
+    search ||
+      dateFrom ||
+      dateTo ||
+      clientFilter ||
+      regionFilter ||
+      paymentFilter ||
+      financialFilter
+  );
+
+  function clearFilters() {
+    setSearch("");
+    setDateFrom("");
+    setDateTo("");
+    setClientFilter("");
+    setRegionFilter("");
+    setPaymentFilter("");
+    setFinancialFilter("");
+  }
+
+  const filteredOrders = useMemo(() => {
+    const term = normalizeText(search);
+
+    return sortedOrders.filter((order) => {
+      if (term) {
+        const matchesNumber =
+          normalizeText(formatOrderNumber(order.number, order.id)).includes(term) ||
+          normalizeText(order.number).includes(term);
+        const matchesClient =
+          normalizeText(order.client?.name).includes(term) ||
+          (order.client?.code !== null &&
+            order.client?.code !== undefined &&
+            normalizeText(order.client.code).includes(term));
+
+        if (!matchesNumber && !matchesClient) return false;
+      }
+
+      if (dateFrom || dateTo) {
+        const key = localDateKey(order.createdAt);
+        if (!key) return false;
+        if (dateFrom && key < dateFrom) return false;
+        if (dateTo && key > dateTo) return false;
+      }
+
+      if (clientFilter && order.client?.name !== clientFilter) return false;
+      if (regionFilter && orderRegionName(order) !== regionFilter) return false;
+      if (paymentFilter && !orderPaymentMethods(order).has(paymentFilter)) {
+        return false;
+      }
+      if (financialFilter && financialStatusLabel(order) !== financialFilter) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    sortedOrders,
+    search,
+    dateFrom,
+    dateTo,
+    clientFilter,
+    regionFilter,
+    paymentFilter,
+    financialFilter,
+  ]);
+
+  const filteredTotalCents = useMemo(
+    () => filteredOrders.reduce((sum, order) => sum + (order.totalCents ?? 0), 0),
+    [filteredOrders]
+  );
+
   async function handleDelete(order: Order) {
     const number = formatOrderNumber(order.number, order.id);
 
@@ -235,6 +420,31 @@ export default function OrdersPage() {
     border: `1px solid ${theme.isDark ? "#7f1d1d" : "#fecaca"}`,
     background: theme.isDark ? "#3f1212" : "#fee2e2",
     color: theme.isDark ? "#fecaca" : "#b91c1c",
+  };
+
+  const filterLabelStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 800,
+    color: theme.subtext,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  };
+
+  const filterInputStyle: React.CSSProperties = {
+    height: 38,
+    padding: "0 10px",
+    borderRadius: 10,
+    border: `1px solid ${theme.border}`,
+    background: theme.cardBg,
+    color: theme.text,
+    fontSize: 14,
+    fontWeight: 600,
+    textTransform: "none",
+    letterSpacing: 0,
+    colorScheme: theme.isDark ? "dark" : "light",
   };
 
   return (
@@ -338,13 +548,146 @@ export default function OrdersPage() {
           </div>
         ) : null}
 
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+            gap: 12,
+            marginBottom: 14,
+          }}
+        >
+          <label style={{ ...filterLabelStyle, gridColumn: "1 / -1" }}>
+            Pesquisar
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nº do pedido (ex: 123 ou PED-0123) ou nome/código do cliente"
+              style={filterInputStyle}
+            />
+          </label>
+
+          <label style={filterLabelStyle}>
+            Data inicial
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={filterInputStyle}
+            />
+          </label>
+
+          <label style={filterLabelStyle}>
+            Data final
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={filterInputStyle}
+            />
+          </label>
+
+          <label style={filterLabelStyle}>
+            Cliente
+            <select
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+              style={filterInputStyle}
+            >
+              <option value="">Todos</option>
+              {clientOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={filterLabelStyle}>
+            Região
+            <select
+              value={regionFilter}
+              onChange={(e) => setRegionFilter(e.target.value)}
+              style={filterInputStyle}
+            >
+              <option value="">Todas</option>
+              {regionOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={filterLabelStyle}>
+            Pagamento
+            <select
+              value={paymentFilter}
+              onChange={(e) => setPaymentFilter(e.target.value)}
+              style={filterInputStyle}
+            >
+              <option value="">Todos</option>
+              {PAYMENT_METHOD_OPTIONS.map((method) => (
+                <option key={method} value={method}>
+                  {paymentMethodLabel(method)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={filterLabelStyle}>
+            Financeiro
+            <select
+              value={financialFilter}
+              onChange={(e) => setFinancialFilter(e.target.value)}
+              style={filterInputStyle}
+            >
+              <option value="">Todos</option>
+              {FINANCIAL_STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 16,
+            color: theme.subtext,
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          <span>
+            {filteredOrders.length} de {orders.length} pedido(s) · Total{" "}
+            <span style={{ color: theme.text, fontWeight: 900 }}>
+              {formatMoneyBRFromCents(filteredTotalCents)}
+            </span>
+          </span>
+
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} style={btnStyle}>
+              Limpar filtros
+            </button>
+          ) : null}
+        </div>
+
         {loading ? (
           <div style={{ color: theme.subtext, fontWeight: 700 }}>
             Carregando pedidos...
           </div>
-        ) : sortedOrders.length === 0 ? (
+        ) : filteredOrders.length === 0 ? (
           <div style={{ color: theme.subtext, fontWeight: 700 }}>
-            Nenhum pedido encontrado.
+            {hasActiveFilters
+              ? "Nenhum pedido encontrado com esses filtros."
+              : "Nenhum pedido encontrado."}
           </div>
         ) : (
           <div style={{ width: "100%", overflowX: "auto" }}>
@@ -388,7 +731,7 @@ export default function OrdersPage() {
               </thead>
 
               <tbody>
-                {sortedOrders.map((order) => {
+                {filteredOrders.map((order) => {
                   const financialLabel = financialStatusLabel(order);
 
                   return (

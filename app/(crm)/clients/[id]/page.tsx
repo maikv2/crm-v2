@@ -127,6 +127,123 @@ function Block({
   );
 }
 
+type ExhibitorProductRow = {
+  id: string;
+  quantity: number;
+  product: {
+    id: string;
+    name: string;
+    sku?: string | null;
+    priceCents?: number | null;
+  };
+};
+
+// O que tem dentro do expositor, para fazer a reposicao sem abrir o expositor
+function ExhibitorProductsTable({
+  products,
+  theme,
+}: {
+  products: ExhibitorProductRow[];
+  theme: ThemeShape;
+}) {
+  if (products.length === 0) {
+    return (
+      <div style={{ marginTop: 12, color: theme.subtext, fontSize: 14 }}>
+        Nenhum produto registrado neste expositor.
+      </div>
+    );
+  }
+
+  const columns = "minmax(0, 1fr) 64px 110px 120px";
+  const totalUnits = products.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const totalCents = products.reduce(
+    (sum, item) => sum + Number(item.product.priceCents || 0) * Number(item.quantity || 0),
+    0
+  );
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        border: `1px solid ${theme.border}`,
+        borderRadius: 12,
+        background: theme.cardBg,
+        overflowX: "auto",
+      }}
+    >
+      <div style={{ minWidth: 420 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: columns,
+            gap: 12,
+            padding: "10px 14px",
+            fontSize: 12,
+            fontWeight: 700,
+            color: theme.subtext,
+          }}
+        >
+          <div>Produto</div>
+          <div style={{ textAlign: "right" }}>Qtd.</div>
+          <div style={{ textAlign: "right" }}>Valor unit.</div>
+          <div style={{ textAlign: "right" }}>Total</div>
+        </div>
+
+        {products.map((item) => {
+          const unitCents = Number(item.product.priceCents || 0);
+          const lineCents = unitCents * Number(item.quantity || 0);
+
+          return (
+            <div
+              key={item.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: columns,
+                gap: 12,
+                padding: "10px 14px",
+                borderTop: `1px solid ${theme.border}`,
+                alignItems: "center",
+                fontSize: 14,
+                color: theme.text,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800 }}>{item.product.name}</div>
+                <div style={{ marginTop: 2, fontSize: 12, color: theme.subtext }}>
+                  SKU: {item.product.sku || "-"}
+                </div>
+              </div>
+              <div style={{ textAlign: "right", fontWeight: 800 }}>{item.quantity}</div>
+              <div style={{ textAlign: "right" }}>{formatMoneyBRFromCents(unitCents)}</div>
+              <div style={{ textAlign: "right", fontWeight: 800 }}>
+                {formatMoneyBRFromCents(lineCents)}
+              </div>
+            </div>
+          );
+        })}
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "10px 14px",
+            borderTop: `1px solid ${theme.border}`,
+            fontSize: 14,
+            fontWeight: 800,
+            color: theme.text,
+          }}
+        >
+          <div>Total do expositor ({totalUnits} un)</div>
+          <div style={{ fontWeight: 900, color: theme.primary }}>
+            {formatMoneyBRFromCents(totalCents)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientPage({
   mode = "ADMIN",
 }: ClientPageProps) {
@@ -747,13 +864,17 @@ export default function ClientPage({
                     border: `1px solid ${theme.border}`,
                     borderRadius: 14,
                     padding: 14,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    alignItems: "center",
                   }}
                 >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
                   <div>
                     <div
                       style={{
@@ -797,6 +918,12 @@ export default function ClientPage({
                       }
                     />
                   </div>
+                  </div>
+
+                  <ExhibitorProductsTable
+                    products={exhibitor.products ?? []}
+                    theme={theme}
+                  />
                 </div>
               ))}
             </div>

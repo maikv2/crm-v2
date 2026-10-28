@@ -31,6 +31,8 @@ function moneyBR(cents?: number | null) {
   });
 }
 
+const PRODUCT_COLUMNS = "minmax(0, 1fr) 32px 70px 76px";
+
 type ExhibitorMaintenance = {
   id: string;
   type: string;
@@ -227,21 +229,54 @@ export default function MobileClientExhibitorDetailsPage() {
               </div>
             ) : (
               <div style={{ display: "grid", gap: 0 }}>
+                {/* Produto a esquerda; quantidade, valor unitario e total em colunas */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: PRODUCT_COLUMNS,
+                    gap: 8,
+                    paddingBottom: 8,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: colors.subtext,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  <div>Produto</div>
+                  <div style={{ textAlign: "right" }}>Qtd.</div>
+                  <div style={{ textAlign: "right" }}>Unit.</div>
+                  <div style={{ textAlign: "right" }}>Total</div>
+                </div>
+
                 {exhibitor.products.map((item) => {
                   const unitCents = Number(item.product.priceCents || 0);
                   const lineCents = unitCents * Number(item.quantity || 0);
 
                   return (
-                    <MobileInfoRow
+                    <div
                       key={item.id}
-                      title={item.product.name}
-                      subtitle={`${item.product.sku || "Sem SKU"} • ${item.quantity} un × ${moneyBR(unitCents)}`}
-                      right={
-                        <span style={{ fontWeight: 800, whiteSpace: "nowrap" }}>
-                          {moneyBR(lineCents)}
-                        </span>
-                      }
-                    />
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: PRODUCT_COLUMNS,
+                        gap: 8,
+                        padding: "10px 0",
+                        borderTop: `1px solid ${colors.border}`,
+                        alignItems: "center",
+                        fontSize: 13,
+                        color: colors.text,
+                      }}
+                    >
+                      <div style={{ minWidth: 0, fontWeight: 700, overflowWrap: "anywhere" }}>
+                        {item.product.name}
+                      </div>
+                      <div style={{ textAlign: "right", fontWeight: 800 }}>{item.quantity}</div>
+                      <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        {moneyBR(unitCents)}
+                      </div>
+                      <div style={{ textAlign: "right", fontWeight: 800, whiteSpace: "nowrap" }}>
+                        {moneyBR(lineCents)}
+                      </div>
+                    </div>
                   );
                 })}
 

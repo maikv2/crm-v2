@@ -125,6 +125,29 @@ export async function GET(request: Request) {
           orderBy: {
             installedAt: "desc",
           },
+          include: {
+            // O que tem no expositor (para reposicao direto na ficha do cliente)
+            stocks: {
+              select: {
+                id: true,
+                quantity: true,
+                product: {
+                  select: { id: true, name: true, sku: true, priceCents: true },
+                },
+              },
+              orderBy: { product: { name: "asc" } },
+            },
+            initialItems: {
+              select: {
+                id: true,
+                quantity: true,
+                product: {
+                  select: { id: true, name: true, sku: true, priceCents: true },
+                },
+              },
+              orderBy: { product: { name: "asc" } },
+            },
+          },
         },
       },
     });
@@ -136,7 +159,15 @@ export async function GET(request: Request) {
       );
     }
 
-    return NextResponse.json(client);
+    // Mesma regra do portal: estoque atual do expositor, ou os itens
+    // iniciais enquanto o estoque ainda nao foi registrado.
+    return NextResponse.json({
+      ...client,
+      exhibitors: client.exhibitors.map(({ stocks, initialItems, ...exhibitor }) => ({
+        ...exhibitor,
+        products: stocks.length > 0 ? stocks : initialItems,
+      })),
+    });
   } catch (error: any) {
     console.error("ERRO GET CLIENT BY ID:", error);
 

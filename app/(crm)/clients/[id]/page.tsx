@@ -261,6 +261,7 @@ export default function ClientPage({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sendingPortalAccess, setSendingPortalAccess] = useState(false);
+  const [sendingExhibitorPdf, setSendingExhibitorPdf] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -392,6 +393,43 @@ export default function ClientPage({
       alert(err instanceof Error ? err.message : "Não foi possível enviar o acesso.");
     } finally {
       setSendingPortalAccess(false);
+    }
+  }
+
+  // PDF com o que ficou no expositor - para o cliente que nao usa o portal
+  async function handleSendExhibitorPdf() {
+    if (!client || sendingExhibitorPdf) return;
+
+    const phone = client.whatsapp || client.phone;
+    if (!phone) {
+      alert("Este cliente não possui WhatsApp ou telefone cadastrado.");
+      return;
+    }
+
+    if (!window.confirm(`Enviar o PDF do expositor para o WhatsApp ${phone}?`)) return;
+
+    try {
+      setSendingExhibitorPdf(true);
+
+      const res = await fetch("/api/whatsapp/send-exhibitor-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ clientId: client.id }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Não foi possível enviar o PDF do expositor.");
+      }
+
+      alert("PDF do expositor enviado pelo WhatsApp.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Não foi possível enviar o PDF do expositor.");
+    } finally {
+      setSendingExhibitorPdf(false);
     }
   }
 
@@ -600,6 +638,12 @@ export default function ClientPage({
             theme={theme}
             onClick={handleSendPortalAccess}
             disabled={sendingPortalAccess}
+          />
+          <ActionButton
+            label={sendingExhibitorPdf ? "Enviando..." : "Enviar PDF do expositor"}
+            theme={theme}
+            onClick={handleSendExhibitorPdf}
+            disabled={sendingExhibitorPdf}
           />
 
           {isRepresentative ? (

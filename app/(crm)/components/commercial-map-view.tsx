@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Marker, Popup, CircleMarker, Circle, useMap, u
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getThemeColors } from "../../../lib/theme";
+import { formatExpectedDate, formatRequestNumber, materialLabel, mountingLabel } from "../../../lib/exhibitor-requests";
 import type { MapPlace, MapPlaceCategory } from "@/app/api/map-places/route";
 import type { PendingClient, PendingReason } from "@/app/api/commercial-map/pending/route";
 
@@ -31,6 +32,15 @@ export type CommercialMapPoint = {
   approximate?: boolean;
   /** Cliente com expositor instalado ou que so compra */
   clientProfile?: "EXHIBITOR" | "BUYER";
+  /** Solicitacao de expositor novo aguardando entrega para este cliente */
+  exhibitorRequest?: {
+    id: string;
+    number: number;
+    material: string;
+    mounting: string;
+    quantity: number;
+    expectedAt: string;
+  } | null;
   notes?: string | null;
   lastVisitAt?: string | Date | null;
   region?: {
@@ -116,14 +126,18 @@ const KIND_ORDER: CommercialMapPointKind[] = ["PROSPECT", "EXHIBITOR", "CLIENT"]
 
 // Cliente que so compra (sem expositor instalado) - roxo; com expositor - azul.
 export const BUYER_COLOR = "#7c3aed";
+// Cliente com expositor novo solicitado, aguardando entrega - verde-azulado.
+export const REQUEST_COLOR = "#0d9488";
 
 function pointColor(point: CommercialMapPoint) {
+  if (point.kind === "CLIENT" && point.exhibitorRequest) return REQUEST_COLOR;
   if (point.kind === "CLIENT" && point.clientProfile === "BUYER") return BUYER_COLOR;
   return KIND_COLORS[point.kind];
 }
 
 function pointLabel(point: CommercialMapPoint) {
   if (point.kind === "CLIENT") {
+    if (point.exhibitorRequest) return "Expositor solicitado";
     return point.clientProfile === "BUYER" ? "Cliente que compra" : "Cliente com expositor";
   }
   return KIND_LABELS[point.kind];
@@ -819,6 +833,7 @@ export default function CommercialMapView({
         <Legend color={BUYER_COLOR} label="Cliente que compra" />
         <Legend color={KIND_COLORS.PROSPECT} label="Prospecto" />
         <Legend color={KIND_COLORS.EXHIBITOR} label="Levar expositor" />
+        <Legend color={REQUEST_COLOR} label="Expositor solicitado" />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
             style={{
@@ -1265,6 +1280,34 @@ export default function CommercialMapView({
                         {point.city || "-"} / {point.state || "-"}
                       </Info>
                       <Info label="Região">{point.region?.name || "-"}</Info>
+                      {point.exhibitorRequest ? (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#0f766e",
+                            background: "#f0fdfa",
+                            border: "1px solid #99f6e4",
+                            borderRadius: 8,
+                            padding: "6px 8px",
+                            margin: "6px 0",
+                          }}
+                        >
+                          <div style={{ fontWeight: 800 }}>
+                            {formatRequestNumber(point.exhibitorRequest.number)} ·{" "}
+                            {point.exhibitorRequest.quantity}x {mountingLabel(point.exhibitorRequest.mounting)} ·{" "}
+                            {materialLabel(point.exhibitorRequest.material)}
+                          </div>
+                          <div>
+                            Levar até <strong>{formatExpectedDate(point.exhibitorRequest.expectedAt)}</strong>
+                          </div>
+                          <a
+                            href={mode === "representative" ? "/rep/exhibitor-requests" : "/exhibitor-requests"}
+                            style={{ color: "#0f766e", fontWeight: 800 }}
+                          >
+                            Ver solicitação
+                          </a>
+                        </div>
+                      ) : null}
                       {point.kind === "CLIENT" ? (
                         <Info label="Última visita">
                           {formatDateBR(point.lastVisitAt)}

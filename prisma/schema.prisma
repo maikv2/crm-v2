@@ -36,6 +36,7 @@ model User {
   region                    Region?                         @relation(fields: [regionId], references: [id])
   stockLocation             StockLocation?                  @relation(fields: [stockLocationId], references: [id])
   visits                    Visit[]
+  exhibitorRequests         ExhibitorRequest[]              @relation("ExhibitorRequestRequestedBy")
 }
 
 model Region {
@@ -71,6 +72,7 @@ model Region {
   shares                     Share[]
   users                      User[]
   fixedExpenses              FixedExpense[]
+  exhibitorRequests          ExhibitorRequest[]
 }
 
 model Investor {
@@ -166,6 +168,7 @@ model Client {
   portalOrderRequests        PortalOrderRequest[]
   repTasks                   RepTask[]
   visits                     Visit[]
+  exhibitorRequests          ExhibitorRequest[]
 
   @@index([regionId])
   @@index([active])
@@ -208,6 +211,37 @@ model Exhibitor {
   orders            Order[]
   stockMovements    StockMovement[]
   visits            Visit[]
+}
+
+/// Solicitacao de expositor novo feita pelo vendedor para um cliente.
+/// Aparece no mapa comercial e na central de avisos ate ser entregue/cancelada.
+model ExhibitorRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number         Int       @unique @default(autoincrement())
+  clientId       String    @db.Uuid
+  regionId       String?   @db.Uuid
+  requestedById  String?   @db.Uuid
+  /// ACRYLIC (acrilico) ou IRON (ferro)
+  material       String
+  /// FLOOR (chao), COUNTER (balcao) ou WALL (parede)
+  mounting       String
+  quantity       Int       @default(1)
+  /// Data prevista para levar o expositor
+  expectedAt     DateTime
+  notes          String?
+  /// PENDING (aguardando), DELIVERED (entregue) ou CANCELED (cancelada)
+  status         String    @default("PENDING")
+  whatsappSentAt DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+  client         Client    @relation(fields: [clientId], references: [id])
+  region         Region?   @relation(fields: [regionId], references: [id])
+  requestedBy    User?     @relation("ExhibitorRequestRequestedBy", fields: [requestedById], references: [id])
+
+  @@index([status, expectedAt])
+  @@index([clientId])
+  @@index([regionId])
 }
 
 model Product {
@@ -324,7 +358,7 @@ model PortalOrderRequest {
   // Campos adicionados pra integracao ecommerce -> CRM. Todos opcionais/
   // com default pra nao quebrar nada que ja existia (pedidos antigos do
   // portal do cliente continuam funcionando sem eles).
-  source                 String    @default("portal") // "portal" (rep) ou "site" (loja online)
+  source                 String         @default("portal") // "portal" (rep) ou "site" (loja online)
   requestedPaymentMethod PaymentMethod?
   requestedInstallments  Int            @default(1)
   isCashOnDelivery       Boolean        @default(false)

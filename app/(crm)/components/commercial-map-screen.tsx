@@ -346,7 +346,9 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
         : regionFilter === "ALL" || pointRegionId === regionFilter;
       const kindOk =
         kindFilter === "ALL" ||
-        (kindFilter === "CLIENT_EXHIBITOR"
+        (kindFilter === "CLIENT_REQUEST"
+          ? point.kind === "CLIENT" && Boolean(point.exhibitorRequest)
+          : kindFilter === "CLIENT_EXHIBITOR"
           ? point.kind === "CLIENT" && point.clientProfile !== "BUYER"
           : kindFilter === "CLIENT_BUYER"
             ? point.kind === "CLIENT" && point.clientProfile === "BUYER"
@@ -475,6 +477,7 @@ export default function CommercialMapScreen({ mode }: { mode: "admin" | "represe
               <option value="CLIENT_BUYER">Clientes que compram</option>
               <option value="PROSPECT">Prospectos</option>
               <option value="EXHIBITOR">Levar expositor</option>
+              <option value="CLIENT_REQUEST">Expositor solicitado</option>
             </FilterSelect>
           </div>
         </Block>

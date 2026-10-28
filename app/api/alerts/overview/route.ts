@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { FinanceStatus, PortalOrderRequestStatus, ReceivableStatus } from "@prisma/client";
+import {
+  formatExpectedDate,
+  formatRequestNumber,
+  materialLabel,
+  mountingLabel,
+} from "@/lib/exhibitor-requests";
 
 type AlertSeverity = "critical" | "high" | "medium" | "low";
 type AlertStatus = "pending" | "info" | "done";
@@ -89,6 +95,7 @@ export async function GET() {
       openRepresentativeSettlements,
       recentReceipts,
       recentVisits,
+      pendingExhibitorRequests,
     ] = await prisma.$transaction([
       prisma.portalOrderRequest.findMany({
         where: {
@@ -569,6 +576,37 @@ export async function GET() {
         },
         take: 20,
       }),
+
+      prisma.exhibitorRequest.findMany({
+        where: {
+          status: "PENDING",
+        },
+        include: {
+          client: {
+            select: {
+              id: true,
+              name: true,
+              tradeName: true,
+            },
+          },
+          region: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          requestedBy: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          expectedAt: "asc",
+        },
+        take: 50,
+      }),
     ]);
 
     const alerts: AlertItem[] = [];
@@ -866,6 +904,46 @@ export async function GET() {
           regionName: item.client.region?.name ?? null,
           occurredAt: item.visitedAt,
           href: "/visits",
+        })
+      );
+    }
+
+    // Data prevista e um dia (salvo ao meio-dia UTC); compara so a data
+    const todayKey = `${todayStart.getFullYear()}-${String(todayStart.getMonth() + 1).padStart(2, "0")}-${String(
+      todayStart.getDate()
+    ).padStart(2, "0")}`;
+    const inThreeDays = addDays(todayStart, 3);
+    const inThreeDaysKey = `${inThreeDays.getFullYear()}-${String(inThreeDays.getMonth() + 1).padStart(2, "0")}-${String(
+      inThreeDays.getDate()
+    ).padStart(2, "0")}`;
+
+    for (const item of pendingExhibitorRequests) {
+      const expectedKey = item.expectedAt.toISOString().slice(0, 10);
+      const late = expectedKey < todayKey;
+      const today = expectedKey === todayKey;
+      const soon = !late && !today && expectedKey <= inThreeDaysKey;
+
+      alerts.push(
+        buildAlert({
+          id: `exhibitor-request-${item.id}`,
+          kind: "exhibitor_request",
+          severity: late ? "critical" : today ? "high" : soon ? "medium" : "low",
+          status: "pending",
+          title: late
+            ? "Entrega de expositor atrasada"
+            : today
+              ? "Levar expositor hoje"
+              : "Expositor solicitado",
+          description: `${formatRequestNumber(item.number)}: ${item.quantity}x ${mountingLabel(
+            item.mounting
+          ).toLowerCase()} em ${materialLabel(item.material).toLowerCase()} para ${
+            item.client.tradeName || item.client.name
+          }. Previsão: ${formatExpectedDate(item.expectedAt)}${
+            item.requestedBy?.name ? ` · pedido por ${item.requestedBy.name}` : ""
+          }.`,
+          regionName: item.region?.name ?? null,
+          occurredAt: item.createdAt,
+          href: "/exhibitor-requests",
         })
       );
     }

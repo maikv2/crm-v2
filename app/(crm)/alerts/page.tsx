@@ -62,6 +62,7 @@ function formatKindLabel(kind: string) {
     new_order: "Novo pedido",
     new_client: "Novo cliente",
     new_exhibitor: "Novo expositor",
+    exhibitor_request: "Expositor solicitado",
     maintenance_recorded: "Manutenção",
     investor_distribution_pending: "Investidor pendente",
     representative_commission_pending: "Comissão pendente",

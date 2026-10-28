@@ -26,6 +26,7 @@ import {
   Target,
   BadgeDollarSign,
   Globe,
+  ClipboardList,
 } from "lucide-react";
 
 import { useTheme } from "../providers/theme-provider";
@@ -278,6 +279,11 @@ export default function Sidebar() {
           <Section title="CADASTROS" />
           <Item icon={Users} label="Clientes" path="/rep/clients" />
           <Item icon={Store} label="Expositores" path="/rep/exhibitors" />
+          <Item
+            icon={ClipboardList}
+            label="Solicitar Expositor"
+            path="/rep/exhibitor-requests"
+          />
           <Item icon={Target} label="Prospectos" path="/rep/prospects" />
 
           <Section title="OPERAÇÕES" />
@@ -326,6 +332,11 @@ export default function Sidebar() {
           <Item icon={UserCog} label="Representantes" path="/representatives" />
           <Item icon={Map} label="Regiões" path="/regions" />
           <Item icon={Store} label="Expositores" path="/exhibitors" />
+          <Item
+            icon={ClipboardList}
+            label="Solicitações de Expositor"
+            path="/exhibitor-requests"
+          />
           <Item icon={Package} label="Produtos" path="/products" />
 
           <Section title="OPERAÇÕES" />

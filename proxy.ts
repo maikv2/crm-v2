@@ -60,6 +60,8 @@ function isProtectedCrmRoute(pathname: string) {
     pathname.startsWith("/regions/") ||
     pathname === "/stock" ||
     pathname.startsWith("/stock/") ||
+    pathname === "/exhibitor-requests" ||
+    pathname.startsWith("/exhibitor-requests/") ||
     pathname === "/exhibitors" ||
     pathname.startsWith("/exhibitors/") ||
     pathname === "/sales-dashboard" ||

@@ -41,6 +41,20 @@ export async function GET(request: NextRequest) {
             select: { id: true },
             take: 1,
           },
+          // Solicitacao de expositor novo aguardando entrega
+          exhibitorRequests: {
+            where: { status: "PENDING" },
+            select: {
+              id: true,
+              number: true,
+              material: true,
+              mounting: true,
+              quantity: true,
+              expectedAt: true,
+            },
+            orderBy: { expectedAt: "asc" },
+            take: 1,
+          },
         },
         orderBy: [{ city: "asc" }, { name: "asc" }],
       }),
@@ -86,6 +100,12 @@ export async function GET(request: NextRequest) {
           client.exhibitors.length > 0 ? ("EXHIBITOR" as const) : ("BUYER" as const),
         // Posicao so de bairro/cidade/CEP - mostrar como "aproximada"
         approximate: client.locationSource === "APPROXIMATE",
+        exhibitorRequest: client.exhibitorRequests[0]
+          ? {
+              ...client.exhibitorRequests[0],
+              expectedAt: client.exhibitorRequests[0].expectedAt.toISOString(),
+            }
+          : null,
         notes: client.notes,
         // Serializa Date → string ISO para evitar discrepâncias de tipo no cliente
         lastVisitAt: client.lastVisitAt

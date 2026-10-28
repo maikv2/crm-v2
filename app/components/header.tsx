@@ -67,10 +67,12 @@ function getPageTitle(pathname: string) {
   if (pathname.startsWith("/prospects")) return "Prospectos";
   if (pathname.startsWith("/map")) return "Mapa";
   if (pathname.startsWith("/alerts")) return "Alertas";
+  if (pathname.startsWith("/exhibitor-requests")) return "Solicitações de Expositor";
 
   if (pathname.startsWith("/rep/sales-dashboard")) return "Painel de Vendas";
   if (pathname.startsWith("/rep/agenda")) return "Agenda";
   if (pathname.startsWith("/rep/clients")) return "Clientes";
+  if (pathname.startsWith("/rep/exhibitor-requests")) return "Solicitações de Expositor";
   if (pathname.startsWith("/rep/exhibitors")) return "Expositores";
   if (pathname.startsWith("/rep/stock")) return "Estoque";
   if (pathname.startsWith("/rep/orders")) return "Pedidos";

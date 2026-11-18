@@ -787,7 +787,7 @@ export async function PUT(
           : Math.max(0, subtotalCents - discountCents);
 
         // 5) Determinar local de estoque (mantém o do primeiro movimento; se não houver, usa o da região)
-        let stockLocationId =
+        let stockLocationId: string | null =
           existing.stockMovements[0]?.stockLocationId ?? null;
 
         if (!stockLocationId) {

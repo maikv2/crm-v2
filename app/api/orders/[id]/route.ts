@@ -2,31 +2,181 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth-user";
 import {
-  ExternalPaymentStatus,
+  DefectReturnStatus,
+  OrderType,
   PaymentMethod,
   PaymentReceiver,
   PaymentStatus,
-  ReceiptLocation,
   ReceivableStatus,
+  ReceiptLocation,
   StockMovementType,
+  TransferStatus,
 } from "@prisma/client";
-import { recomputeOrderPaymentStatus } from "@/lib/receivables";
-import { calculateSellerCommissionCents } from "@/lib/commission";
 
-type OrderItemPatchInput = {
+// ────────────────────────────────────────────────────────────────────────────
+// Helpers compartilhados com a edição
+// ────────────────────────────────────────────────────────────────────────────
+
+type OrderItemInput = {
   productId: string;
   qty: number;
   unitCents?: number | null;
 };
 
-type PaymentSplitPatchInput = {
-  id?: string;
-  paymentMethod?: string;
-  amountCents?: number;
-  dueDate?: string;
-  installmentCount?: number;
-  installmentDates?: string[];
+type DefectReturnItemInput = {
+  productId: string;
+  quantity: number;
+  reason?: string | null;
+  notes?: string | null;
 };
+
+function isValidUuid(value?: string | null) {
+  if (!value) return false;
+  return /^[0-9a-fA-F-]{36}$/.test(value);
+}
+
+function toInt(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+function isValidDate(value: unknown) {
+  if (!value) return false;
+  const d = new Date(String(value));
+  return !Number.isNaN(d.getTime());
+}
+
+function addMonths(date: Date, months: number) {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function normalizePaymentMethod(value: unknown): PaymentMethod {
+  const method = String(value ?? "").toUpperCase();
+  switch (method) {
+    case "CASH":
+      return PaymentMethod.CASH;
+    case "PIX":
+      return PaymentMethod.PIX;
+    case "BOLETO":
+    case "BANK_SLIP":
+      return PaymentMethod.BOLETO;
+    case "CARD_DEBIT":
+    case "DEBIT":
+    case "DEBIT_CARD":
+      return PaymentMethod.CARD_DEBIT;
+    case "CARD_CREDIT":
+    case "CREDIT":
+    case "CREDIT_CARD":
+      return PaymentMethod.CARD_CREDIT;
+    default:
+      return PaymentMethod.CASH;
+  }
+}
+
+function getFinancialRules(paymentMethod: PaymentMethod) {
+  switch (paymentMethod) {
+    case PaymentMethod.PIX:
+      return {
+        paymentStatus: PaymentStatus.PAID,
+        paymentReceiver: PaymentReceiver.MATRIX,
+        receivableStatus: ReceivableStatus.PAID,
+        receiptLocation: ReceiptLocation.MATRIX,
+        autoCreateReceipt: true,
+        autoPaidAt: true,
+      };
+    case PaymentMethod.CASH:
+      return {
+        paymentStatus: PaymentStatus.PAID,
+        paymentReceiver: PaymentReceiver.REGION,
+        receivableStatus: ReceivableStatus.PAID,
+        receiptLocation: ReceiptLocation.REGION,
+        autoCreateReceipt: true,
+        autoPaidAt: true,
+      };
+    case PaymentMethod.CARD_DEBIT:
+      return {
+        paymentStatus: PaymentStatus.PAID,
+        paymentReceiver: PaymentReceiver.MATRIX,
+        receivableStatus: ReceivableStatus.PAID,
+        receiptLocation: ReceiptLocation.MATRIX,
+        autoCreateReceipt: true,
+        autoPaidAt: true,
+      };
+    case PaymentMethod.BOLETO:
+      return {
+        paymentStatus: PaymentStatus.PENDING,
+        paymentReceiver: PaymentReceiver.MATRIX,
+        receivableStatus: ReceivableStatus.PENDING,
+        receiptLocation: null,
+        autoCreateReceipt: false,
+        autoPaidAt: false,
+      };
+    case PaymentMethod.CARD_CREDIT:
+      return {
+        paymentStatus: PaymentStatus.PENDING,
+        paymentReceiver: PaymentReceiver.MATRIX,
+        receivableStatus: ReceivableStatus.PENDING,
+        receiptLocation: null,
+        autoCreateReceipt: false,
+        autoPaidAt: false,
+      };
+    default:
+      return {
+        paymentStatus: PaymentStatus.PENDING,
+        paymentReceiver: PaymentReceiver.REGION,
+        receivableStatus: ReceivableStatus.PENDING,
+        receiptLocation: null,
+        autoCreateReceipt: false,
+        autoPaidAt: false,
+      };
+  }
+}
+
+function buildInstallments(params: {
+  totalCents: number;
+  installmentCount: number;
+  installmentDates?: string[];
+  firstDueDate?: Date | null;
+  defaultStatus: ReceivableStatus;
+}) {
+  const {
+    totalCents,
+    installmentCount,
+    installmentDates = [],
+    firstDueDate,
+    defaultStatus,
+  } = params;
+
+  const safeCount = Math.max(1, installmentCount);
+  const baseValue = Math.floor(totalCents / safeCount);
+  const remainder = totalCents % safeCount;
+
+  const installments = [];
+
+  for (let i = 0; i < safeCount; i++) {
+    const amountCents = baseValue + (i < remainder ? 1 : 0);
+    let dueDate: Date;
+    if (installmentDates[i] && isValidDate(installmentDates[i])) {
+      dueDate = new Date(installmentDates[i]);
+    } else if (firstDueDate) {
+      dueDate = addMonths(firstDueDate, i);
+    } else {
+      dueDate = addMonths(new Date(), i);
+    }
+    installments.push({
+      installmentNumber: i + 1,
+      amountCents,
+      dueDate,
+      status: defaultStatus,
+      receivedCents: defaultStatus === ReceivableStatus.PAID ? amountCents : 0,
+      paidAt: defaultStatus === ReceivableStatus.PAID ? new Date() : null,
+    });
+  }
+
+  return installments;
+}
 
 export async function GET(
   _request: Request,
@@ -70,7 +220,6 @@ export async function GET(
             transfers: true,
           },
         },
-        externalPayments: true,
         stockMovements: true,
         financeTransactions: true,
       },
@@ -91,671 +240,6 @@ export async function GET(
       { error: "Erro ao carregar pedido." },
       { status: 500 }
     );
-  }
-}
-
-const VALID_PAYMENT_METHODS = [
-  "CASH",
-  "PIX",
-  "BOLETO",
-  "CARD_DEBIT",
-  "CARD_CREDIT",
-] as const;
-
-const VALID_PAYMENT_RECEIVERS = ["REGION", "MATRIX"] as const;
-
-function isValidUuid(value?: string | null) {
-  if (!value) return false;
-  return /^[0-9a-fA-F-]{36}$/.test(value);
-}
-
-function toInt(value: unknown, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
-}
-
-function getFinancialRules(paymentMethod: PaymentMethod) {
-  switch (paymentMethod) {
-    case PaymentMethod.PIX:
-      return {
-        paymentStatus: PaymentStatus.PENDING,
-        paymentReceiver: PaymentReceiver.MATRIX,
-        receivableStatus: ReceivableStatus.PENDING,
-        receiptLocation: null as ReceiptLocation | null,
-        autoCreateReceipt: false,
-        autoPaidAt: false,
-      };
-    case PaymentMethod.CASH:
-      return {
-        paymentStatus: PaymentStatus.PENDING,
-        paymentReceiver: PaymentReceiver.REGION,
-        receivableStatus: ReceivableStatus.PENDING,
-        receiptLocation: null as ReceiptLocation | null,
-        autoCreateReceipt: false,
-        autoPaidAt: false,
-      };
-    case PaymentMethod.CARD_DEBIT:
-      return {
-        paymentStatus: PaymentStatus.PAID,
-        paymentReceiver: PaymentReceiver.MATRIX,
-        receivableStatus: ReceivableStatus.PAID,
-        receiptLocation: ReceiptLocation.MATRIX as ReceiptLocation | null,
-        autoCreateReceipt: true,
-        autoPaidAt: true,
-      };
-    case PaymentMethod.BOLETO:
-    case PaymentMethod.CARD_CREDIT:
-    default:
-      return {
-        paymentStatus: PaymentStatus.PENDING,
-        paymentReceiver: PaymentReceiver.MATRIX,
-        receivableStatus: ReceivableStatus.PENDING,
-        receiptLocation: null as ReceiptLocation | null,
-        autoCreateReceipt: false,
-        autoPaidAt: false,
-      };
-  }
-}
-
-function dateFromInput(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function distributeInstallments(totalCents: number, count: number) {
-  const safeCount = Math.max(1, count);
-  const base = Math.floor(totalCents / safeCount);
-  const remainder = totalCents % safeCount;
-  return Array.from({ length: safeCount }, (_, index) =>
-    base + (index < remainder ? 1 : 0)
-  );
-}
-
-function addMonths(date: Date, months: number) {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-
-export async function PATCH(
-  request: Request,
-  context: { params: Promise<{ id: string }> }
-) {
-  try {
-    const authUser = await getAuthUser();
-
-    if (!authUser) {
-      return NextResponse.json(
-        { error: "Não autenticado." },
-        { status: 401 }
-      );
-    }
-
-    if (authUser.role !== "ADMIN" && authUser.role !== "ADMINISTRATIVE") {
-      return NextResponse.json(
-        { error: "Apenas administrador ou financeiro pode editar pedidos." },
-        { status: 403 }
-      );
-    }
-
-    const { id } = await context.params;
-
-    if (!id) {
-      return NextResponse.json(
-        { error: "Pedido inválido." },
-        { status: 400 }
-      );
-    }
-
-    const body = await request.json().catch(() => null);
-
-    if (!body || typeof body !== "object") {
-      return NextResponse.json(
-        { error: "Body inválido." },
-        { status: 400 }
-      );
-    }
-
-    const paymentReceiver =
-      typeof body.paymentReceiver === "string" &&
-      (VALID_PAYMENT_RECEIVERS as readonly string[]).includes(
-        body.paymentReceiver
-      )
-        ? (body.paymentReceiver as PaymentReceiver)
-        : undefined;
-
-    const notes = typeof body.notes === "string" ? body.notes : undefined;
-    const hasItemsPatch = Array.isArray(body.items);
-    const itemsInput = hasItemsPatch ? (body.items as OrderItemPatchInput[]) : [];
-    const discountCents =
-      typeof body.discountCents === "number" && Number.isFinite(body.discountCents)
-        ? Math.max(0, Math.round(body.discountCents))
-        : undefined;
-
-    // Divisão de forma de pagamento (ex: parte em dinheiro + parte em
-    // boleto). Quando enviado, é a ÚNICA fonte da verdade sobre as
-    // AccountsReceivable do pedido — substitui o campo `paymentMethod` solto.
-    const hasPaymentsPatch = Array.isArray(body.payments);
-    const paymentsPatchInput: PaymentSplitPatchInput[] = hasPaymentsPatch
-      ? (body.payments as PaymentSplitPatchInput[])
-      : [];
-
-    await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({
-        where: { id },
-        include: {
-          region: true,
-          items: true,
-          stockMovements: true,
-          accountsReceivables: {
-            include: { installments: true, receipts: true },
-          },
-        },
-      });
-
-      if (!order) {
-        throw new Error("Pedido não encontrado.");
-      }
-
-      const activeReceivables = order.accountsReceivables.filter(
-        (item) => item.status !== ReceivableStatus.CANCELED
-      );
-      const originalItems = new Map<string, number>();
-      for (const item of order.items) {
-        originalItems.set(item.productId, (originalItems.get(item.productId) ?? 0) + item.qty);
-      }
-
-      let subtotalCents = order.subtotalCents ?? 0;
-      let commissionTotalCents = order.commissionTotalCents ?? 0;
-      const nextDiscountCents = discountCents ?? order.discountCents ?? 0;
-      let totalCents = Math.max(0, subtotalCents - nextDiscountCents);
-
-      if (hasItemsPatch) {
-        if (!itemsInput.length) {
-          throw new Error("Adicione pelo menos um item ao pedido.");
-        }
-
-        const grouped = new Map<string, { productId: string; qty: number; unitCents: number }>();
-        for (const item of itemsInput) {
-          if (!isValidUuid(item.productId)) {
-            throw new Error("Há produto inválido no pedido.");
-          }
-
-          const qty = Math.max(1, toInt(item.qty, 0));
-          const unitCents =
-            item.unitCents != null ? Math.max(0, toInt(item.unitCents, 0)) : 0;
-          const existing = grouped.get(item.productId);
-          grouped.set(item.productId, {
-            productId: item.productId,
-            qty: (existing?.qty ?? 0) + qty,
-            unitCents,
-          });
-        }
-
-        const productIds = [...grouped.keys()];
-        const products = await tx.product.findMany({
-          where: { id: { in: productIds } },
-          select: {
-            id: true,
-            name: true,
-            priceCents: true,
-            active: true,
-            ncm: true,
-            cfop: true,
-            cst: true,
-            icmsRate: true,
-            commercialUnit: true,
-          },
-        });
-
-        if (products.length !== productIds.length) {
-          throw new Error("Um ou mais produtos não foram encontrados.");
-        }
-
-        const productMap = new Map(products.map((product) => [product.id, product]));
-        const normalizedItems = [...grouped.values()].map((item) => {
-          const product = productMap.get(item.productId);
-          if (!product) throw new Error("Produto inválido encontrado.");
-          const alreadyInOrder = originalItems.has(product.id);
-          if (!product.active && !alreadyInOrder) {
-            throw new Error(`O produto "${product.name}" está inativo.`);
-          }
-          const unitCents = item.unitCents || product.priceCents || 0;
-          return {
-            productId: product.id,
-            qty: item.qty,
-            unitCents,
-            productName: product.name,
-            ncm: product.ncm,
-            cfop: product.cfop || "5104",
-            cst: product.cst || "200",
-            icmsRate: product.icmsRate ?? 17,
-            unit: product.commercialUnit || "QU",
-          };
-        });
-
-        subtotalCents = normalizedItems.reduce(
-          (sum, item) => sum + item.qty * item.unitCents,
-          0
-        );
-        totalCents = Math.max(0, subtotalCents - nextDiscountCents);
-        commissionTotalCents = calculateSellerCommissionCents(totalCents);
-
-        const nextItems = new Map<string, number>();
-        for (const item of normalizedItems) {
-          nextItems.set(item.productId, (nextItems.get(item.productId) ?? 0) + item.qty);
-        }
-
-        const stockLocationId =
-          order.stockMovements.find(
-            (movement) =>
-              movement.type === StockMovementType.OUT ||
-              movement.type === StockMovementType.IN ||
-              movement.type === StockMovementType.ADJUSTMENT
-          )?.stockLocationId ?? order.region.stockLocationId;
-
-        if (!stockLocationId) {
-          throw new Error("Não foi possível identificar o estoque de origem do pedido.");
-        }
-
-        const diffProductIds = [...new Set([...originalItems.keys(), ...nextItems.keys()])];
-        for (const productId of diffProductIds) {
-          await tx.stockBalance.upsert({
-            where: {
-              productId_stockLocationId: {
-                productId,
-                stockLocationId,
-              },
-            },
-            update: {},
-            create: {
-              productId,
-              stockLocationId,
-              quantity: 0,
-            },
-          });
-        }
-
-        const balances = await tx.stockBalance.findMany({
-          where: { stockLocationId, productId: { in: diffProductIds } },
-          select: { id: true, productId: true, quantity: true },
-        });
-        const balanceMap = new Map(balances.map((balance) => [balance.productId, balance]));
-
-        for (const productId of diffProductIds) {
-          const previousQty = originalItems.get(productId) ?? 0;
-          const nextQty = nextItems.get(productId) ?? 0;
-          const diff = nextQty - previousQty;
-          if (diff === 0) continue;
-
-          const balance = balanceMap.get(productId);
-          if (!balance) throw new Error("Saldo de estoque não encontrado.");
-
-          // Checagem de estoque insuficiente desativada temporariamente
-          // (estoque tratado como infinito) para não bloquear a edição do
-          // pedido enquanto o controle de estoque está sendo ajustado.
-
-          await tx.stockMovement.create({
-            data: {
-              productId,
-              stockLocationId,
-              orderId: order.id,
-              exhibitorId: order.exhibitorId ?? null,
-              type: diff > 0 ? StockMovementType.OUT : StockMovementType.IN,
-              quantity: Math.abs(diff),
-              note: `Ajuste por edição do pedido PED-${String(order.number).padStart(4, "0")}.`,
-            },
-          });
-
-          await tx.stockBalance.update({
-            where: { id: balance.id },
-            data: {
-              quantity:
-                diff > 0
-                  ? { decrement: diff }
-                  : { increment: Math.abs(diff) },
-            },
-          });
-        }
-
-        await tx.orderItem.deleteMany({ where: { orderId: order.id } });
-        await tx.orderItem.createMany({
-          data: normalizedItems.map((item) => ({
-            orderId: order.id,
-            productId: item.productId,
-            qty: item.qty,
-            unitCents: item.unitCents,
-            ncm: item.ncm,
-            cfop: item.cfop,
-            cst: item.cst,
-            icmsRate: item.icmsRate,
-            unit: item.unit,
-          })),
-        });
-      } else if (discountCents !== undefined) {
-        totalCents = Math.max(0, subtotalCents - nextDiscountCents);
-        commissionTotalCents = calculateSellerCommissionCents(totalCents);
-      }
-
-      // Se itens/desconto mudaram o total do pedido, mas ninguém mandou a
-      // divisão de pagamento atualizada, não dá pra saber como redistribuir
-      // o novo total entre as formas de pagamento existentes — melhor pedir
-      // explicitamente do que deixar `AccountsReceivable.amountCents`
-      // desatualizado em relação ao pedido.
-      if (
-        !hasPaymentsPatch &&
-        (hasItemsPatch || discountCents !== undefined) &&
-        totalCents !== (order.totalCents ?? 0) &&
-        activeReceivables.length > 0
-      ) {
-        throw new Error(
-          "Este pedido já tem forma de pagamento configurada. Ao alterar itens ou desconto, envie também a divisão de forma de pagamento atualizada."
-        );
-      }
-
-      const orderUpdate: Record<string, unknown> = {};
-      if (notes !== undefined) orderUpdate.notes = notes;
-      if (hasItemsPatch || discountCents !== undefined) {
-        orderUpdate.subtotalCents = subtotalCents;
-        orderUpdate.discountCents = nextDiscountCents;
-        orderUpdate.totalCents = totalCents;
-        orderUpdate.commissionTotalCents = commissionTotalCents;
-      }
-      if (paymentReceiver !== undefined && !hasPaymentsPatch) {
-        orderUpdate.paymentReceiver = paymentReceiver;
-      }
-
-      if (Object.keys(orderUpdate).length > 0) {
-        await tx.order.update({
-          where: { id },
-          data: orderUpdate,
-        });
-      }
-
-      if (hasPaymentsPatch) {
-        if (!paymentsPatchInput.length) {
-          throw new Error("Informe ao menos uma forma de pagamento.");
-        }
-
-        const normalizedSplits = paymentsPatchInput.map((item) => {
-          const method =
-            typeof item.paymentMethod === "string" &&
-            (VALID_PAYMENT_METHODS as readonly string[]).includes(item.paymentMethod)
-              ? (item.paymentMethod as PaymentMethod)
-              : undefined;
-          if (!method) {
-            throw new Error("Forma de pagamento inválida na divisão de pagamento.");
-          }
-          return {
-            id:
-              typeof item.id === "string" && isValidUuid(item.id)
-                ? item.id
-                : undefined,
-            paymentMethod: method,
-            amountCents: Math.max(0, toInt(item.amountCents, 0)),
-            dueDate: dateFromInput(item.dueDate),
-            installmentCount: Math.max(1, toInt(item.installmentCount ?? 1, 1)),
-            installmentDates: Array.isArray(item.installmentDates)
-              ? item.installmentDates.map((d) => String(d))
-              : ([] as string[]),
-          };
-        });
-
-        const splitsSumCents = normalizedSplits.reduce(
-          (sum, split) => sum + split.amountCents,
-          0
-        );
-        if (splitsSumCents !== totalCents) {
-          throw new Error(
-            `A soma das formas de pagamento (${(splitsSumCents / 100).toFixed(
-              2
-            )}) não bate com o total do pedido (${(totalCents / 100).toFixed(2)}).`
-          );
-        }
-        if (totalCents > 0 && normalizedSplits.some((split) => split.amountCents <= 0)) {
-          throw new Error(
-            "Cada forma de pagamento na divisão deve ter um valor maior que zero."
-          );
-        }
-
-        const existingById = new Map(
-          activeReceivables.map((item) => [item.id, item])
-        );
-
-        // Divisões existentes que não vieram mais na lista: só podem ser
-        // canceladas se nada foi recebido nelas (nunca apagamos histórico
-        // financeiro — só marcamos como cancelada).
-        for (const existing of activeReceivables) {
-          const stillPresent = normalizedSplits.some((split) => split.id === existing.id);
-          if (stillPresent) continue;
-
-          if ((existing.receivedCents ?? 0) > 0) {
-            throw new Error(
-              `Não é possível remover a forma de pagamento "${existing.paymentMethod}" pois já há valor recebido nela.`
-            );
-          }
-
-          await tx.externalPayment.updateMany({
-            where: {
-              accountsReceivableId: existing.id,
-              status: {
-                in: [ExternalPaymentStatus.PENDING, ExternalPaymentStatus.OVERDUE],
-              },
-            },
-            data: {
-              status: ExternalPaymentStatus.CANCELED,
-              canceledAt: new Date(),
-              errorMessage: "Cobrança aberta cancelada no CRM por edição do pedido.",
-            },
-          });
-          await tx.accountsReceivableInstallment.updateMany({
-            where: { accountsReceivableId: existing.id, status: { not: ReceivableStatus.PAID } },
-            data: { status: ReceivableStatus.CANCELED },
-          });
-          await tx.accountsReceivable.update({
-            where: { id: existing.id },
-            data: { status: ReceivableStatus.CANCELED },
-          });
-        }
-
-        for (const split of normalizedSplits) {
-          const existing = split.id ? existingById.get(split.id) : undefined;
-          const splitRules = getFinancialRules(split.paymentMethod);
-
-          if (existing) {
-            const paidCentsForSplit = existing.receivedCents ?? 0;
-            if (paidCentsForSplit > split.amountCents) {
-              throw new Error(
-                `O valor da forma de pagamento "${existing.paymentMethod}" não pode ficar menor do que o já recebido (${(paidCentsForSplit / 100).toFixed(2)}).`
-              );
-            }
-
-            const existingInstallments = existing.installments.sort(
-              (a, b) => a.installmentNumber - b.installmentNumber
-            );
-            const paidInstallments = existingInstallments.filter(
-              (item) => item.status === ReceivableStatus.PAID
-            );
-            const openInstallments = existingInstallments.filter(
-              (item) => item.status !== ReceivableStatus.PAID
-            );
-            const openTotalCents = Math.max(0, split.amountCents - paidCentsForSplit);
-            const defaultAmounts = distributeInstallments(
-              openTotalCents,
-              split.installmentCount
-            );
-
-            await tx.externalPayment.updateMany({
-              where: {
-                accountsReceivableId: existing.id,
-                status: {
-                  in: [ExternalPaymentStatus.PENDING, ExternalPaymentStatus.OVERDUE],
-                },
-              },
-              data: {
-                status: ExternalPaymentStatus.CANCELED,
-                canceledAt: new Date(),
-                errorMessage: "Cobrança aberta cancelada no CRM por edição do pedido.",
-              },
-            });
-
-            const seenOpenIds = new Set<string>();
-            for (let index = 0; index < split.installmentCount; index++) {
-              const target = openInstallments[index];
-              const dueDate =
-                dateFromInput(split.installmentDates[index]) ??
-                target?.dueDate ??
-                (split.dueDate ? addMonths(split.dueDate, index) : addMonths(new Date(), index));
-              const amountCents = defaultAmounts[index] ?? 0;
-
-              if (target) {
-                seenOpenIds.add(target.id);
-                await tx.accountsReceivableInstallment.update({
-                  where: { id: target.id },
-                  data: {
-                    installmentNumber: paidInstallments.length + index + 1,
-                    dueDate,
-                    amountCents,
-                    status: splitRules.receivableStatus,
-                  },
-                });
-              } else {
-                await tx.accountsReceivableInstallment.create({
-                  data: {
-                    accountsReceivableId: existing.id,
-                    installmentNumber: paidInstallments.length + index + 1,
-                    dueDate,
-                    amountCents,
-                    status: splitRules.receivableStatus,
-                    receivedCents: 0,
-                    paidAt: null,
-                  },
-                });
-              }
-            }
-
-            const removeIds = openInstallments
-              .filter((item) => !seenOpenIds.has(item.id))
-              .map((item) => item.id);
-            if (removeIds.length) {
-              await tx.accountsReceivableInstallment.deleteMany({
-                where: { id: { in: removeIds } },
-              });
-            }
-
-            const refreshed = await tx.accountsReceivableInstallment.findMany({
-              where: { accountsReceivableId: existing.id },
-              orderBy: { installmentNumber: "asc" },
-              select: { status: true, dueDate: true },
-            });
-            const allPaid =
-              refreshed.length > 0 &&
-              refreshed.every((item) => item.status === ReceivableStatus.PAID);
-
-            await tx.accountsReceivable.update({
-              where: { id: existing.id },
-              data: {
-                paymentMethod: split.paymentMethod,
-                amountCents: split.amountCents,
-                installmentCount: refreshed.length || 1,
-                dueDate: refreshed[0]?.dueDate ?? split.dueDate ?? null,
-                status: allPaid
-                  ? ReceivableStatus.PAID
-                  : paidCentsForSplit > 0
-                  ? ReceivableStatus.PARTIAL
-                  : splitRules.receivableStatus,
-                paidAt: allPaid ? new Date() : existing.paidAt,
-              },
-            });
-          } else {
-            const created = await tx.accountsReceivable.create({
-              data: {
-                orderId: order.id,
-                clientId: order.clientId,
-                sellerId: order.sellerId,
-                regionId: order.regionId,
-                paymentMethod: split.paymentMethod,
-                status: splitRules.receivableStatus,
-                amountCents: split.amountCents,
-                receivedCents: splitRules.autoPaidAt ? split.amountCents : 0,
-                dueDate: split.dueDate,
-                paidAt: splitRules.autoPaidAt ? new Date() : null,
-                installmentCount: split.installmentCount,
-              },
-            });
-
-            const amounts = distributeInstallments(split.amountCents, split.installmentCount);
-            await tx.accountsReceivableInstallment.createMany({
-              data: Array.from({ length: split.installmentCount }, (_, index) => ({
-                accountsReceivableId: created.id,
-                installmentNumber: index + 1,
-                amountCents: amounts[index] ?? 0,
-                dueDate:
-                  dateFromInput(split.installmentDates[index]) ??
-                  (split.dueDate ? addMonths(split.dueDate, index) : addMonths(new Date(), index)),
-                status: splitRules.receivableStatus,
-                receivedCents: splitRules.autoPaidAt ? amounts[index] ?? 0 : 0,
-                paidAt: splitRules.autoPaidAt ? new Date() : null,
-              })),
-            });
-
-            if (splitRules.autoCreateReceipt && splitRules.receiptLocation) {
-              await tx.receipt.create({
-                data: {
-                  accountsReceivableId: created.id,
-                  orderId: order.id,
-                  regionId: order.regionId,
-                  amountCents: split.amountCents,
-                  paymentMethod: split.paymentMethod,
-                  receivedAt: new Date(),
-                  location: splitRules.receiptLocation,
-                  notes: "Recebimento automático adicionado na edição do pedido.",
-                },
-              });
-            }
-          }
-        }
-
-        const finalReceivables = await tx.accountsReceivable.findMany({
-          where: { orderId: order.id, status: { not: ReceivableStatus.CANCELED } },
-          select: { paymentMethod: true, amountCents: true },
-        });
-        const primary = finalReceivables.reduce<
-          (typeof finalReceivables)[number] | null
-        >(
-          (best, current) =>
-            !best || current.amountCents > best.amountCents ? current : best,
-          null
-        );
-
-        if (primary) {
-          const primaryRules = getFinancialRules(primary.paymentMethod);
-          await tx.order.update({
-            where: { id: order.id },
-            data: {
-              paymentMethod: primary.paymentMethod,
-              paymentReceiver: paymentReceiver ?? primaryRules.paymentReceiver,
-            },
-          });
-        }
-      }
-
-      await recomputeOrderPaymentStatus(tx, order.id);
-    }, {
-      maxWait: 10000,
-      timeout: 20000,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      message: "Pedido atualizado com sucesso.",
-    });
-  } catch (error) {
-    console.error("PATCH /api/orders/[id] error:", error);
-    const message =
-      error instanceof Error ? error.message : "Erro ao atualizar pedido.";
-    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -978,6 +462,581 @@ export async function DELETE(
     const message =
       error instanceof Error ? error.message : "Erro ao excluir pedido.";
 
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// PUT — Editar pedido existente
+// Estratégia: dentro de uma única transação, devolve estoque dos itens
+// originais, apaga financeiro/recebimentos/movimentos do pedido e recria
+// tudo a partir do payload novo, mantendo o mesmo Order (id e número).
+// ────────────────────────────────────────────────────────────────────────────
+export async function PUT(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const authUser = await getAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 }
+      );
+    }
+
+    if (authUser.role !== "ADMIN" && authUser.role !== "REPRESENTATIVE") {
+      return NextResponse.json(
+        { error: "Apenas administrador ou representante pode editar pedidos." },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await context.params;
+
+    if (!isValidUuid(id)) {
+      return NextResponse.json(
+        { error: "Pedido inválido." },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+
+    const paymentMethod = normalizePaymentMethod(body.paymentMethod);
+
+    const dueDate =
+      body.dueDate && isValidDate(body.dueDate)
+        ? new Date(body.dueDate)
+        : null;
+
+    const installmentCount = Math.max(1, toInt(body.installmentCount, 1));
+
+    const installmentDates: string[] = Array.isArray(body.installmentDates)
+      ? (body.installmentDates as unknown[])
+          .map((d) => String(d))
+          .filter((d) => isValidDate(d))
+      : [];
+
+    const itemsInput = Array.isArray(body.items)
+      ? (body.items as OrderItemInput[])
+      : [];
+
+    const defectReturnItemsInput = Array.isArray(body.defectReturnItems)
+      ? (body.defectReturnItems as DefectReturnItemInput[])
+      : [];
+
+    const notes = (body.notes as string | undefined)?.trim() || null;
+
+    if (!itemsInput.length) {
+      return NextResponse.json(
+        { error: "Adicione pelo menos um item ao pedido." },
+        { status: 400 }
+      );
+    }
+
+    const productIds = itemsInput
+      .map((item) => item.productId)
+      .filter((pid): pid is string => isValidUuid(pid));
+
+    if (!productIds.length || productIds.length !== itemsInput.length) {
+      return NextResponse.json(
+        { error: "Há produto(s) inválido(s) no pedido." },
+        { status: 400 }
+      );
+    }
+
+    const defectProductIds = defectReturnItemsInput
+      .map((item) => item.productId)
+      .filter((pid): pid is string => isValidUuid(pid));
+
+    if (
+      defectReturnItemsInput.length > 0 &&
+      defectProductIds.length !== defectReturnItemsInput.length
+    ) {
+      return NextResponse.json(
+        { error: "Há produto(s) inválido(s) nas devoluções por defeito." },
+        { status: 400 }
+      );
+    }
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // 1) Buscar pedido atual
+        const existing = await tx.order.findUnique({
+          where: { id },
+          include: {
+            items: true,
+            defectReturnItems: true,
+            stockMovements: true,
+            accountsReceivables: {
+              include: {
+                receipts: {
+                  include: {
+                    transfers: true,
+                  },
+                },
+                installments: true,
+              },
+            },
+            receipts: {
+              include: {
+                transfers: true,
+              },
+            },
+            financeTransactions: true,
+          },
+        });
+
+        if (!existing) {
+          throw new Error("Pedido não encontrado.");
+        }
+
+        // Bloquear edição quando NF-e já foi emitida com sucesso
+        if (existing.nfeStatus === "AUTHORIZED" || existing.nfeStatus === "ISSUED") {
+          throw new Error(
+            "Não é possível editar um pedido com NF-e já emitida. Cancele a NF-e antes."
+          );
+        }
+
+        // Representante só pode editar pedidos da própria região
+        if (
+          authUser.role === "REPRESENTATIVE" &&
+          existing.regionId !== authUser.regionId
+        ) {
+          throw new Error("Você não pode editar pedidos de outra região.");
+        }
+
+        const isDefectExchange = existing.type === OrderType.DEFECT_EXCHANGE;
+        const discountCents = isDefectExchange
+          ? 0
+          : Math.max(0, toInt(body.discountCents, 0));
+
+        // 2) Reverter movimentos de estoque do pedido original
+        for (const movement of existing.stockMovements) {
+          const balance = await tx.stockBalance.findUnique({
+            where: {
+              productId_stockLocationId: {
+                productId: movement.productId,
+                stockLocationId: movement.stockLocationId,
+              },
+            },
+            select: { id: true, quantity: true },
+          });
+
+          if (!balance) {
+            await tx.stockBalance.create({
+              data: {
+                productId: movement.productId,
+                stockLocationId: movement.stockLocationId,
+                quantity:
+                  movement.type === StockMovementType.OUT ||
+                  movement.type === StockMovementType.TRANSFER_OUT
+                    ? movement.quantity
+                    : 0,
+              },
+            });
+            continue;
+          }
+
+          if (
+            movement.type === StockMovementType.OUT ||
+            movement.type === StockMovementType.TRANSFER_OUT
+          ) {
+            await tx.stockBalance.update({
+              where: { id: balance.id },
+              data: { quantity: { increment: movement.quantity } },
+            });
+          }
+
+          if (
+            movement.type === StockMovementType.IN ||
+            movement.type === StockMovementType.TRANSFER_IN
+          ) {
+            await tx.stockBalance.update({
+              where: { id: balance.id },
+              data: { quantity: { decrement: movement.quantity } },
+            });
+          }
+        }
+
+        // 3) Apagar dependentes (receipts/transfers/installments/AR/items/etc)
+        const receivableIds = existing.accountsReceivables.map((r) => r.id);
+        const receiptIdsFromAR = existing.accountsReceivables.flatMap((r) =>
+          r.receipts.map((rc) => rc.id)
+        );
+        const receiptIdsFromOrder = existing.receipts.map((r) => r.id);
+        const receiptIds = Array.from(
+          new Set([...receiptIdsFromAR, ...receiptIdsFromOrder])
+        );
+
+        if (receiptIds.length > 0) {
+          await tx.cashTransfer.deleteMany({
+            where: { receiptId: { in: receiptIds } },
+          });
+          await tx.receipt.deleteMany({ where: { id: { in: receiptIds } } });
+        }
+
+        if (receivableIds.length > 0) {
+          await tx.accountsReceivableInstallment.deleteMany({
+            where: { accountsReceivableId: { in: receivableIds } },
+          });
+          await tx.accountsReceivable.deleteMany({
+            where: { id: { in: receivableIds } },
+          });
+        }
+
+        await tx.financeTransaction.deleteMany({
+          where: { orderId: existing.id },
+        });
+        await tx.stockMovement.deleteMany({
+          where: { orderId: existing.id },
+        });
+        await tx.defectReturnItem.deleteMany({
+          where: { orderId: existing.id },
+        });
+        await tx.orderItem.deleteMany({
+          where: { orderId: existing.id },
+        });
+
+        // 4) Validar produtos novos
+        const allProductIds = [...new Set([...productIds, ...defectProductIds])];
+
+        const products = await tx.product.findMany({
+          where: { id: { in: allProductIds } },
+          select: {
+            id: true,
+            name: true,
+            priceCents: true,
+            commissionCents: true,
+            active: true,
+            ncm: true,
+            cfop: true,
+            cst: true,
+            icmsRate: true,
+            commercialUnit: true,
+          },
+        });
+
+        if (products.length !== allProductIds.length) {
+          throw new Error("Um ou mais produtos não foram encontrados.");
+        }
+
+        const productMap = new Map(products.map((p) => [p.id, p]));
+
+        let subtotalCents = 0;
+        let commissionTotalCents = 0;
+
+        const normalizedItems = itemsInput.map((item) => {
+          const product = productMap.get(item.productId);
+          if (!product) throw new Error("Produto inválido encontrado.");
+          if (!product.active)
+            throw new Error(`O produto "${product.name}" está inativo.`);
+
+          const qty = Math.max(1, toInt(item.qty, 0));
+          const unitCents = isDefectExchange
+            ? 0
+            : item.unitCents != null
+            ? Math.max(0, toInt(item.unitCents, 0))
+            : Math.max(0, product.priceCents);
+
+          subtotalCents += qty * unitCents;
+          if (!isDefectExchange) {
+            commissionTotalCents += qty * (product.commissionCents ?? 0);
+          }
+
+          return {
+            productId: product.id,
+            qty,
+            unitCents,
+            productName: product.name,
+            ncm: product.ncm,
+            cfop: product.cfop || "5104",
+            cst: product.cst || "200",
+            icmsRate: product.icmsRate ?? 17,
+            unit: product.commercialUnit || "QU",
+          };
+        });
+
+        const normalizedDefectReturnItems = defectReturnItemsInput.map(
+          (item) => {
+            const product = productMap.get(item.productId);
+            if (!product)
+              throw new Error(
+                "Produto inválido encontrado na devolução por defeito."
+              );
+            if (!product.active)
+              throw new Error(
+                `O produto devolvido "${product.name}" está inativo.`
+              );
+
+            const quantity = Math.max(1, toInt(item.quantity, 0));
+            return {
+              productId: product.id,
+              quantity,
+              reason: item.reason?.trim() || null,
+              notes: item.notes?.trim() || null,
+              productName: product.name,
+            };
+          }
+        );
+
+        const totalCents = isDefectExchange
+          ? 0
+          : Math.max(0, subtotalCents - discountCents);
+
+        // 5) Determinar local de estoque (mantém o do primeiro movimento; se não houver, usa o da região)
+        let stockLocationId =
+          existing.stockMovements[0]?.stockLocationId ?? null;
+
+        if (!stockLocationId) {
+          const region = await tx.region.findUnique({
+            where: { id: existing.regionId },
+            select: { stockLocationId: true },
+          });
+          stockLocationId = region?.stockLocationId ?? null;
+        }
+
+        if (!stockLocationId) {
+          throw new Error(
+            "Não foi possível determinar o local de estoque do pedido."
+          );
+        }
+
+        // Garante saldos para os produtos
+        for (const productId of productIds) {
+          await tx.stockBalance.upsert({
+            where: {
+              productId_stockLocationId: {
+                productId,
+                stockLocationId,
+              },
+            },
+            update: {},
+            create: { productId, stockLocationId, quantity: 0 },
+          });
+        }
+
+        const stockBalances = await tx.stockBalance.findMany({
+          where: {
+            stockLocationId,
+            productId: { in: productIds },
+          },
+          select: { id: true, productId: true, quantity: true },
+        });
+
+        const stockBalanceMap = new Map(
+          stockBalances.map((b) => [b.productId, b])
+        );
+
+        for (const item of normalizedItems) {
+          const balance = stockBalanceMap.get(item.productId);
+          if (!balance || balance.quantity < item.qty) {
+            throw new Error(
+              `Estoque insuficiente para o produto "${item.productName}". Saldo atual: ${
+                balance?.quantity ?? 0
+              }, solicitado: ${item.qty}.`
+            );
+          }
+        }
+
+        const rules = getFinancialRules(paymentMethod);
+
+        // 6) Atualizar cabeçalho do pedido + recriar itens
+        const updatedOrder = await tx.order.update({
+          where: { id: existing.id },
+          data: {
+            paymentMethod: isDefectExchange
+              ? PaymentMethod.CASH
+              : paymentMethod,
+            paymentStatus: isDefectExchange
+              ? PaymentStatus.CANCELLED
+              : rules.paymentStatus,
+            paymentReceiver: isDefectExchange
+              ? PaymentReceiver.REGION
+              : rules.paymentReceiver,
+            commissionTotalCents: isDefectExchange ? 0 : commissionTotalCents,
+            status: isDefectExchange
+              ? "DEFECT_EXCHANGE"
+              : rules.paymentStatus === PaymentStatus.PAID
+              ? "PAID"
+              : "PENDING",
+            subtotalCents: isDefectExchange ? 0 : subtotalCents,
+            discountCents,
+            totalCents,
+            notes,
+            items: {
+              create: normalizedItems.map((item) => ({
+                productId: item.productId,
+                qty: item.qty,
+                unitCents: item.unitCents,
+                ncm: item.ncm,
+                cfop: item.cfop,
+                cst: item.cst,
+                icmsRate: item.icmsRate,
+                unit: item.unit,
+              })),
+            },
+            ...(normalizedDefectReturnItems.length > 0
+              ? {
+                  defectReturnItems: {
+                    create: normalizedDefectReturnItems.map((item) => ({
+                      productId: item.productId,
+                      quantity: item.quantity,
+                      reason: item.reason,
+                      notes: item.notes,
+                      status: DefectReturnStatus.PENDING_REGION,
+                      returnedAt: new Date(),
+                    })),
+                  },
+                }
+              : {}),
+          },
+          include: { items: true, defectReturnItems: true },
+        });
+
+        // 7) Recriar movimentos de estoque + decrementar saldos
+        for (const item of normalizedItems) {
+          const balance = stockBalanceMap.get(item.productId)!;
+
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              stockLocationId,
+              orderId: updatedOrder.id,
+              exhibitorId: existing.exhibitorId ?? null,
+              type: StockMovementType.OUT,
+              quantity: item.qty,
+              note: isDefectExchange
+                ? `Saída por troca por defeito PED-${String(
+                    updatedOrder.number
+                  ).padStart(4, "0")} (edição)`
+                : `Saída por pedido PED-${String(updatedOrder.number).padStart(
+                    4,
+                    "0"
+                  )} (edição)`,
+            },
+          });
+
+          await tx.stockBalance.update({
+            where: { id: balance.id },
+            data: { quantity: { decrement: item.qty } },
+          });
+        }
+
+        if (isDefectExchange) {
+          return { order: updatedOrder, accountsReceivable: null, receipt: null };
+        }
+
+        // 8) Recriar contas a receber + parcelas + recibos
+        const accountsReceivable = await tx.accountsReceivable.create({
+          data: {
+            orderId: updatedOrder.id,
+            clientId: existing.clientId,
+            sellerId: existing.sellerId ?? null,
+            regionId: existing.regionId,
+            paymentMethod,
+            status: rules.receivableStatus,
+            amountCents: totalCents,
+            receivedCents: rules.autoCreateReceipt ? totalCents : 0,
+            dueDate,
+            paidAt: rules.autoPaidAt ? new Date() : null,
+            installmentCount,
+            notes:
+              paymentMethod === PaymentMethod.PIX
+                ? "Recebimento automático por PIX (após edição)."
+                : paymentMethod === PaymentMethod.CASH
+                ? "Recebimento registrado em dinheiro na região (após edição)."
+                : paymentMethod === PaymentMethod.CARD_DEBIT
+                ? "Recebimento automático por cartão de débito (após edição)."
+                : paymentMethod === PaymentMethod.BOLETO
+                ? "Conta a receber gerada por boleto (após edição)."
+                : paymentMethod === PaymentMethod.CARD_CREDIT
+                ? "Conta a receber gerada por cartão de crédito (após edição)."
+                : null,
+          },
+        });
+
+        const installments = buildInstallments({
+          totalCents,
+          installmentCount,
+          installmentDates,
+          firstDueDate: dueDate,
+          defaultStatus: rules.receivableStatus,
+        });
+
+        if (installments.length) {
+          await tx.accountsReceivableInstallment.createMany({
+            data: installments.map((item) => ({
+              accountsReceivableId: accountsReceivable.id,
+              installmentNumber: item.installmentNumber,
+              amountCents: item.amountCents,
+              dueDate: item.dueDate,
+              paidAt: item.paidAt,
+              receivedCents: item.receivedCents,
+              status: item.status,
+            })),
+          });
+        }
+
+        let receipt = null;
+
+        if (rules.autoCreateReceipt && rules.receiptLocation) {
+          receipt = await tx.receipt.create({
+            data: {
+              accountsReceivableId: accountsReceivable.id,
+              orderId: updatedOrder.id,
+              regionId: existing.regionId,
+              receivedById: existing.sellerId ?? null,
+              amountCents: totalCents,
+              paymentMethod,
+              receivedAt: new Date(),
+              location: rules.receiptLocation,
+              notes:
+                paymentMethod === PaymentMethod.PIX
+                  ? "Recebimento automático via PIX instantâneo (após edição)."
+                  : paymentMethod === PaymentMethod.CASH
+                  ? "Recebimento em dinheiro retido na região até repasse (após edição)."
+                  : paymentMethod === PaymentMethod.CARD_DEBIT
+                  ? "Recebimento automático por cartão de débito (após edição)."
+                  : null,
+            },
+          });
+
+          if (paymentMethod === PaymentMethod.CASH) {
+            await tx.cashTransfer.create({
+              data: {
+                receiptId: receipt.id,
+                regionId: existing.regionId,
+                transferredById: null,
+                amountCents: totalCents,
+                status: TransferStatus.PENDING,
+                notes: "Aguardando repasse da região para a matriz (após edição).",
+              },
+            });
+          }
+        }
+
+        return { order: updatedOrder, accountsReceivable, receipt };
+      },
+      {
+        maxWait: 20000,
+        timeout: 60000,
+      }
+    );
+
+    return NextResponse.json({
+      ok: true,
+      message: "Pedido atualizado com sucesso.",
+      order: result.order,
+      accountsReceivable: result.accountsReceivable,
+      receipt: result.receipt,
+    });
+  } catch (error) {
+    console.error("PUT /api/orders/[id] error:", error);
+    const message =
+      error instanceof Error ? error.message : "Erro ao atualizar pedido.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

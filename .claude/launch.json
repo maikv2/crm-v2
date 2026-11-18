@@ -6,6 +6,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "storefront-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:\\Users\\eumai\\v2-storefront", "run", "dev", "--", "-p", "3101"],
+      "port": 3101
+    },
+    {
+      "name": "v2-governo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:\\Users\\eumai\\v2-governo-app", "run", "dev", "--", "-p", "3102"],
+      "port": 3102
     }
   ]
 }
